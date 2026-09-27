@@ -1,17 +1,26 @@
 /* Lineup — 1단계 앱 셸 스타일
-   원칙(설계문서 §4-4): 터치 조작 기준, 버튼 최소 48px, 한 화면에 핵심 기능 하나 */
+   원칙(설계문서 §4-4 + 2026-09-27 확정 표준):
+     ① 모바일 사용자 환경을 무조건 최우선으로 설계한다.
+        아래 스타일은 전부 모바일 기준(unprefixed)이고, 데스크탑/태블릿용 확장은
+        하단의 min-width 미디어쿼리로만 "추가"한다 — 절대 그 반대로 하지 않는다.
+     ② Lineup은 유튜브 영상을 다루는 서비스이므로, 유튜브를 연상시키는
+        레드/화이트/블랙 팔레트를 앞으로도 유지한다(--brand 값은 icons 생성
+        스크립트의 BRAND_BG와 반드시 동일하게 맞출 것).
+     ③ 터치 조작 기준, 버튼 최소 48px, 한 화면에 핵심 기능 하나 */
 
 :root {
-  --brand: #5b3cc4;
-  --brand-dark: #46309a;
-  --bg: #f7f6fb;
+  --brand: #e0201b;        /* 유튜브 연상 레드 */
+  --brand-dark: #b8180f;
+  --bg: #f9f9f9;            /* 유튜브 라이트 테마와 동일 계열의 옅은 회백색 */
   --surface: #ffffff;
-  --text: #1f1b2e;
-  --text-muted: #6b6580;
-  --border: #e4e0f2;
-  --danger: #c0392b;
+  --text: #0f0f0f;          /* 유튜브 본문 텍스트와 동일한 블랙에 가까운 톤 */
+  --text-muted: #606060;
+  --border: #e5e5e5;
+  --danger: #3c3c3c;        /* 삭제 등 보조 액션은 레드를 아끼고 중립 톤으로 구분 */
   --radius: 14px;
+  --pill-radius: 24px;      /* 유튜브 특유의 알약형 버튼 */
   --touch-min: 48px;
+  --content-max: 640px;     /* 데스크탑에서 지나치게 늘어나지 않도록 하는 상한 */
 }
 
 * {
@@ -61,13 +70,45 @@ body {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
-  color: var(--brand);
+  color: var(--text);
   letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 워드마크 앞에 붙는 작은 재생 삼각형 배지 — 유튜브 로고 문법(레드 사각/흰 삼각) 차용.
+   배지 자신을 positioning context로 삼아 삼각형을 중앙 고정하므로,
+   헤더 패딩 값이 바뀌어도(예: 아래 데스크탑 미디어쿼리) 어긋나지 않는다. */
+.logo-badge {
+  position: relative;
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  background: var(--brand);
+  border-radius: 6px;
+}
+
+.logo-badge::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-35%, -50%); /* 삼각형은 무게중심이 왼쪽으로 치우쳐 보이므로 살짝 보정 */
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 5px 0 5px 8px;
+  border-color: transparent transparent transparent #ffffff;
 }
 
 /* 메인 영역 */
 .app-main {
   flex: 1;
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
   padding: 16px 20px 96px; /* 하단 재생버튼에 가리지 않게 여백 확보 */
   display: flex;
   flex-direction: column;
@@ -85,9 +126,14 @@ body {
   min-height: var(--touch-min);
   padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 1rem;
+  border-radius: var(--pill-radius);
+  font-size: 1rem; /* 16px 미만이면 iOS Safari가 포커스 시 확대해버려 모바일에서 필수 */
   background: var(--surface);
+  color: var(--text);
+}
+
+#input-url::placeholder {
+  color: var(--text-muted);
 }
 
 #input-url:focus {
@@ -98,9 +144,9 @@ body {
 .btn-primary {
   min-height: var(--touch-min);
   min-width: var(--touch-min);
-  padding: 0 18px;
+  padding: 0 20px;
   border: none;
-  border-radius: var(--radius);
+  border-radius: var(--pill-radius);
   background: var(--brand);
   color: #fff;
   font-size: 1rem;
@@ -123,7 +169,7 @@ body {
   border: none;
   padding: 4px 2px;
   color: var(--brand);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
   min-height: var(--touch-min);
@@ -150,6 +196,7 @@ body {
   flex: 1;
   min-width: 120px;
   min-height: var(--touch-min);
+  accent-color: var(--brand); /* 슬라이더 손잡이/진행바를 브랜드 레드로 (네이티브 지원) */
 }
 
 .commute-summary {
@@ -205,7 +252,7 @@ body {
   width: 72px;
   height: 40px;
   border-radius: 8px;
-  background: #ddd8ee;
+  background: #ececec;
   object-fit: cover;
 }
 
@@ -267,11 +314,17 @@ body {
   background: linear-gradient(to top, var(--bg) 70%, transparent);
 }
 
+.app-footer > .btn-play {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  display: block;
+}
+
 .btn-play {
   width: 100%;
   min-height: 52px;
   border: none;
-  border-radius: var(--radius);
+  border-radius: var(--pill-radius);
   background: var(--brand);
   color: #fff;
   font-size: 1.05rem;
@@ -279,7 +332,19 @@ body {
   cursor: pointer;
 }
 
+.btn-play:active {
+  background: var(--brand-dark);
+}
+
 .btn-play:disabled {
-  background: #c9c3e0;
+  background: #d9d9d9;
+  color: #8a8a8a;
   cursor: not-allowed;
+}
+
+/* --- 데스크탑/태블릿 확장 (모바일 스타일 위에 "추가"만 함) ------------- */
+@media (min-width: 640px) {
+  .app-header {
+    padding: 18px 32px;
+  }
 }
