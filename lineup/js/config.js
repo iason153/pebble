@@ -17,4 +17,7 @@ window.LINEUP_CONFIG = Object.freeze({
   //   'batch'  — youtube.com/watch_videos?video_ids=... 로 큐 전체를 한 번에 넘김 (기본)
   //   'single' — 유튜브가 watch_videos를 막으면 이 값으로 바꾼다 → 영상을 하나씩 여는 방식
   PLAY_MODE: 'batch',
+
+  // Google Analytics 4 측정 ID (Pebble 속성, pebbleitgo.com 웹 스트림). 비워두면 통계 끔.
+  GA4_ID: 'G-4Q8F4E2J61',
 });

@@ -168,6 +168,7 @@ const VideoMeta = {
         apiOk = true;
       } catch (err) {
         console.warn('[Lineup] YouTube Data API 조회 실패 → oEmbed 폴백:', err.message);
+        track('meta_api_fail', { status: err.status || 0 });
       }
     }
 
@@ -333,6 +334,11 @@ const QueueStore = {
 // ---------------------------------------------------------------------------
 const CLIP_OFFERED_KEY = 'lineup:clip-offered';
 
+/** 통계 전송 (analytics.js가 없거나 GA4_ID가 비어 있으면 아무 일도 안 함) */
+const track = (name, params) => {
+  if (typeof window.lineupTrack === 'function') window.lineupTrack(name, params);
+};
+
 const ERROR_MESSAGES = {
   empty: '유튜브 링크를 붙여넣어 주세요.',
   not_youtube: '유튜브 링크가 아닌 것 같아요. 다시 확인해 주세요.',
@@ -475,7 +481,7 @@ const LineupApp = {
     } catch (_) {}
     if (!text) return;
 
-    const result = this.addFromText(text);
+    const result = this.addFromText(text, 'share');
     if (result.ok) {
       const where = result.asNext ? '다음 순서로' : `${result.index + 1}번째로`;
       this.showToast(`${where} 담았어요 · 뒤로 가기를 누르면 유튜브로 돌아가요`, { duration: 4500 });
@@ -502,13 +508,23 @@ const LineupApp = {
     this.render();
   },
 
-  /** @returns {{ok:boolean, reason?:string, index?:number}} */
-  addFromText(text) {
+  /**
+   * @param {string} text
+   * @param {'input'|'paste'|'clip_button'|'clip_suggest'|'share'} method  통계용: 어떤 경로로 담았는지
+   * @returns {{ok:boolean, reason?:string, index?:number}}
+   */
+  addFromText(text, method = 'input') {
     const parsed = YouTubeUrl.parse(text);
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      track('video_add_fail', { method, reason: parsed.reason });
+      return parsed;
+    }
 
     const existing = this.items.findIndex((it) => it.videoId === parsed.videoId);
-    if (existing !== -1) return { ok: false, reason: 'duplicate', index: existing };
+    if (existing !== -1) {
+      track('video_add_fail', { method, reason: 'duplicate' });
+      return { ok: false, reason: 'duplicate', index: existing };
+    }
 
     const item = {
       uid: QueueStore.uid(),
@@ -531,6 +547,7 @@ const LineupApp = {
     this.commit();
     this.fetchMeta([item.videoId]);
     const index = asNext ? 0 : this.items.length - 1;
+    track('video_add', { method, as_next: asNext, is_short: parsed.isShort, queue_size: this.items.length });
     return { ok: true, index, uid: item.uid, asNext };
   },
 
@@ -541,6 +558,7 @@ const LineupApp = {
     this.items.splice(idx, 1);
     this.commit({ keepToast: true });
     this.offerUndo(snapshot, '큐에서 뺐어요');
+    track('video_remove', { queue_size: this.items.length });
     this.announce(`${idx + 1}번째 영상을 삭제했어요.`);
 
     // 삭제 후 포커스를 이웃 항목으로 옮겨 키보드 흐름이 끊기지 않게 함
@@ -555,6 +573,7 @@ const LineupApp = {
     this.items = [];
     this.commit({ keepToast: true });
     this.offerUndo(snapshot, `${snapshot.length}개 영상을 모두 비웠어요`);
+    track('queue_clear', { count: snapshot.length });
     this.announce('큐를 모두 비웠어요.');
   },
 
@@ -866,7 +885,7 @@ const LineupApp = {
       if (!YouTubeUrl.parse(text).ok) return; // 유튜브 링크가 아니면 평소대로 붙여넣기
       e.preventDefault();
       this.hideClipSuggestion();
-      this.handleAddResult(this.addFromText(text));
+      this.handleAddResult(this.addFromText(text, 'paste'));
       urlInput.blur(); // 모바일 키보드를 내려 담긴 목록이 보이게
     });
 
@@ -874,7 +893,7 @@ const LineupApp = {
 
     addForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      this.handleAddResult(this.addFromText(urlInput.value));
+      this.handleAddResult(this.addFromText(urlInput.value, 'input'));
     });
   },
 
@@ -919,7 +938,10 @@ const LineupApp = {
       if (action === 'remove') this.removeItem(uid);
       if (action === 'up' || action === 'down') {
         const moved = this.moveItem(uid, action === 'up' ? -1 : 1);
-        if (moved) this.focusItemControl(uid, `[data-action="${action}"]`);
+        if (moved) {
+          this.focusItemControl(uid, `[data-action="${action}"]`);
+          track('queue_reorder', { method: 'button' });
+        }
       }
     });
 
@@ -1001,7 +1023,10 @@ const LineupApp = {
         const before = this.items.findIndex((it) => it.uid === uid);
         this.applyOrder(order);
         const after = this.items.findIndex((it) => it.uid === uid);
-        if (before !== after) this.announce(`${after + 1}번째로 옮겼어요.`);
+        if (before !== after) {
+          this.announce(`${after + 1}번째로 옮겼어요.`);
+          track('queue_reorder', { method: 'drag' });
+        }
       } else {
         this.render();
       }
@@ -1065,6 +1090,11 @@ const LineupApp = {
       this.settings.commuteOn = commuteToggle.checked;
       Settings.save(this.settings);
       this.render();
+      track('commute_toggle', { on: this.settings.commuteOn, minutes: this.settings.commuteMin });
+    });
+    // 드래그 중엔 input이 계속 오므로, 손을 뗀 시점(change)에만 기록
+    commuteSlider.addEventListener('change', () => {
+      track('commute_set', { minutes: this.settings.commuteMin });
     });
     commuteSlider.addEventListener('input', () => {
       this.settings.commuteMin = Number(commuteSlider.value);
@@ -1084,7 +1114,10 @@ const LineupApp = {
       this.closeSheet(playSheet);
       this.replaySession();
     });
-    sessionListBtn.addEventListener('click', () => this.openPlaySheet(this.sessionItems(), Player.mode));
+    sessionListBtn.addEventListener('click', () => {
+      this.openPlaySheet(this.sessionItems(), Player.mode);
+      track('play_list_open');
+    });
     sessionEndBtn.addEventListener('click', () => this.openEndSheet('end'));
     this.els.sessionNextBtn.addEventListener('click', () => this.openEndSheet('next'));
     endConfirmBtn.addEventListener('click', () => this.finishSession());
@@ -1148,6 +1181,14 @@ const LineupApp = {
 
     this.session = { uids: list.map((it) => it.uid), startedAt: Date.now() };
     SessionStore.save(this.session);
+    const sec = list.reduce((sum, it) => sum + (it.durationSec || 0), 0);
+    track('play_start', {
+      count: list.length,
+      minutes: Math.round(sec / 60),
+      commute_on: !!this.plan.active,
+      trimmed: this.plan.trimmed.size,
+      mode: Player.mode,
+    });
     this.render();
 
     if (this.plan.included.length > Player.MAX_BATCH) {
@@ -1158,6 +1199,7 @@ const LineupApp = {
 
   replaySession() {
     const list = this.sessionItems();
+    track('play_replay', { count: list.length });
     if (list.length) this.openInYouTube(list);
   },
 
@@ -1220,8 +1262,16 @@ const LineupApp = {
   },
 
   finishSession() {
-    const watched = this.sessionItems().slice(0, this.endSel).map((it) => it.uid);
+    const all = this.sessionItems();
+    const watched = all.slice(0, this.endSel).map((it) => it.uid);
     const next = this.endMode === 'next';
+    const minutesSinceStart = this.session ? Math.round((Date.now() - this.session.startedAt) / 60000) : 0;
+    track(next ? 'play_next' : 'session_end', {
+      watched: watched.length,
+      total: all.length,
+      pending: this.pendingNext().length,
+      minutes_since_start: minutesSinceStart,
+    });
     this.session = null;
     SessionStore.clear();
     this.closeSheet(this.els.endSheet);
@@ -1313,18 +1363,21 @@ const LineupApp = {
       e.preventDefault();
       this.installPrompt = e;
       installBtn.hidden = false;
+      track('install_available');
     });
     installBtn.addEventListener('click', async () => {
       if (!this.installPrompt) return;
       this.installPrompt.prompt();
       try {
-        await this.installPrompt.userChoice;
+        const choice = await this.installPrompt.userChoice;
+        track('install_click', { outcome: (choice && choice.outcome) || 'unknown' });
       } catch (_) {}
       this.installPrompt = null;
       installBtn.hidden = true;
     });
     window.addEventListener('appinstalled', () => {
       installBtn.hidden = true;
+      track('app_installed');
       this.showToast('설치됐어요! 이제 유튜브 공유 메뉴에서 Lineup을 고를 수 있어요', { duration: 4500 });
     });
   },
@@ -1392,6 +1445,7 @@ const LineupApp = {
     clipThumb.src = YouTubeUrl.thumb(parsed.videoId);
     clipTitle.textContent = `youtu.be/${parsed.videoId}`;
     clipSuggest.hidden = false;
+    track('clip_suggest_shown');
     this.els.pasteBtn.hidden = true; // 제안 카드가 떠 있을 땐 같은 역할의 버튼은 숨김
 
     // 제목은 곧바로 조회해서 채워 넣는다 (실패하면 주소 그대로)
@@ -1407,7 +1461,7 @@ const LineupApp = {
     if (!this.clip) return;
     const { text } = this.clip;
     this.hideClipSuggestion();
-    this.handleAddResult(this.addFromText(text));
+    this.handleAddResult(this.addFromText(text, 'clip_suggest'));
   },
 
   dismissClipSuggestion() {
@@ -1454,6 +1508,7 @@ const LineupApp = {
       text = await navigator.clipboard.readText();
     } catch (err) {
       console.warn('[Lineup] 클립보드 읽기 실패:', err && err.name, err && err.message);
+      track('clipboard_fail', { error: (err && err.name) || 'unknown' });
       this.showToast(this.clipboardFailMessage(), { duration: 5000 });
       this.els.urlInput.focus();
       this.refreshPasteButton();
@@ -1464,7 +1519,7 @@ const LineupApp = {
       return;
     }
     this.hideClipSuggestion();
-    const result = this.addFromText(text);
+    const result = this.addFromText(text, 'clip_button');
     if (!result.ok && result.reason !== 'duplicate') {
       // 유튜브 링크가 아니면 입력창에 넣어서 무엇이 복사됐는지 보여준다
       this.els.urlInput.value = text.trim().slice(0, 300);
@@ -1490,6 +1545,7 @@ const LineupApp = {
       if (!this.undoSnapshot) return;
       this.items = this.undoSnapshot;
       this.undoSnapshot = null;
+      track('undo');
       this.commit();
       this.announce('되돌렸어요.');
     });
