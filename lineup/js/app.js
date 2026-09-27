@@ -605,6 +605,18 @@ const LineupApp = {
 
     urlInput.addEventListener('input', clearError);
 
+    // 입력창에 유튜브 링크를 "붙여넣는 순간" 바로 담는다 ("담기" 버튼 생략).
+    // 클립보드 읽기 권한과 무관하게 모든 브라우저에서 동작하는 가장 확실한 경로.
+    urlInput.addEventListener('paste', (e) => {
+      const text = e.clipboardData && e.clipboardData.getData('text');
+      if (!text || urlInput.value.trim()) return; // 이미 뭔가 입력 중이면 평소대로
+      if (!YouTubeUrl.parse(text).ok) return; // 유튜브 링크가 아니면 평소대로 붙여넣기
+      e.preventDefault();
+      this.hideClipSuggestion();
+      this.handleAddResult(this.addFromText(text));
+      urlInput.blur(); // 모바일 키보드를 내려 담긴 목록이 보이게
+    });
+
     this.clearAddError = clearError;
 
     addForm.addEventListener('submit', (e) => {
@@ -822,6 +834,7 @@ const LineupApp = {
     this.els.pasteBtn.hidden = !canRead;
     if (!canRead) return;
 
+    this.refreshPasteButton();
     this.els.pasteBtn.addEventListener('click', () => this.pasteFromClipboard());
     this.els.clipAddBtn.addEventListener('click', () => this.acceptClipSuggestion());
     this.els.clipCloseBtn.addEventListener('click', () => this.dismissClipSuggestion());
@@ -889,18 +902,47 @@ const LineupApp = {
   },
 
   hideClipSuggestion() {
+    if (!this.clip) return;
     this.clip = null;
     this.els.clipSuggest.hidden = true;
     this.els.pasteBtn.hidden = false;
+    this.refreshPasteButton();
+  },
+
+  isIOS() {
+    return /iP(hone|od|ad)/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  },
+
+  clipboardFailMessage() {
+    if (this.isIOS()) {
+      return '버튼을 누른 뒤 뜨는 "붙여넣기" 말풍선을 눌러주세요. 안 되면 입력창에 붙여넣으면 바로 담겨요.';
+    }
+    return '브라우저가 클립보드 읽기를 막았어요. 입력창을 길게 눌러 붙여넣으면 바로 담겨요.';
+  },
+
+  /** 클립보드 권한이 "차단"으로 굳어진 브라우저에선 버튼이 쓸모없으니 숨긴다 */
+  async refreshPasteButton() {
+    try {
+      const status = await navigator.permissions.query({ name: 'clipboard-read' });
+      if (status.state === 'denied') this.els.pasteBtn.hidden = true;
+      status.onchange = () => {
+        this.els.pasteBtn.hidden = status.state === 'denied' || !this.els.clipSuggest.hidden;
+      };
+    } catch (_) {
+      // 권한 조회 미지원(Safari 등) → 버튼 유지
+    }
   },
 
   async pasteFromClipboard() {
     let text = '';
     try {
       text = await navigator.clipboard.readText();
-    } catch (_) {
-      this.showToast('클립보드를 읽지 못했어요. 입력창을 길게 눌러 붙여넣어 주세요.', { duration: 3500 });
+    } catch (err) {
+      console.warn('[Lineup] 클립보드 읽기 실패:', err && err.name, err && err.message);
+      this.showToast(this.clipboardFailMessage(), { duration: 5000 });
       this.els.urlInput.focus();
+      this.refreshPasteButton();
       return;
     }
     if (!text.trim()) {
