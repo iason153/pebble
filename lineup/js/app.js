@@ -447,6 +447,17 @@ const LineupApp = {
   // --- PWA: Service Worker ---------------------------------------------
   registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
+
+    // 새 버전이 배포되면(새 서비스워커가 자리를 잡으면) 한 번만 자동 새로고침해서
+    // "두 번 새로고침해야 새 버전이 보이는" 문제를 없앤다. 첫 설치 때는 새로고침 안 함.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded || this.drag) return;
+      reloaded = true;
+      window.location.reload();
+    });
+
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js').catch((err) => {
         console.warn('[Lineup] service worker 등록 실패:', err);
