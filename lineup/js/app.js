@@ -10,8 +10,8 @@
  * 3단계: 영상 정보(제목·채널·길이) 조회 — YouTube Data API 1회 호출로 한꺼번에,
  *        실패 시 oEmbed로 제목만 폴백 / 클립보드 링크 감지·붙여넣기
  *
- * 남은 경계(TODO 표시):
- *   4단계 — 안드로이드 공유 → 큐 추가 연결, 통근시간 계산, watch_videos 재생
+ * 4단계: 재생(watch_videos 일괄 전달 + 하나씩 열기 폴백), 통근시간 맞춤(누적 길이로
+ *        자르기), 안드로이드 공유로 담기(Web Share Target), 홈 화면 설치 버튼
  */
 
 // ---------------------------------------------------------------------------
@@ -191,6 +191,58 @@ const VideoMeta = {
 };
 
 // ---------------------------------------------------------------------------
+// 재생 (4단계) — 설계문서 §4-1
+//   Lineup은 직접 재생하지 않고 유튜브로 "넘긴다". 기본은 watch_videos 링크 하나로
+//   큐 전체를 넘기는 방식. 이 주소는 유튜브 비공식 기능이라 막힐 수 있으므로
+//   config.js의 PLAY_MODE를 'single'로 바꾸면 영상을 하나씩 여는 방식으로 즉시 전환된다.
+// ---------------------------------------------------------------------------
+const Player = {
+  MAX_BATCH: 50, // watch_videos 한 번에 넘길 수 있는 안전 상한
+
+  get mode() {
+    const m = window.LINEUP_CONFIG && window.LINEUP_CONFIG.PLAY_MODE;
+    return m === 'single' ? 'single' : 'batch';
+  },
+
+  batchUrl(ids) {
+    return `https://www.youtube.com/watch_videos?video_ids=${ids.slice(0, this.MAX_BATCH).join(',')}`;
+  },
+
+  open(url) {
+    // 새 탭/유튜브 앱으로 연다. 팝업이 막히면 현재 탭에서 이동.
+    const win = window.open(url, '_blank', 'noopener');
+    if (!win) window.location.href = url;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// 사용자 설정 (통근시간 등) — 큐와 별도 키로 저장
+// ---------------------------------------------------------------------------
+const Settings = {
+  KEY: 'lineup:settings:v1',
+  defaults: { commuteOn: false, commuteMin: 30 },
+
+  load() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(this.KEY) || '{}');
+      const min = Number(raw.commuteMin);
+      return {
+        commuteOn: !!raw.commuteOn,
+        commuteMin: Number.isFinite(min) && min >= 5 && min <= 120 ? min : this.defaults.commuteMin,
+      };
+    } catch (_) {
+      return { ...this.defaults };
+    }
+  },
+
+  save(settings) {
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify(settings));
+    } catch (_) {}
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 큐 저장소 (localStorage) — 저장 실패해도 앱은 메모리 상태로 계속 동작
 // ---------------------------------------------------------------------------
 const QueueStore = {
@@ -270,6 +322,9 @@ const LineupApp = {
   loadingIds: new Set(), // 지금 정보 조회 중인 videoId (저장 안 함)
   metaDirty: false, // 드래그 중에 정보가 도착해 렌더를 미뤘는지
   clip: null, // 클립보드 제안 상태 {text, videoId}
+  settings: null,
+  plan: null, // 현재 재생 계획 (통근시간 반영) — render() 때마다 다시 계산
+  installPrompt: null,
 
   init() {
     this.cacheEls();
@@ -277,6 +332,7 @@ const LineupApp = {
     this.consumeShareTarget();
 
     this.items = QueueStore.load();
+    this.settings = Settings.load();
     this.render();
 
     this.wireAddForm();
@@ -286,11 +342,13 @@ const LineupApp = {
     this.wireToast();
     this.wireStorageSync();
     this.wireClipboard();
+    this.wirePlay();
+    this.wireInstall();
+    this.processPendingShare();
 
     this.fetchMissingMeta();
     window.addEventListener('online', () => this.fetchMissingMeta());
 
-    // TODO(4단계): 재생 시작 버튼에 watch_videos 링크 생성 로직 연결
   },
 
   cacheEls() {
@@ -308,6 +366,17 @@ const LineupApp = {
       queueTotal: $('queue-total'),
       commuteSlider: $('commute-slider'),
       commuteValue: $('commute-value'),
+      commutePanel: $('commute-panel'),
+      commuteToggle: $('commute-toggle'),
+      commuteBody: $('commute-body'),
+      commuteSummary: $('commute-summary'),
+      playMeta: $('play-meta'),
+      playSheet: $('play-sheet'),
+      playSheetTitle: $('play-sheet-title'),
+      playSheetDesc: $('play-sheet-desc'),
+      playSheetList: $('play-sheet-list'),
+      playAgainBtn: $('btn-play-again'),
+      installBtn: $('btn-install'),
       queueHead: $('queue-head'),
       queueCount: $('queue-count'),
       queueList: $('queue-list'),
@@ -337,12 +406,36 @@ const LineupApp = {
     const sharedUrl = params.get('share_url') || params.get('share_text') || '';
 
     if (sharedUrl) {
-      sessionStorage.setItem('lineup_pending_share', sharedUrl);
-      // TODO(4단계): sessionStorage.getItem('lineup_pending_share')를 addFromText()에 연결
+      // 제목과 링크가 따로 오기도, text 안에 섞여 오기도 해서 둘 다 합쳐 보관
+      const combined = [params.get('share_url'), params.get('share_text')].filter(Boolean).join(' ');
+      try {
+        sessionStorage.setItem('lineup_pending_share', combined || sharedUrl);
+      } catch (_) {}
     }
 
     if (params.has('share_title') || params.has('share_text') || params.has('share_url')) {
       window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  },
+
+  /** 안드로이드 공유 시트로 들어온 링크를 큐에 담는다 */
+  processPendingShare() {
+    let text = null;
+    try {
+      text = sessionStorage.getItem('lineup_pending_share');
+      sessionStorage.removeItem('lineup_pending_share');
+    } catch (_) {}
+    if (!text) return;
+
+    const result = this.addFromText(text);
+    if (result.ok) {
+      this.showToast(`${result.index + 1}번째로 담았어요 · 뒤로 가기를 누르면 유튜브로 돌아가요`, { duration: 4500 });
+      this.flashItem(result.uid);
+    } else if (result.reason === 'duplicate') {
+      this.showToast(`이미 ${result.index + 1}번째에 있는 영상이에요`, { duration: 3500 });
+      this.flashItem(this.items[result.index].uid);
+    } else {
+      this.showToast('공유된 내용에서 유튜브 영상 링크를 찾지 못했어요.', { duration: 3500 });
     }
   },
 
@@ -489,11 +582,22 @@ const LineupApp = {
     this.els.queueTotal.hidden = known.length === 0;
     this.els.queueTotal.textContent = known.length ? `총 ${this.formatTotal(total)}${partial ? '+' : ''}` : '';
 
-    // TODO(4단계): 재생 로직 연결 후 count > 0 이면 활성화
-    playBtn.disabled = true;
+    // 재생 계획 (통근시간 반영) → 버튼·요약·흐리게 표시에 공통으로 사용
+    this.plan = this.computePlan();
+    this.renderCommute(known.length > 0);
+    const n = this.plan.included.length;
+    playBtn.disabled = n === 0;
+    const playSec = this.plan.included.reduce((sum, it) => sum + (it.durationSec || 0), 0);
+    this.els.playMeta.textContent = n
+      ? `${n}개${playSec ? ' · ' + this.formatTotal(playSec) : ''}${this.plan.unknownCount && playSec ? '+' : ''}`
+      : '';
 
     const frag = document.createDocumentFragment();
-    this.items.forEach((item, i) => frag.appendChild(this.renderItem(item, i, count)));
+    this.items.forEach((item, i) => {
+      const li = this.renderItem(item, i, count);
+      if (this.plan.trimmed.has(item.uid)) li.classList.add('is-trimmed');
+      frag.appendChild(li);
+    });
     queueList.replaceChildren(frag);
   },
 
@@ -564,6 +668,82 @@ const LineupApp = {
     const m = Math.floor((s % 3600) / 60);
     const r = String(s % 60).padStart(2, '0');
     return h ? `${h}:${String(m).padStart(2, '0')}:${r}` : `${m}:${r}`;
+  },
+
+  // =====================================================================
+  // 통근시간 맞춤 (설계문서 §4-3)
+  //   큐 순서대로 길이를 더해가다 이동시간을 넘는 지점부터 뒤는 전부 "이번엔 제외"
+  //   (순서가 핵심인 서비스라, 뒤쪽의 짧은 영상을 끼워 넣는 식으로 건너뛰지 않는다)
+  //   - 길이 모르는 영상(라이브 등)은 계산에서 빼고 포함, 요약에 따로 알림
+  //   - 첫 영상 하나만으로 이동시간을 넘으면 그 영상 하나는 재생(아무것도 안 트는 것보다 낫다)
+  //   - 재생 불가 영상은 항상 제외
+  // =====================================================================
+  computePlan() {
+    const playable = this.items.filter((it) => !it.unavailable);
+    const plan = { included: [], trimmed: new Set(), usedSec: 0, unknownCount: 0, overLong: false, active: false };
+    const hasDurations = playable.some((it) => it.durationSec != null);
+
+    if (!this.settings.commuteOn || !hasDurations) {
+      plan.included = playable;
+      plan.unknownCount = playable.filter((it) => it.durationSec == null).length;
+      return plan;
+    }
+
+    plan.active = true;
+    const limit = this.settings.commuteMin * 60;
+    let cut = false;
+    for (const it of playable) {
+      if (cut) {
+        plan.trimmed.add(it.uid);
+      } else if (it.durationSec == null) {
+        plan.included.push(it);
+        plan.unknownCount++;
+      } else if (plan.usedSec + it.durationSec <= limit) {
+        plan.included.push(it);
+        plan.usedSec += it.durationSec;
+      } else if (!plan.included.some((x) => x.durationSec != null)) {
+        plan.included.push(it);
+        plan.usedSec += it.durationSec;
+        plan.overLong = true;
+        cut = true;
+      } else {
+        cut = true;
+        plan.trimmed.add(it.uid);
+      }
+    }
+    return plan;
+  },
+
+  renderCommute(hasDurations) {
+    const { commutePanel, commuteToggle, commuteBody, commuteSlider, commuteValue, commuteSummary } = this.els;
+    // 길이 정보가 하나도 없으면(아직 조회 전·API 실패) 통근시간 기능 자체를 숨김 (설계문서 §7)
+    commutePanel.hidden = !hasDurations;
+    if (!hasDurations) return;
+
+    const on = this.settings.commuteOn;
+    commuteToggle.checked = on;
+    commuteBody.hidden = !on;
+    commuteValue.hidden = !on;
+    commuteSlider.value = this.settings.commuteMin;
+    commuteValue.textContent = this.formatTotal(this.settings.commuteMin * 60);
+    this.paintSlider();
+    if (!on) return;
+
+    const p = this.plan;
+    const left = this.settings.commuteMin * 60 - p.usedSec;
+    let text = `${p.included.length}개 · ${this.formatTotal(p.usedSec)} 재생`;
+    if (p.overLong) text = `첫 영상이 이동시간보다 길어서 1개만 재생해요 (${this.formatTotal(p.usedSec)})`;
+    else if (p.trimmed.size) text += ` · 뒤의 ${p.trimmed.size}개는 이번엔 제외`;
+    else if (left >= 60) text += ` · ${this.formatTotal(left)} 남아요`;
+    if (p.unknownCount) text += ` · 길이 모르는 영상 ${p.unknownCount}개 포함`;
+    commuteSummary.textContent = text;
+  },
+
+  /** 슬라이더 채워진 부분을 브랜드 레드로 (크로스브라우저) */
+  paintSlider() {
+    const el = this.els.commuteSlider;
+    const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+    el.style.setProperty('--fill', `${pct}%`);
   },
 
   /** 총 재생시간: 38분 / 1시간 12분 */
@@ -806,13 +986,126 @@ const LineupApp = {
 
   // --- 통근시간 슬라이더 (표시만, 계산은 4단계) --------------------------
   wireCommuteSlider() {
-    if (!this.els.commuteSlider) return;
-    const updateLabel = () => {
-      this.els.commuteValue.textContent = `${this.els.commuteSlider.value}분`;
-    };
-    this.els.commuteSlider.addEventListener('input', updateLabel);
-    updateLabel();
-    // TODO(4단계): 큐 누적 재생시간과 비교해 트림 표시(commute-summary, is-trimmed 클래스)
+    const { commuteSlider, commuteToggle } = this.els;
+    commuteToggle.addEventListener('change', () => {
+      this.settings.commuteOn = commuteToggle.checked;
+      Settings.save(this.settings);
+      this.render();
+    });
+    commuteSlider.addEventListener('input', () => {
+      this.settings.commuteMin = Number(commuteSlider.value);
+      Settings.save(this.settings);
+      this.render();
+    });
+  },
+
+  // =====================================================================
+  // 재생
+  // =====================================================================
+  wirePlay() {
+    const { playBtn, playSheet, playAgainBtn } = this.els;
+    playBtn.addEventListener('click', () => this.play());
+    playAgainBtn.addEventListener('click', () => this.play({ fromSheet: true }));
+    playSheet.addEventListener('click', (e) => {
+      if (e.target.closest('[data-close]')) this.closePlaySheet();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !playSheet.hidden) this.closePlaySheet();
+    });
+  },
+
+  play({ fromSheet = false } = {}) {
+    const list = this.plan ? this.plan.included : [];
+    if (!list.length) return;
+    const ids = list.map((it) => it.videoId);
+
+    if (Player.mode === 'batch') {
+      Player.open(Player.batchUrl(ids));
+      if (ids.length > Player.MAX_BATCH) {
+        this.showToast(`한 번에 ${Player.MAX_BATCH}개까지만 넘길 수 있어서 앞의 ${Player.MAX_BATCH}개만 재생해요`, { duration: 4000 });
+      }
+      if (!fromSheet) this.openPlaySheet(list, 'batch');
+    } else {
+      Player.open(YouTubeUrl.watchUrl(ids[0]));
+      this.openPlaySheet(list, 'single', 0);
+    }
+  },
+
+  /**
+   * 유튜브에서 돌아왔을 때 보이는 시트.
+   *   batch  — "순서대로 안 나오면 하나씩 열 수 있어요" (폴백 안내)
+   *   single — 하나씩 열기 모드 본체
+   */
+  openPlaySheet(list, mode, openedIndex = -1) {
+    const { playSheet, playSheetTitle, playSheetDesc, playSheetList, playAgainBtn } = this.els;
+    playSheetTitle.textContent = mode === 'batch' ? '유튜브에서 재생했어요' : '하나씩 재생하기';
+    playSheetDesc.textContent =
+      mode === 'batch'
+        ? '유튜브가 큐 순서대로 이어서 틀어줘요. 순서대로 안 나오면 아래에서 하나씩 열어주세요.'
+        : '영상을 다 보면 여기로 돌아와서 다음 영상을 여세요.';
+    playAgainBtn.hidden = mode !== 'batch';
+
+    const frag = document.createDocumentFragment();
+    list.forEach((it, i) => {
+      const li = document.createElement('li');
+      li.className = 'sheet__item' + (i <= openedIndex ? ' is-opened' : '');
+      const a = document.createElement('a');
+      a.className = 'sheet__link';
+      a.href = YouTubeUrl.watchUrl(it.videoId);
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.innerHTML = '<span class="sheet__num"></span><span class="sheet__name"></span><span class="sheet__time"></span><span class="sheet__open">열기</span>';
+      a.querySelector('.sheet__num').textContent = i + 1;
+      a.querySelector('.sheet__name').textContent = it.title || `youtu.be/${it.videoId}`;
+      a.querySelector('.sheet__time').textContent = it.durationSec != null ? this.formatDuration(it.durationSec) : '';
+      a.addEventListener('click', () => {
+        li.classList.add('is-opened');
+        a.querySelector('.sheet__open').textContent = '다시';
+      });
+      if (i <= openedIndex) a.querySelector('.sheet__open').textContent = '다시';
+      li.appendChild(a);
+      frag.appendChild(li);
+    });
+    playSheetList.replaceChildren(frag);
+
+    playSheet.hidden = false;
+    document.body.classList.add('has-sheet');
+    requestAnimationFrame(() => playSheet.classList.add('is-open'));
+  },
+
+  closePlaySheet() {
+    const { playSheet, playBtn } = this.els;
+    playSheet.classList.remove('is-open');
+    document.body.classList.remove('has-sheet');
+    setTimeout(() => {
+      if (!playSheet.classList.contains('is-open')) playSheet.hidden = true;
+    }, 200);
+    playBtn.focus();
+  },
+
+  // =====================================================================
+  // 홈 화면 설치 (안드로이드 크롬 등) — 설치해야 "공유 → Lineup"이 뜬다
+  // =====================================================================
+  wireInstall() {
+    const { installBtn } = this.els;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      this.installPrompt = e;
+      installBtn.hidden = false;
+    });
+    installBtn.addEventListener('click', async () => {
+      if (!this.installPrompt) return;
+      this.installPrompt.prompt();
+      try {
+        await this.installPrompt.userChoice;
+      } catch (_) {}
+      this.installPrompt = null;
+      installBtn.hidden = true;
+    });
+    window.addEventListener('appinstalled', () => {
+      installBtn.hidden = true;
+      this.showToast('설치됐어요! 이제 유튜브 공유 메뉴에서 Lineup을 고를 수 있어요', { duration: 4500 });
+    });
   },
 
   // --- 전체 삭제 (확인창 대신 "되돌리기" 토스트로 실수 복구) -------------

@@ -67,6 +67,24 @@ body {
   z-index: 10;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.install-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--brand);
+  border-radius: var(--pill-radius);
+  background: var(--surface);
+  color: var(--brand);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .app-title {
   margin: 0;
   font-size: 1.25rem;
@@ -261,35 +279,161 @@ body {
   cursor: pointer;
 }
 
-/* 통근시간 패널 (4단계 연결 전 스켈레톤) */
+/* 통근시간 맞춤 패널 */
 .commute-panel {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 4px 16px;
 }
 
-.commute-panel label {
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-#commute-slider {
-  flex: 1;
-  min-width: 120px;
+.commute-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   min-height: var(--touch-min);
-  accent-color: var(--brand); /* 슬라이더 손잡이/진행바를 브랜드 레드로 (네이티브 지원) */
+}
+
+.commute-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.commute-body {
+  padding-bottom: 12px;
+}
+
+/* 토글 스위치 */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch-min);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.switch__track {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  background: #cfcfcf;
+  transition: background 0.18s ease;
+}
+
+.switch__track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.18s ease;
+}
+
+.switch input:checked + .switch__track {
+  background: var(--brand);
+}
+
+.switch input:checked + .switch__track::after {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .switch__track {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.switch__label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* 슬라이더 — 채워진 부분 레드, 손잡이는 터치하기 쉽게 크게 */
+#commute-slider {
+  --fill: 20%;
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+#commute-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--brand) var(--fill), #e3e3e3 var(--fill));
+}
+
+#commute-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--brand) var(--fill), #e3e3e3 var(--fill));
+}
+
+#commute-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--brand);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+#commute-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--brand);
+}
+
+#commute-slider:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.commute-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #909090;
+  margin-top: 2px;
+}
+
+/* "1시간" 눈금은 슬라이더의 60분 위치(5~120 중 60 → 약 48%)에 맞춤 */
+.commute-scale span:nth-child(2) {
+  position: relative;
+  left: -2%;
 }
 
 .commute-summary {
-  flex-basis: 100%;
-  margin: 0;
+  margin: 8px 0 0;
   font-size: 0.85rem;
-  color: var(--text-muted);
+  line-height: 1.45;
+  color: var(--text);
 }
 
 /* 입력 오류 안내 */
@@ -360,7 +504,14 @@ body {
   user-select: none;
 }
 
+/* 통근시간을 넘어 이번엔 제외되는 영상 */
 .queue-item.is-trimmed {
+  background: transparent;
+  border-style: dashed;
+}
+
+.queue-item.is-trimmed .queue-item__thumb-wrap,
+.queue-item.is-trimmed .queue-item__meta {
   opacity: 0.4;
 }
 
@@ -633,6 +784,174 @@ body.is-sorting {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* 재생 시트 (하단에서 올라오는 패널) */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 15, 15, 0.45);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.sheet__panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 85dvh;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 20px calc(16px + env(safe-area-inset-bottom));
+  border-radius: 20px 20px 0 0;
+  background: var(--surface);
+  transform: translateY(100%);
+  transition: transform 0.22s ease;
+}
+
+.sheet.is-open .sheet__backdrop {
+  opacity: 1;
+}
+
+.sheet.is-open .sheet__panel {
+  transform: none;
+}
+
+body.has-sheet {
+  overflow: hidden;
+}
+
+.sheet__grip {
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 2px;
+  background: #d9d9d9;
+}
+
+.sheet__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.sheet__desc {
+  margin: 6px 0 12px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.sheet__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.sheet__item {
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 2px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sheet__num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #0f0f0f;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+}
+
+.sheet__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet__time {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet__open {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: var(--pill-radius);
+  background: var(--brand);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.sheet__item.is-opened .sheet__num {
+  background: #bdbdbd;
+}
+
+.sheet__item.is-opened .sheet__name {
+  color: var(--text-muted);
+}
+
+.sheet__item.is-opened .sheet__open {
+  background: #f0f0f0;
+  color: var(--text);
+}
+
+.sheet__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.sheet__btn {
+  flex: 1;
+  min-height: var(--touch-min);
+  border: 1px solid var(--border);
+  border-radius: var(--pill-radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sheet__btn--primary {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+
+.sheet__btn[hidden] {
+  display: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -672,6 +991,10 @@ body.is-sorting {
 }
 
 .btn-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: 100%;
   min-height: 52px;
   border: none;
@@ -685,6 +1008,21 @@ body.is-sorting {
 
 .btn-play:active {
   background: var(--brand-dark);
+}
+
+.btn-play__meta {
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.btn-play__meta:empty {
+  display: none;
+}
+
+.btn-play__meta::before {
+  content: "·";
+  margin-right: 8px;
 }
 
 .btn-play:disabled {
@@ -766,6 +1104,14 @@ body.is-sorting {
 
   .clip-suggest__close:hover {
     background: rgba(0, 0, 0, 0.06);
+  }
+
+  .sheet__link:hover .sheet__name {
+    text-decoration: underline;
+  }
+
+  .install-btn:hover {
+    background: #fff5f5;
   }
 
   .toast__action:hover {

@@ -12,4 +12,9 @@
  */
 window.LINEUP_CONFIG = Object.freeze({
   YT_API_KEY: 'AIzaSyD1YYH5Kxn3-uSeJLwJ66zIQwGCrCvG4Bg',
+
+  // 재생 방식 (설계문서 §4-1)
+  //   'batch'  — youtube.com/watch_videos?video_ids=... 로 큐 전체를 한 번에 넘김 (기본)
+  //   'single' — 유튜브가 watch_videos를 막으면 이 값으로 바꾼다 → 영상을 하나씩 여는 방식
+  PLAY_MODE: 'batch',
 });

@@ -21,7 +21,10 @@
 
 <header class="app-header">
   <h1 class="app-title"><span class="logo-badge" aria-hidden="true"></span>Lineup</h1>
-  <button id="btn-clear-all" class="icon-btn" type="button" aria-label="큐 전체 초기화" hidden>전체삭제</button>
+  <div class="header-actions">
+    <button id="btn-install" class="install-btn" type="button" hidden>앱 설치</button>
+    <button id="btn-clear-all" class="icon-btn" type="button" aria-label="큐 전체 초기화" hidden>전체삭제</button>
+  </div>
 </header>
 
 <main class="app-main">
@@ -60,12 +63,21 @@
     </div>
   </section>
 
-  <!-- 통근시간 맞춤 큐 (4단계에서 실제 계산 로직 연결 예정) -->
-  <section class="commute-panel" hidden>
-    <label for="commute-slider">이동시간</label>
-    <input id="commute-slider" type="range" min="5" max="90" step="5" value="20">
-    <span id="commute-value">20분</span>
-    <p id="commute-summary" class="commute-summary"></p>
+  <!-- 통근시간 맞춤 큐 -->
+  <section id="commute-panel" class="commute-panel" hidden>
+    <div class="commute-top">
+      <label class="switch">
+        <input id="commute-toggle" type="checkbox" role="switch">
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__label">이동시간에 맞추기</span>
+      </label>
+      <span id="commute-value" class="commute-value" hidden>30분</span>
+    </div>
+    <div id="commute-body" class="commute-body" hidden>
+      <input id="commute-slider" type="range" min="5" max="120" step="5" value="30" aria-label="이동시간(분)">
+      <div class="commute-scale" aria-hidden="true"><span>5분</span><span>1시간</span><span>2시간</span></div>
+      <p id="commute-summary" class="commute-summary"></p>
+    </div>
   </section>
 
   <!-- 큐 목록 -->
@@ -88,9 +100,26 @@
 <!-- 재생 시작 (4단계에서 watch_videos 재생 로직 연결 예정) -->
 <footer class="app-footer">
   <button id="btn-play-queue" class="btn-play" type="button" disabled>
-    재생 시작
+    <svg class="btn-play__icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.2-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>
+    <span class="btn-play__label">재생 시작</span>
+    <span id="play-meta" class="btn-play__meta"></span>
   </button>
 </footer>
+
+<!-- 재생 시트: 유튜브로 넘긴 뒤 돌아왔을 때 / 하나씩 열기 모드 -->
+<div id="play-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="play-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <h2 id="play-sheet-title" class="sheet__title">유튜브에서 재생했어요</h2>
+    <p id="play-sheet-desc" class="sheet__desc"></p>
+    <ol id="play-sheet-list" class="sheet__list"></ol>
+    <div class="sheet__actions">
+      <button id="btn-play-again" class="sheet__btn sheet__btn--primary" type="button">다시 한 번에 재생</button>
+      <button class="sheet__btn" type="button" data-close>닫기</button>
+    </div>
+  </div>
+</div>
 
 <!-- 알림 토스트 (담기/삭제/되돌리기) -->
 <div id="toast" class="toast" role="status" hidden>
