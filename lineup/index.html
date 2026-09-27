@@ -28,17 +28,19 @@
 
   <!-- 영상 추가 영역 (1군: URL 직접 입력) -->
   <section class="add-panel">
-    <form id="form-add-url" autocomplete="off">
+    <form id="form-add-url" autocomplete="off" novalidate>
       <input
         id="input-url"
         type="url"
         inputmode="url"
+        enterkeyhint="done"
         placeholder="유튜브 링크를 붙여넣으세요"
         aria-label="유튜브 링크 입력"
-        required
+        aria-describedby="add-error"
       >
       <button type="submit" class="btn-primary">담기</button>
     </form>
+    <p id="add-error" class="add-error" role="alert" hidden></p>
     <p id="clipboard-hint" class="clipboard-hint" hidden>
       방금 복사한 링크가 있어요 —
       <button id="btn-add-from-clipboard" type="button" class="link-btn">큐에 추가할까요?</button>
@@ -53,10 +55,18 @@
     <p id="commute-summary" class="commute-summary"></p>
   </section>
 
-  <!-- 큐 목록 (2단계에서 실제 렌더링 로직 연결 예정) -->
-  <section class="queue-panel">
-    <ul id="queue-list" class="queue-list" aria-live="polite"></ul>
-    <p id="queue-empty" class="queue-empty">아직 담긴 영상이 없어요. 위에 유튜브 링크를 붙여넣어보세요.</p>
+  <!-- 큐 목록 -->
+  <section class="queue-panel" aria-labelledby="queue-heading">
+    <div id="queue-head" class="queue-head" hidden>
+      <h2 id="queue-heading" class="queue-heading">내 큐</h2>
+      <span id="queue-count" class="queue-count">0개</span>
+    </div>
+    <ul id="queue-list" class="queue-list"></ul>
+    <div id="queue-empty" class="queue-empty">
+      <span class="queue-empty__icon" aria-hidden="true"></span>
+      <p class="queue-empty__title">아직 담긴 영상이 없어요</p>
+      <p class="queue-empty__desc">유튜브 앱에서 <b>공유 → 링크 복사</b> 후<br>위 입력창에 붙여넣어 보세요.</p>
+    </div>
   </section>
 
 </main>
@@ -67,6 +77,15 @@
     재생 시작
   </button>
 </footer>
+
+<!-- 알림 토스트 (담기/삭제/되돌리기) -->
+<div id="toast" class="toast" role="status" hidden>
+  <span id="toast-msg" class="toast__msg"></span>
+  <button id="toast-action" class="toast__action" type="button" hidden>되돌리기</button>
+</div>
+
+<!-- 스크린리더 전용 상태 안내 -->
+<p id="sr-status" class="sr-only" aria-live="polite"></p>
 
 <script src="js/app.js"></script>
 </body>
