@@ -142,6 +142,7 @@ body {
 
 #input-url {
   flex: 1;
+  min-width: 0; /* 입력창 기본 최소폭 때문에 좁은 화면에서 "담기" 버튼이 찌그러지던 문제 방지 */
   min-height: var(--touch-min);
   padding: 0 14px;
   border: 1px solid var(--border);
@@ -161,6 +162,8 @@ body {
 }
 
 .btn-primary {
+  flex-shrink: 0;
+  white-space: nowrap; /* 휴대폰 글자 크기를 키워도 "담기"가 세로로 쪼개지지 않게 */
   min-height: var(--touch-min);
   min-width: var(--touch-min);
   padding: 0 20px;
@@ -784,6 +787,131 @@ body.is-sorting {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* 재생 중 상태 바 (재생 시작 버튼 자리를 대신함) */
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 6px 6px 6px 16px;
+  border-radius: 18px;
+  background: #0f0f0f;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.session-bar__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.session-bar__dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 0 rgba(224, 32, 27, 0.6);
+  animation: live-pulse 1.8s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(224, 32, 27, 0.6); }
+  100% { box-shadow: 0 0 0 10px rgba(224, 32, 27, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-bar__dot { animation: none; }
+}
+
+.session-bar__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.session-bar__text strong {
+  font-size: 0.95rem;
+}
+
+.session-bar__meta {
+  font-size: 0.8rem;
+  color: #bdbdbd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-bar__btn {
+  flex-shrink: 0;
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.session-bar__btn--end {
+  background: var(--brand);
+}
+
+.session-bar__btn:active {
+  filter: brightness(0.9);
+}
+
+/* 지금 재생 중인 묶음에 든 영상 — 왼쪽에 레드 표시 */
+.queue-item.is-playing {
+  border-left: 3px solid var(--brand);
+}
+
+/* 끝내기 시트: 선택된(다 본) 영상 */
+.sheet__pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 2px;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sheet__check {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #cfcfcf;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.sheet__item.is-selected .sheet__check {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+
+.sheet__item.is-selected .sheet__name {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
 /* 재생 시트 (하단에서 올라오는 패널) */
 .sheet {
   position: fixed;
@@ -984,10 +1112,10 @@ body.has-sheet {
   background: linear-gradient(to top, var(--bg) 70%, transparent);
 }
 
-.app-footer > .btn-play {
+.app-footer > .btn-play,
+.app-footer > .session-bar {
   max-width: var(--content-max);
   margin: 0 auto;
-  display: block;
 }
 
 .btn-play {
@@ -1008,6 +1136,17 @@ body.has-sheet {
 
 .btn-play:active {
   background: var(--brand-dark);
+}
+
+.btn-play__label,
+.btn-play__meta,
+.icon-btn,
+.install-btn,
+.paste-btn,
+.clip-suggest__add,
+.sheet__btn,
+.toast__action {
+  white-space: nowrap;
 }
 
 .btn-play__meta {

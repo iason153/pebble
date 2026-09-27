@@ -69,12 +69,12 @@
       <label class="switch">
         <input id="commute-toggle" type="checkbox" role="switch">
         <span class="switch__track" aria-hidden="true"></span>
-        <span class="switch__label">이동시간에 맞추기</span>
+        <span class="switch__label">가는 동안 볼 만큼만</span>
       </label>
       <span id="commute-value" class="commute-value" hidden>30분</span>
     </div>
     <div id="commute-body" class="commute-body" hidden>
-      <input id="commute-slider" type="range" min="5" max="120" step="5" value="30" aria-label="이동시간(분)">
+      <input id="commute-slider" type="range" min="5" max="120" step="5" value="30" aria-label="이동 시간(분)">
       <div class="commute-scale" aria-hidden="true"><span>5분</span><span>1시간</span><span>2시간</span></div>
       <p id="commute-summary" class="commute-summary"></p>
     </div>
@@ -104,6 +104,19 @@
     <span class="btn-play__label">재생 시작</span>
     <span id="play-meta" class="btn-play__meta"></span>
   </button>
+
+  <!-- 재생 중 상태 바: 유튜브에서 돌아왔을 때 이어서 할 일 -->
+  <div id="session-bar" class="session-bar" hidden>
+    <div class="session-bar__info">
+      <span class="session-bar__dot" aria-hidden="true"></span>
+      <div class="session-bar__text">
+        <strong>재생 중</strong>
+        <span id="session-meta" class="session-bar__meta"></span>
+      </div>
+    </div>
+    <button id="btn-session-list" class="session-bar__btn" type="button">목록</button>
+    <button id="btn-session-end" class="session-bar__btn session-bar__btn--end" type="button">끝</button>
+  </div>
 </footer>
 
 <!-- 재생 시트: 유튜브로 넘긴 뒤 돌아왔을 때 / 하나씩 열기 모드 -->
@@ -115,8 +128,23 @@
     <p id="play-sheet-desc" class="sheet__desc"></p>
     <ol id="play-sheet-list" class="sheet__list"></ol>
     <div class="sheet__actions">
-      <button id="btn-play-again" class="sheet__btn sheet__btn--primary" type="button">다시 한 번에 재생</button>
+      <button id="btn-play-again" class="sheet__btn sheet__btn--primary" type="button">처음부터 다시 재생</button>
       <button class="sheet__btn" type="button" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 끝내기 시트: 어디까지 봤는지 골라 큐에서 정리 -->
+<div id="end-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="end-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <h2 id="end-sheet-title" class="sheet__title">어디까지 보셨어요?</h2>
+    <p class="sheet__desc">다 본 영상까지 눌러주세요. 그 영상들은 큐에서 빼고, 나머지는 다음 이동 때 그대로 남아요.</p>
+    <ol id="end-sheet-list" class="sheet__list"></ol>
+    <div class="sheet__actions">
+      <button id="btn-end-confirm" class="sheet__btn sheet__btn--primary" type="button">끝내기</button>
+      <button class="sheet__btn" type="button" data-close>취소</button>
     </div>
   </div>
 </div>

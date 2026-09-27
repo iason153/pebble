@@ -243,6 +243,41 @@ const Settings = {
 };
 
 // ---------------------------------------------------------------------------
+// 재생 세션 — "지금 유튜브로 넘긴 묶음". 유튜브에서 돌아왔을 때(페이지가 새로
+// 열려도) "재생 중" 바와 끝내기 흐름을 보여주려고 저장해 둔다.
+// ---------------------------------------------------------------------------
+const SessionStore = {
+  KEY: 'lineup:session:v1',
+  MAX_AGE_MS: 12 * 60 * 60 * 1000, // 12시간 지난 세션은 조용히 정리
+
+  load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(this.KEY) || 'null');
+      if (!s || !Array.isArray(s.uids) || !s.uids.length) return null;
+      if (Date.now() - Number(s.startedAt) > this.MAX_AGE_MS) {
+        this.clear();
+        return null;
+      }
+      return { uids: s.uids.filter((u) => typeof u === 'string'), startedAt: Number(s.startedAt) };
+    } catch (_) {
+      return null;
+    }
+  },
+
+  save(session) {
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify(session));
+    } catch (_) {}
+  },
+
+  clear() {
+    try {
+      localStorage.removeItem(this.KEY);
+    } catch (_) {}
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 큐 저장소 (localStorage) — 저장 실패해도 앱은 메모리 상태로 계속 동작
 // ---------------------------------------------------------------------------
 const QueueStore = {
@@ -325,6 +360,8 @@ const LineupApp = {
   settings: null,
   plan: null, // 현재 재생 계획 (통근시간 반영) — render() 때마다 다시 계산
   installPrompt: null,
+  session: null, // 재생 중인 묶음 {uids, startedAt}
+  endSel: 0, // 끝내기 시트에서 "여기까지 봤어요"로 고른 개수
 
   init() {
     this.cacheEls();
@@ -333,6 +370,7 @@ const LineupApp = {
 
     this.items = QueueStore.load();
     this.settings = Settings.load();
+    this.session = SessionStore.load();
     this.render();
 
     this.wireAddForm();
@@ -377,6 +415,13 @@ const LineupApp = {
       playSheetList: $('play-sheet-list'),
       playAgainBtn: $('btn-play-again'),
       installBtn: $('btn-install'),
+      sessionBar: $('session-bar'),
+      sessionMeta: $('session-meta'),
+      sessionListBtn: $('btn-session-list'),
+      sessionEndBtn: $('btn-session-end'),
+      endSheet: $('end-sheet'),
+      endSheetList: $('end-sheet-list'),
+      endConfirmBtn: $('btn-end-confirm'),
       queueHead: $('queue-head'),
       queueCount: $('queue-count'),
       queueList: $('queue-list'),
@@ -587,6 +632,16 @@ const LineupApp = {
     this.renderCommute(known.length > 0);
     const n = this.plan.included.length;
     playBtn.disabled = n === 0;
+
+    // 재생 중이면 "재생 시작" 자리에 상태 바(목록/끝)를 대신 보여준다
+    const sessionItems = this.sessionItems();
+    const playingUids = new Set(sessionItems.map((it) => it.uid));
+    playBtn.hidden = sessionItems.length > 0;
+    this.els.sessionBar.hidden = sessionItems.length === 0;
+    if (sessionItems.length) {
+      const sec = sessionItems.reduce((sum, it) => sum + (it.durationSec || 0), 0);
+      this.els.sessionMeta.textContent = `${sessionItems.length}개${sec ? ' · ' + this.formatTotal(sec) : ''} · 다 보면 "끝"`;
+    }
     const playSec = this.plan.included.reduce((sum, it) => sum + (it.durationSec || 0), 0);
     this.els.playMeta.textContent = n
       ? `${n}개${playSec ? ' · ' + this.formatTotal(playSec) : ''}${this.plan.unknownCount && playSec ? '+' : ''}`
@@ -596,6 +651,7 @@ const LineupApp = {
     this.items.forEach((item, i) => {
       const li = this.renderItem(item, i, count);
       if (this.plan.trimmed.has(item.uid)) li.classList.add('is-trimmed');
+      if (playingUids.has(item.uid)) li.classList.add('is-playing');
       frag.appendChild(li);
     });
     queueList.replaceChildren(frag);
@@ -733,7 +789,7 @@ const LineupApp = {
     const left = this.settings.commuteMin * 60 - p.usedSec;
     let text = `${p.included.length}개 · ${this.formatTotal(p.usedSec)} 재생`;
     if (p.overLong) text = `첫 영상이 이동시간보다 길어서 1개만 재생해요 (${this.formatTotal(p.usedSec)})`;
-    else if (p.trimmed.size) text += ` · 뒤의 ${p.trimmed.size}개는 이번엔 제외`;
+    else if (p.trimmed.size) text += ` · 뒤의 ${p.trimmed.size}개는 다음 이동 때`;
     else if (left >= 60) text += ` · ${this.formatTotal(left)} 남아요`;
     if (p.unknownCount) text += ` · 길이 모르는 영상 ${p.unknownCount}개 포함`;
     commuteSummary.textContent = text;
@@ -1004,31 +1060,127 @@ const LineupApp = {
   // =====================================================================
   wirePlay() {
     const { playBtn, playSheet, playAgainBtn } = this.els;
+    const { sessionListBtn, sessionEndBtn, endSheet, endSheetList, endConfirmBtn } = this.els;
     playBtn.addEventListener('click', () => this.play());
-    playAgainBtn.addEventListener('click', () => this.play({ fromSheet: true }));
-    playSheet.addEventListener('click', (e) => {
-      if (e.target.closest('[data-close]')) this.closePlaySheet();
+    playAgainBtn.addEventListener('click', () => {
+      this.closeSheet(playSheet);
+      this.replaySession();
     });
+    sessionListBtn.addEventListener('click', () => this.openPlaySheet(this.sessionItems(), Player.mode));
+    sessionEndBtn.addEventListener('click', () => this.openEndSheet());
+    endConfirmBtn.addEventListener('click', () => this.finishSession());
+    endSheetList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.sheet__pick');
+      if (!btn) return;
+      const n = Number(btn.dataset.n);
+      // 이미 여기까지 골라져 있으면 한 칸 뒤로(= 이 영상은 안 봤음)
+      this.endSel = this.endSel === n ? n - 1 : n;
+      this.paintEndSheet();
+    });
+    [playSheet, endSheet].forEach((sheet) =>
+      sheet.addEventListener('click', (e) => {
+        if (e.target.closest('[data-close]')) this.closeSheet(sheet);
+      })
+    );
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !playSheet.hidden) this.closePlaySheet();
+      if (e.key !== 'Escape') return;
+      if (!playSheet.hidden) this.closeSheet(playSheet);
+      if (!endSheet.hidden) this.closeSheet(endSheet);
     });
   },
 
-  play({ fromSheet = false } = {}) {
-    const list = this.plan ? this.plan.included : [];
-    if (!list.length) return;
-    const ids = list.map((it) => it.videoId);
+  /** 세션에 담긴 영상 중 아직 큐에 남아 있는 것 (큐 순서대로). 없으면 세션 정리 */
+  sessionItems() {
+    if (!this.session) return [];
+    const set = new Set(this.session.uids);
+    const list = this.items.filter((it) => set.has(it.uid));
+    if (!list.length) {
+      this.session = null;
+      SessionStore.clear();
+    }
+    return list;
+  },
 
+  play() {
+    const list = this.plan ? this.plan.included.slice(0, Player.MAX_BATCH) : [];
+    if (!list.length) return;
+
+    this.session = { uids: list.map((it) => it.uid), startedAt: Date.now() };
+    SessionStore.save(this.session);
+    this.render();
+
+    if (this.plan.included.length > Player.MAX_BATCH) {
+      this.showToast(`한 번에 ${Player.MAX_BATCH}개까지만 넘길 수 있어서 앞의 ${Player.MAX_BATCH}개만 재생해요`, { duration: 4000 });
+    }
+    this.openInYouTube(list);
+  },
+
+  replaySession() {
+    const list = this.sessionItems();
+    if (list.length) this.openInYouTube(list);
+  },
+
+  openInYouTube(list) {
     if (Player.mode === 'batch') {
-      Player.open(Player.batchUrl(ids));
-      if (ids.length > Player.MAX_BATCH) {
-        this.showToast(`한 번에 ${Player.MAX_BATCH}개까지만 넘길 수 있어서 앞의 ${Player.MAX_BATCH}개만 재생해요`, { duration: 4000 });
-      }
-      if (!fromSheet) this.openPlaySheet(list, 'batch');
+      Player.open(Player.batchUrl(list.map((it) => it.videoId)));
     } else {
-      Player.open(YouTubeUrl.watchUrl(ids[0]));
+      Player.open(YouTubeUrl.watchUrl(list[0].videoId));
       this.openPlaySheet(list, 'single', 0);
     }
+  },
+
+  // --- 끝내기: 어디까지 봤는지 고르고, 본 영상은 큐에서 정리 -------------
+  openEndSheet() {
+    const list = this.sessionItems();
+    if (!list.length) return this.render();
+    this.endSel = list.length; // 기본값: 전부 봤음
+    const frag = document.createDocumentFragment();
+    list.forEach((it, i) => {
+      const li = document.createElement('li');
+      li.className = 'sheet__item';
+      li.innerHTML = `
+        <button type="button" class="sheet__pick" data-n="${i + 1}">
+          <span class="sheet__check" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="m5 12 5 5 9-10"/></svg></span>
+          <span class="sheet__num"></span><span class="sheet__name"></span><span class="sheet__time"></span>
+        </button>`;
+      li.querySelector('.sheet__num').textContent = i + 1;
+      li.querySelector('.sheet__name').textContent = it.title || `youtu.be/${it.videoId}`;
+      li.querySelector('.sheet__time').textContent = it.durationSec != null ? this.formatDuration(it.durationSec) : '';
+      frag.appendChild(li);
+    });
+    this.els.endSheetList.replaceChildren(frag);
+    this.paintEndSheet();
+    this.openSheet(this.els.endSheet);
+  },
+
+  paintEndSheet() {
+    const rows = Array.from(this.els.endSheetList.children);
+    rows.forEach((li, i) => {
+      const on = i < this.endSel;
+      li.classList.toggle('is-selected', on);
+      li.querySelector('.sheet__pick').setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    this.els.endConfirmBtn.textContent = this.endSel
+      ? `${this.endSel}개 다 봤어요 · 큐에서 빼기`
+      : '큐는 그대로 두고 끝내기';
+  },
+
+  finishSession() {
+    const watched = this.sessionItems().slice(0, this.endSel).map((it) => it.uid);
+    this.session = null;
+    SessionStore.clear();
+    this.closeSheet(this.els.endSheet);
+
+    if (!watched.length) {
+      this.commit();
+      this.showToast('재생을 끝냈어요. 큐는 그대로예요');
+      return;
+    }
+    const snapshot = this.items.slice();
+    const gone = new Set(watched);
+    this.items = this.items.filter((it) => !gone.has(it.uid));
+    this.commit({ keepToast: true });
+    this.offerUndo(snapshot, `다 본 ${watched.length}개를 큐에서 뺐어요`);
   },
 
   /**
@@ -1038,10 +1190,10 @@ const LineupApp = {
    */
   openPlaySheet(list, mode, openedIndex = -1) {
     const { playSheet, playSheetTitle, playSheetDesc, playSheetList, playAgainBtn } = this.els;
-    playSheetTitle.textContent = mode === 'batch' ? '유튜브에서 재생했어요' : '하나씩 재생하기';
+    playSheetTitle.textContent = mode === 'batch' ? '재생 중인 목록' : '하나씩 재생하기';
     playSheetDesc.textContent =
       mode === 'batch'
-        ? '유튜브가 큐 순서대로 이어서 틀어줘요. 순서대로 안 나오면 아래에서 하나씩 열어주세요.'
+        ? '유튜브가 이 순서대로 이어서 틀어줘요. 순서대로 안 나오면 아래에서 하나씩 열어주세요.'
         : '영상을 다 보면 여기로 돌아와서 다음 영상을 여세요.';
     playAgainBtn.hidden = mode !== 'batch';
 
@@ -1067,20 +1219,25 @@ const LineupApp = {
       frag.appendChild(li);
     });
     playSheetList.replaceChildren(frag);
-
-    playSheet.hidden = false;
-    document.body.classList.add('has-sheet');
-    requestAnimationFrame(() => playSheet.classList.add('is-open'));
+    this.openSheet(playSheet);
   },
 
-  closePlaySheet() {
-    const { playSheet, playBtn } = this.els;
-    playSheet.classList.remove('is-open');
+  openSheet(sheet) {
+    sheet.hidden = false;
+    document.body.classList.add('has-sheet');
+    requestAnimationFrame(() => sheet.classList.add('is-open'));
+    const first = sheet.querySelector('.sheet__panel button, .sheet__panel a');
+    if (first) setTimeout(() => first.focus({ preventScroll: true }), 50);
+  },
+
+  closeSheet(sheet) {
+    sheet.classList.remove('is-open');
     document.body.classList.remove('has-sheet');
     setTimeout(() => {
-      if (!playSheet.classList.contains('is-open')) playSheet.hidden = true;
+      if (!sheet.classList.contains('is-open')) sheet.hidden = true;
     }, 200);
-    playBtn.focus();
+    const target = this.els.sessionBar.hidden ? this.els.playBtn : this.els.sessionEndBtn;
+    target.focus({ preventScroll: true });
   },
 
   // =====================================================================
