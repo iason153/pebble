@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lineup 사용법 — 유튜브 영상을 순서대로, 가는 동안 볼 만큼만</title>
+<meta name="description" content="Lineup 사용법: 유튜브 링크를 붙여넣어 큐에 담고, 순서를 정하고, 출퇴근 시간에 맞춰 한 번에 이어보는 방법. 로그인 없이 무료.">
+<meta name="theme-color" content="#e0201b">
+<link rel="icon" href="icons/favicon-64.png" sizes="64x64">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* 사용법 페이지 전용 — 모바일 기준, 데스크탑은 min-width로만 추가 (Pebble 표준) */
+  .guide {
+    width: 100%;
+    max-width: var(--content-max);
+    margin: 0 auto;
+    padding: 20px 20px 48px;
+    line-height: 1.65;
+  }
+
+  .guide h1 {
+    margin: 4px 0 6px;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+    line-height: 1.35;
+  }
+
+  .guide .lead {
+    margin: 0 0 20px;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+
+  .guide-cta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 52px;
+    border-radius: var(--pill-radius);
+    background: var(--brand);
+    color: #fff;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .toc {
+    margin: 20px 0 8px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  .toc p {
+    margin: 0 0 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .toc ol {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.92rem;
+  }
+
+  .toc a {
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .step {
+    margin-top: 32px;
+    scroll-margin-top: 80px;
+  }
+
+  .step__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .step__num {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: var(--brand);
+    color: #fff;
+    font-weight: 800;
+    line-height: 30px;
+    text-align: center;
+  }
+
+  .step h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    line-height: 1.35;
+  }
+
+  .step p,
+  .step li {
+    font-size: 0.95rem;
+  }
+
+  .step ul,
+  .step ol {
+    padding-left: 20px;
+    margin: 8px 0;
+  }
+
+  .step li + li {
+    margin-top: 4px;
+  }
+
+  .shot {
+    display: block;
+    width: 100%;
+    max-width: 320px;
+    height: auto;
+    margin: 14px auto 4px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    background: #eee;
+  }
+
+  .shot-cap {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0;
+  }
+
+  .tip {
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #fff5f5;
+    border: 1px solid #ffd6d4;
+    font-size: 0.9rem;
+  }
+
+  .tip b {
+    color: var(--brand-dark);
+  }
+
+  .kbd {
+    display: inline-block;
+    padding: 0 7px;
+    border-radius: 6px;
+    background: #0f0f0f;
+    color: #fff;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+
+  .faq {
+    margin-top: 36px;
+  }
+
+  .faq h2 {
+    font-size: 1.15rem;
+    margin: 0 0 8px;
+  }
+
+  .faq details {
+    border-bottom: 1px solid var(--border);
+    padding: 4px 0;
+  }
+
+  .faq summary {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq summary::after {
+    content: "+";
+    margin-left: auto;
+    padding-left: 12px;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+  }
+
+  .faq details[open] summary::after {
+    content: "−";
+  }
+
+  .faq details p {
+    margin: 0 0 12px;
+    font-size: 0.92rem;
+    color: #333;
+  }
+
+  .guide-foot {
+    margin-top: 40px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 8px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 640px) {
+    .guide {
+      padding-top: 32px;
+    }
+
+    .guide h1 {
+      font-size: 1.8rem;
+    }
+
+    .guide-cta {
+      max-width: 320px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <a class="app-title" href="./" style="text-decoration:none"><span class="logo-badge" aria-hidden="true"></span>Lineup</a>
+  <a class="back-link" href="./">← 큐로 돌아가기</a>
+</header>
+
+<main class="guide">
+  <h1>Lineup 사용법</h1>
+  <p class="lead">유튜브 영상을 원하는 순서로 담아두고, 출퇴근길에 <b>가는 동안 볼 만큼만</b> 한 번에 이어보세요. 로그인도 설치도 필요 없어요.</p>
+
+  <a class="guide-cta" href="./">▶ Lineup 바로 쓰기</a>
+
+  <nav class="toc" aria-label="목차">
+    <p>이 순서대로 쓰면 돼요</p>
+    <ol>
+      <li><a href="#add">영상 담기</a></li>
+      <li><a href="#order">순서 정하기</a></li>
+      <li><a href="#commute">가는 동안 볼 만큼만</a></li>
+      <li><a href="#play">재생하고, 다 보면 "끝"</a></li>
+      <li><a href="#next">보다가 "이거 다음에 볼래" 끼워넣기</a></li>
+      <li><a href="#install">홈 화면에 설치하기</a></li>
+    </ol>
+  </nav>
+
+  <!-- 1 -->
+  <section class="step" id="add">
+    <div class="step__head"><span class="step__num">1</span><h2>영상 담기</h2></div>
+    <p>유튜브 앱에서 보고 싶은 영상의 <b>공유 → 링크 복사</b>를 누른 뒤, Lineup에서 아래 중 편한 방법으로 담으세요.</p>
+    <ul>
+      <li><b>입력창에 붙여넣기</b> — 입력창을 길게 눌러 "붙여넣기" 하면 <b>그 즉시 담겨요</b>. 가장 확실한 방법이에요.</li>
+      <li><b>"복사한 링크 바로 담기" 버튼</b> — 버튼 한 번이면 끝. 처음 한 번은 "클립보드 허용"을 물어봐요.</li>
+      <li><b>자동 제안</b> — 허용해 두면, 링크를 복사하고 Lineup을 열기만 해도 "방금 복사한 영상 [담기]"가 떠요.</li>
+    </ul>
+    <img class="shot" src="guide-img/queue.jpg" alt="영상이 담긴 Lineup 큐 화면. 영상마다 순서 번호, 제목, 채널, 길이가 보인다." width="640" height="1100" loading="lazy">
+    <p class="shot-cap">담으면 제목·채널·길이가 자동으로 채워지고, 위에 총 재생시간이 보여요</p>
+    <p class="tip"><b>허용 창이 "이 사이트에서는 권한을 요청할 수 없음"으로 막힐 때</b><br>화면 가장자리에 떠 있는 다른 앱의 동그란 말풍선(번역·메신저 버블 등)을 잠시 끄고 다시 눌러보세요. 안드로이드가 보안상 막는 거예요.</p>
+  </section>
+
+  <!-- 2 -->
+  <section class="step" id="order">
+    <div class="step__head"><span class="step__num">2</span><h2>순서 정하기</h2></div>
+    <ul>
+      <li>각 영상 왼쪽의 <b>⠿ 손잡이</b>를 누른 채로 위아래로 끌면 순서가 바뀌어요.</li>
+      <li>오른쪽 <b>✕</b>로 빼고, 실수했다면 아래 뜨는 <span class="kbd">되돌리기</span>를 누르세요.</li>
+      <li>큐는 이 휴대폰(브라우저)에 저장돼서, 앱을 껐다 켜도 그대로 남아요.</li>
+    </ul>
+  </section>
+
+  <!-- 3 -->
+  <section class="step" id="commute">
+    <div class="step__head"><span class="step__num">3</span><h2>가는 동안 볼 만큼만</h2></div>
+    <p>스위치를 켜고 이동 시간을 맞추면, <b>그 시간 안에 볼 수 있는 영상까지만</b> 재생해요. 넘치는 뒤쪽 영상은 점선으로 흐려지고, 다음 이동 때 그대로 남아요.</p>
+    <img class="shot" src="guide-img/commute.jpg" alt="가는 동안 볼 만큼만 스위치를 켜고 30분으로 맞춘 화면. 앞의 3개만 재생 대상이고 뒤의 2개는 흐리게 표시된다." width="640" height="1100" loading="lazy">
+    <p class="shot-cap">30분으로 맞추면 앞의 3개(30분)만 재생, 뒤의 2개는 다음 이동 때</p>
+  </section>
+
+  <!-- 4 -->
+  <section class="step" id="play">
+    <div class="step__head"><span class="step__num">4</span><h2>재생하고, 다 보면 "끝"</h2></div>
+    <ol>
+      <li>아래 빨간 <span class="kbd">▶ 재생 시작</span>을 누르면 유튜브가 열리고, 담은 순서대로 이어서 재생돼요.</li>
+      <li>Lineup으로 돌아오면 아래에 <b>● 재생 중</b> 바가 있어요.</li>
+      <li>다 봤으면 <span class="kbd">끝</span>을 누르고 <b>어디까지 봤는지</b>만 골라주세요. 본 영상은 큐에서 빠지고, 못 본 영상은 다음에 그대로 이어져요.</li>
+    </ol>
+    <img class="shot" src="guide-img/session.jpg" alt="재생 중 바가 화면 아래에 떠 있는 모습. 목록 버튼과 끝 버튼이 있다." width="640" height="1100" loading="lazy">
+    <p class="shot-cap">재생 중인 영상은 왼쪽에 빨간 줄이 표시돼요</p>
+  </section>
+
+  <!-- 5 -->
+  <section class="step" id="next">
+    <div class="step__head"><span class="step__num">5</span><h2>보다가 "이거 다음에 볼래" 끼워넣기</h2></div>
+    <p>유튜브로 보다가 아래 추천에 끌리는 영상이 보이면:</p>
+    <ol>
+      <li>그 영상의 <b>⋮ → 공유 → Lineup</b> (또는 링크 복사 후 Lineup에 붙여넣기)</li>
+      <li>"<b>다음 순서로 담았어요</b>" — 뒤로 가기로 보던 영상으로 돌아가세요.</li>
+      <li>지금 영상을 다 보면 Lineup에서 <span class="kbd">다음 재생</span> → 보던 영상까지 체크(시간으로 자동 추정돼 있어요) → 확인.</li>
+    </ol>
+    <p>방금 담은 영상부터 재생되고, 원래 큐의 남은 영상이 그 뒤로 이어져요.</p>
+    <img class="shot" src="guide-img/next.jpg" alt="다음 재생 시트. 지금 보던 영상까지 체크하는 목록과 다음 재생 버튼이 있다." width="640" height="1100" loading="lazy">
+    <p class="shot-cap">"지금 보던 영상까지 체크" — 대부분 이미 맞게 체크돼 있어요</p>
+    <p class="tip"><b>왜 자동으로 안 이어질까요?</b><br>재생은 유튜브가 하기 때문에, 이미 재생 중인 유튜브 목록에 다른 앱이 영상을 끼워 넣을 수는 없어요. 그래서 "다음 재생" 한 번으로 새 순서를 다시 넘겨주는 방식이에요.</p>
+  </section>
+
+  <!-- 6 -->
+  <section class="step" id="install">
+    <div class="step__head"><span class="step__num">6</span><h2>홈 화면에 설치하기</h2></div>
+    <p><b>안드로이드(크롬)</b> — 상단의 <span class="kbd">앱 설치</span> 버튼, 또는 크롬 메뉴(⋮) → "홈 화면에 추가". 설치하면 유튜브 <b>공유 메뉴에 Lineup이 생겨서</b> 복사·붙여넣기 없이 바로 담을 수 있어요. (처음엔 공유 메뉴의 "더보기" 쪽에 있을 수 있어요.)</p>
+    <p><b>아이폰(사파리)</b> — 아래 공유 버튼(□↑) → "홈 화면에 추가". 아이폰은 유튜브 공유 메뉴에 Lineup이 뜨지 않아서, 링크 복사 후 붙여넣기로 담아주세요.</p>
+    <p class="tip"><b>카카오톡 등 앱 안에서 열었다면</b><br>설치와 클립보드 기능이 막혀 있어요. 오른쪽 위 메뉴에서 "다른 브라우저로 열기"를 눌러 크롬·사파리로 열어주세요.</p>
+  </section>
+
+  <section class="faq" aria-labelledby="faq-title">
+    <h2 id="faq-title">자주 묻는 질문</h2>
+    <details>
+      <summary>회원가입이나 로그인이 필요한가요?</summary>
+      <p>필요 없어요. 큐는 지금 쓰는 휴대폰의 브라우저에만 저장되고, 서버로 보내지 않아요. 그래서 다른 기기와는 공유되지 않고, 브라우저 데이터를 지우면 큐도 지워져요.</p>
+    </details>
+    <details>
+      <summary>유튜브에서 순서대로 안 나와요.</summary>
+      <p>재생 중 바의 <b>목록</b>을 누르면 영상을 하나씩 열 수 있어요. 순서대로 열어서 보시면 돼요.</p>
+    </details>
+    <details>
+      <summary>다른 앱으로 넘어가면 영상이 멈춰요.</summary>
+      <p>유튜브 정책상 무료 계정은 앱을 전환하면 재생이 멈춰요. Lineup이 바꿀 수 없는 부분이라, 담을 때는 짧게 들렀다 뒤로 가기로 돌아가는 방식으로 만들었어요.</p>
+    </details>
+    <details>
+      <summary>"재생할 수 없는 영상"으로 떠요.</summary>
+      <p>삭제됐거나 비공개로 바뀐 영상이에요. 재생할 때 자동으로 빠지니 ✕로 정리해 주세요.</p>
+    </details>
+    <details>
+      <summary>총 시간 뒤에 "+"는 뭐예요?</summary>
+      <p>라이브 방송처럼 길이를 알 수 없는 영상이 섞여 있다는 뜻이에요. 그 영상은 시간 계산에서 빠져요.</p>
+    </details>
+  </section>
+
+  <p class="guide-foot">Lineup은 Pebble이 만드는 작은 도구예요.<br>YouTube는 Google LLC의 상표이며, Lineup은 YouTube와 관련이 없는 독립 서비스입니다.</p>
+</main>
+
+</body>
+</html>

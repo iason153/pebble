@@ -73,6 +73,27 @@ body {
   gap: 4px;
 }
 
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.queue-empty__guide {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 8px 4px;
+  color: var(--brand);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .install-btn {
   min-height: 36px;
   padding: 0 14px;
@@ -865,8 +886,29 @@ body.is-sorting {
   background: var(--brand);
 }
 
+.session-bar__btn--next {
+  background: #fff;
+  color: var(--text);
+}
+
+.session-bar__btn[hidden] {
+  display: none;
+}
+
 .session-bar__btn:active {
   filter: brightness(0.9);
+}
+
+/* 재생 중에 끼워넣은 "다음 차례" 영상 */
+.queue-item.is-next {
+  border-color: var(--brand);
+  background: #fff5f5;
+}
+
+.queue-item.is-next .queue-item__duration::before {
+  content: "다음 차례 · ";
+  color: var(--brand);
+  font-weight: 700;
 }
 
 /* 지금 재생 중인 묶음에 든 영상 — 왼쪽에 레드 표시 */
@@ -1247,6 +1289,10 @@ body.has-sheet {
 
   .sheet__link:hover .sheet__name {
     text-decoration: underline;
+  }
+
+  .help-link:hover {
+    color: var(--brand);
   }
 
   .install-btn:hover {
