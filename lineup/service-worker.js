@@ -9,7 +9,7 @@
  * 버전을 올릴 때는 CACHE_NAME의 숫자만 바꾸면 이전 캐시가 자동 정리된다.
  */
 
-const CACHE_NAME = 'lineup-shell-v2';
+const CACHE_NAME = 'lineup-shell-v3';
 const SCOPE = self.registration.scope; // 예: https://pebbleitgo.com/lineup/
 
 const APP_SHELL = [
@@ -17,6 +17,7 @@ const APP_SHELL = [
   'index.html',
   'manifest.json',
   'css/style.css',
+  'js/config.js',
   'js/app.js',
   'icons/icon-192.png',
   'icons/icon-512.png',

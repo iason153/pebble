@@ -7,8 +7,10 @@
  * 2단계: 큐 UI + localStorage — URL 파싱, 추가/삭제/순서변경(드래그·버튼·방향키),
  *        전체삭제, 되돌리기 토스트, 저장/복원, 다른 탭과 동기화
  *
+ * 3단계: 영상 정보(제목·채널·길이) 조회 — YouTube Data API 1회 호출로 한꺼번에,
+ *        실패 시 oEmbed로 제목만 폴백 / 클립보드 링크 감지·붙여넣기
+ *
  * 남은 경계(TODO 표시):
- *   3단계 — 큐 항목 메타데이터(제목 oEmbed / 길이 Data API) 채우기, 클립보드 감지
  *   4단계 — 안드로이드 공유 → 큐 추가 연결, 통근시간 계산, watch_videos 재생
  */
 
@@ -82,6 +84,113 @@ const YouTubeUrl = {
 };
 
 // ---------------------------------------------------------------------------
+// 영상 정보 조회 (3단계)
+//   설계문서 v1.1은 제목=oEmbed, 길이=Data API로 나눴지만, Data API
+//   videos.list(part=snippet,contentDetails) 한 번이면 제목·채널·길이가 모두 온다.
+//   → 호출 수 절반, 영상 50개까지 1회 호출 = 쿼터 1단위.
+//   Data API가 실패(쿼터 초과·키 문제·네트워크)하면 oEmbed로 제목·채널만 폴백하고,
+//   길이는 비워둔다 → 통근시간 기능만 비활성, 나머지는 정상 (설계문서 §7).
+// ---------------------------------------------------------------------------
+const VideoMeta = {
+  API: 'https://www.googleapis.com/youtube/v3/videos',
+  OEMBED: 'https://www.youtube.com/oembed',
+  BATCH: 50,
+  TIMEOUT_MS: 8000,
+
+  get apiKey() {
+    return (window.LINEUP_CONFIG && window.LINEUP_CONFIG.YT_API_KEY) || '';
+  },
+
+  /** ISO 8601 기간(PT1H2M3S, P1DT2H 등) → 초. 라이브는 P0D → 0 */
+  parseDuration(iso) {
+    const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(iso || '');
+    if (!m) return null;
+    const [, d = 0, h = 0, mi = 0, sec = 0] = m.map((v) => (v === undefined ? 0 : Number(v)));
+    return d * 86400 + h * 3600 + mi * 60 + sec;
+  },
+
+  async fetchJson(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) {
+        const err = new Error(`HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
+   * @param {string[]} ids
+   * @returns {Promise<Map<string, object>>} videoId → 패치할 필드들
+   *   찾은 영상:  {title, author, durationSec, isLive, unavailable:false, metaAt}
+   *   없는 영상(삭제·비공개): {unavailable:true, metaAt}
+   *   조회 실패: Map에 없음 (다음 기회에 재시도)
+   */
+  async lookup(ids) {
+    const out = new Map();
+    const unique = Array.from(new Set(ids));
+    if (!unique.length) return out;
+
+    let apiOk = false;
+    if (this.apiKey) {
+      try {
+        for (let i = 0; i < unique.length; i += this.BATCH) {
+          const chunk = unique.slice(i, i + this.BATCH);
+          const url =
+            `${this.API}?part=snippet,contentDetails&id=${chunk.join(',')}` +
+            `&fields=${encodeURIComponent('items(id,snippet(title,channelTitle,liveBroadcastContent),contentDetails(duration))')}` +
+            `&key=${encodeURIComponent(this.apiKey)}`;
+          const data = await this.fetchJson(url);
+          const found = new Set();
+          (data.items || []).forEach((it) => {
+            found.add(it.id);
+            const live = it.snippet && it.snippet.liveBroadcastContent;
+            const dur = this.parseDuration(it.contentDetails && it.contentDetails.duration);
+            out.set(it.id, {
+              title: (it.snippet && it.snippet.title) || null,
+              author: (it.snippet && it.snippet.channelTitle) || null,
+              durationSec: live === 'live' || live === 'upcoming' || !dur ? null : dur,
+              isLive: live === 'live' || live === 'upcoming',
+              unavailable: false,
+              metaAt: Date.now(),
+            });
+          });
+          chunk.filter((id) => !found.has(id)).forEach((id) => {
+            out.set(id, { unavailable: true, metaAt: Date.now() });
+          });
+        }
+        apiOk = true;
+      } catch (err) {
+        console.warn('[Lineup] YouTube Data API 조회 실패 → oEmbed 폴백:', err.message);
+      }
+    }
+
+    if (!apiOk) {
+      await Promise.all(
+        unique.map(async (id) => {
+          try {
+            const url = `${this.OEMBED}?format=json&url=${encodeURIComponent(YouTubeUrl.watchUrl(id))}`;
+            const data = await this.fetchJson(url);
+            // metaAt을 비워둬서, 다음에 앱을 열 때 Data API로 길이를 다시 시도한다
+            out.set(id, { title: data.title || null, author: data.author_name || null, unavailable: false });
+          } catch (err) {
+            // 404 = 존재하지 않는 영상. (401은 "퍼가기 금지" 영상이라 유튜브에선 재생되므로 제외)
+            if (err.status === 404) out.set(id, { unavailable: true });
+          }
+        })
+      );
+    }
+    return out;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 큐 저장소 (localStorage) — 저장 실패해도 앱은 메모리 상태로 계속 동작
 // ---------------------------------------------------------------------------
 const QueueStore = {
@@ -103,10 +212,12 @@ const QueueStore = {
           videoId: it.videoId,
           isShort: !!it.isShort,
           addedAt: Number(it.addedAt) || Date.now(),
-          // 3단계에서 채워질 메타데이터 자리
           title: typeof it.title === 'string' ? it.title : null,
           author: typeof it.author === 'string' ? it.author : null,
           durationSec: Number.isFinite(it.durationSec) ? it.durationSec : null,
+          isLive: !!it.isLive,
+          unavailable: !!it.unavailable,
+          metaAt: Number(it.metaAt) || null, // Data API로 조회 완료한 시각 (없으면 재조회 대상)
         }));
     } catch (err) {
       console.warn('[Lineup] 저장된 큐를 읽지 못했어요:', err);
@@ -133,6 +244,8 @@ const QueueStore = {
 // ---------------------------------------------------------------------------
 // 앱
 // ---------------------------------------------------------------------------
+const CLIP_OFFERED_KEY = 'lineup:clip-offered';
+
 const ERROR_MESSAGES = {
   empty: '유튜브 링크를 붙여넣어 주세요.',
   not_youtube: '유튜브 링크가 아닌 것 같아요. 다시 확인해 주세요.',
@@ -154,6 +267,9 @@ const LineupApp = {
   drag: null,
   toastTimer: null,
   undoSnapshot: null,
+  loadingIds: new Set(), // 지금 정보 조회 중인 videoId (저장 안 함)
+  metaDirty: false, // 드래그 중에 정보가 도착해 렌더를 미뤘는지
+  clip: null, // 클립보드 제안 상태 {text, videoId}
 
   init() {
     this.cacheEls();
@@ -169,8 +285,11 @@ const LineupApp = {
     this.wireClearAll();
     this.wireToast();
     this.wireStorageSync();
+    this.wireClipboard();
 
-    // TODO(3단계): 큐 항목의 메타데이터(제목/썸네일/길이) 채우기, 클립보드 자동 감지
+    this.fetchMissingMeta();
+    window.addEventListener('online', () => this.fetchMissingMeta());
+
     // TODO(4단계): 재생 시작 버튼에 watch_videos 링크 생성 로직 연결
   },
 
@@ -180,8 +299,13 @@ const LineupApp = {
       addForm: $('form-add-url'),
       urlInput: $('input-url'),
       addError: $('add-error'),
-      clipboardHint: $('clipboard-hint'),
-      clipboardBtn: $('btn-add-from-clipboard'),
+      clipSuggest: $('clip-suggest'),
+      clipThumb: $('clip-suggest-thumb'),
+      clipTitle: $('clip-suggest-title'),
+      clipAddBtn: $('btn-clip-add'),
+      clipCloseBtn: $('btn-clip-close'),
+      pasteBtn: $('btn-paste'),
+      queueTotal: $('queue-total'),
       commuteSlider: $('commute-slider'),
       commuteValue: $('commute-value'),
       queueHead: $('queue-head'),
@@ -252,9 +376,14 @@ const LineupApp = {
       title: null,
       author: null,
       durationSec: null,
+      isLive: false,
+      unavailable: false,
+      metaAt: null,
     };
     this.items.push(item);
+    this.loadingIds.add(item.videoId);
     this.commit();
+    this.fetchMeta([item.videoId]);
     return { ok: true, index: this.items.length - 1, uid: item.uid };
   },
 
@@ -304,6 +433,44 @@ const LineupApp = {
   },
 
   // =====================================================================
+  // 영상 정보(제목·채널·길이) 채우기
+  // =====================================================================
+  fetchMissingMeta() {
+    const ids = this.items.filter((it) => !it.metaAt && !it.unavailable).map((it) => it.videoId);
+    if (ids.length) this.fetchMeta(ids);
+  },
+
+  async fetchMeta(ids) {
+    ids = ids.filter((id) => !this.pendingFetch || !this.pendingFetch.has(id));
+    if (!ids.length) return;
+    this.pendingFetch = this.pendingFetch || new Set();
+    ids.forEach((id) => {
+      this.pendingFetch.add(id);
+      this.loadingIds.add(id);
+    });
+    if (!this.drag) this.render();
+
+    let results = new Map();
+    try {
+      results = await VideoMeta.lookup(ids);
+    } finally {
+      ids.forEach((id) => {
+        this.pendingFetch.delete(id);
+        this.loadingIds.delete(id);
+      });
+    }
+
+    // 조회하는 사이 큐가 바뀌었을 수 있으므로 videoId로 다시 찾아서 덮어쓴다
+    this.items.forEach((it) => {
+      const patch = results.get(it.videoId);
+      if (patch) Object.assign(it, patch);
+    });
+    QueueStore.save(this.items);
+    if (this.drag) this.metaDirty = true;
+    else this.render();
+  },
+
+  // =====================================================================
   // 렌더링
   // =====================================================================
   render() {
@@ -314,6 +481,13 @@ const LineupApp = {
     queueHead.hidden = count === 0;
     clearAllBtn.hidden = count === 0;
     queueCount.textContent = `${count}개`;
+
+    // 총 재생시간: 길이를 아는 영상만 합산, 모르는 게 섞여 있으면 "+" 표시
+    const known = this.items.filter((it) => it.durationSec != null);
+    const total = known.reduce((sum, it) => sum + it.durationSec, 0);
+    const partial = known.length < this.items.filter((it) => !it.unavailable).length;
+    this.els.queueTotal.hidden = known.length === 0;
+    this.els.queueTotal.textContent = known.length ? `총 ${this.formatTotal(total)}${partial ? '+' : ''}` : '';
 
     // TODO(4단계): 재생 로직 연결 후 count > 0 이면 활성화
     playBtn.disabled = true;
@@ -328,12 +502,23 @@ const LineupApp = {
     li.className = 'queue-item';
     li.dataset.uid = item.uid;
 
-    const title = item.title || `youtu.be/${item.videoId}`;
+    const loading = this.loadingIds.has(item.videoId) && !item.title;
+    let title = item.title || `youtu.be/${item.videoId}`;
     const metaParts = [];
-    if (item.isShort) metaParts.push('Shorts');
-    if (item.durationSec != null) metaParts.push(this.formatDuration(item.durationSec));
-    if (item.author) metaParts.push(item.author);
-    if (!metaParts.length) metaParts.push('YouTube');
+    if (item.unavailable) {
+      if (!item.title) title = '재생할 수 없는 영상';
+      metaParts.push('삭제·비공개 영상');
+      li.classList.add('is-unavailable');
+    } else if (loading) {
+      title = '영상 정보 불러오는 중…';
+      li.classList.add('is-loading');
+    } else {
+      if (item.author) metaParts.push(item.author);
+      if (item.isShort) metaParts.push('Shorts');
+      if (item.isLive) metaParts.push('라이브');
+      if (!metaParts.length) metaParts.push('YouTube');
+    }
+    const durationText = item.durationSec != null && !item.unavailable ? this.formatDuration(item.durationSec) : '';
 
     li.innerHTML = `
       <button type="button" class="queue-item__handle" data-action="drag"
@@ -341,6 +526,7 @@ const LineupApp = {
       <div class="queue-item__thumb-wrap">
         <img class="queue-item__thumb" alt="" loading="lazy" decoding="async" width="72" height="40">
         <span class="queue-item__index" aria-hidden="true"></span>
+        <span class="queue-item__time" aria-hidden="true"></span>
       </div>
       <div class="queue-item__meta">
         <p class="queue-item__title"></p>
@@ -362,6 +548,10 @@ const LineupApp = {
     titleEl.textContent = title;
     titleEl.title = title;
     li.querySelector('.queue-item__duration').textContent = metaParts.join(' · ');
+    const timeBadge = li.querySelector('.queue-item__time');
+    timeBadge.textContent = durationText;
+    timeBadge.hidden = !durationText;
+    if (durationText) li.querySelector('.queue-item__meta').setAttribute('aria-label', `${title}, ${metaParts.join(', ')}, 길이 ${durationText}`);
 
     li.querySelector('[data-action="up"]').disabled = index === 0;
     li.querySelector('[data-action="down"]').disabled = index === total - 1;
@@ -374,6 +564,15 @@ const LineupApp = {
     const m = Math.floor((s % 3600) / 60);
     const r = String(s % 60).padStart(2, '0');
     return h ? `${h}:${String(m).padStart(2, '0')}:${r}` : `${m}:${r}`;
+  },
+
+  /** 총 재생시간: 38분 / 1시간 12분 */
+  formatTotal(sec) {
+    const min = Math.max(1, Math.round(sec / 60));
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (!h) return `${m}분`;
+    return m ? `${h}시간 ${m}분` : `${h}시간`;
   },
 
   focusItemControl(uid, selector) {
@@ -406,33 +605,40 @@ const LineupApp = {
 
     urlInput.addEventListener('input', clearError);
 
+    this.clearAddError = clearError;
+
     addForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      const result = this.addFromText(urlInput.value);
-
-      if (result.ok) {
-        clearError();
-        urlInput.value = '';
-        this.showToast('큐에 담았어요');
-        this.announce(`${result.index + 1}번째로 담았어요.`);
-        this.flashItem(result.uid);
-        return;
-      }
-
-      if (result.reason === 'duplicate') {
-        clearError();
-        urlInput.value = '';
-        const dup = this.items[result.index];
-        this.showToast(`이미 ${result.index + 1}번째에 있는 영상이에요`);
-        this.flashItem(dup.uid);
-        return;
-      }
-
-      addError.textContent = ERROR_MESSAGES[result.reason] || ERROR_MESSAGES.not_youtube;
-      addError.hidden = false;
-      urlInput.setAttribute('aria-invalid', 'true');
-      urlInput.focus();
+      this.handleAddResult(this.addFromText(urlInput.value));
     });
+  },
+
+  /** 입력창·붙여넣기 버튼·클립보드 제안이 공통으로 쓰는 결과 처리 */
+  handleAddResult(result) {
+    const { urlInput, addError } = this.els;
+
+    if (result.ok) {
+      this.clearAddError();
+      urlInput.value = '';
+      this.showToast(`${result.index + 1}번째로 담았어요`);
+      this.announce(`${result.index + 1}번째로 담았어요.`);
+      this.flashItem(result.uid);
+      return;
+    }
+
+    if (result.reason === 'duplicate') {
+      this.clearAddError();
+      urlInput.value = '';
+      const dup = this.items[result.index];
+      this.showToast(`이미 ${result.index + 1}번째에 있는 영상이에요`);
+      this.flashItem(dup.uid);
+      return;
+    }
+
+    addError.textContent = ERROR_MESSAGES[result.reason] || ERROR_MESSAGES.not_youtube;
+    addError.hidden = false;
+    urlInput.setAttribute('aria-invalid', 'true');
+    urlInput.focus();
   },
 
   wireQueueList() {
@@ -521,6 +727,10 @@ const LineupApp = {
       const uid = d.li.dataset.uid;
       const order = Array.from(list.children, (el) => el.dataset.uid);
       this.drag = null;
+      if (this.metaDirty) {
+        this.metaDirty = false;
+        this.render();
+      }
       if (commitOrder) {
         const before = this.items.findIndex((it) => it.uid === uid);
         this.applyOrder(order);
@@ -598,6 +808,114 @@ const LineupApp = {
     this.els.clearAllBtn.addEventListener('click', () => this.clearAll());
   },
 
+  // =====================================================================
+  // 클립보드 (2군 진입 경로)
+  //   - Chrome/Edge(안드로이드 포함)에서 클립보드 읽기 권한이 "허용"된 상태면,
+  //     앱을 열거나 돌아올 때 자동으로 읽어 "방금 복사한 영상, 담을까요?"를 띄운다.
+  //   - iOS Safari 등은 탭(사용자 동작) 없이는 클립보드를 못 읽는다(브라우저 정책).
+  //     그래서 "복사한 링크 붙여넣기" 버튼을 항상 두고, 누르면 바로 읽어서 담는다.
+  //     (iOS는 이때 작은 "붙여넣기" 말풍선이 뜨고, 그걸 누르면 담긴다.)
+  //   - 한 번 제안했거나 닫은 링크는 같은 세션에서 다시 제안하지 않는다.
+  // =====================================================================
+  wireClipboard() {
+    const canRead = !!(navigator.clipboard && navigator.clipboard.readText);
+    this.els.pasteBtn.hidden = !canRead;
+    if (!canRead) return;
+
+    this.els.pasteBtn.addEventListener('click', () => this.pasteFromClipboard());
+    this.els.clipAddBtn.addEventListener('click', () => this.acceptClipSuggestion());
+    this.els.clipCloseBtn.addEventListener('click', () => this.dismissClipSuggestion());
+
+    const check = () => {
+      if (document.visibilityState === 'visible') this.checkClipboardSilently();
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    check();
+  },
+
+  /** 권한이 이미 "허용"인 브라우저에서만 조용히 읽는다 (권한 팝업을 갑자기 띄우지 않기 위해) */
+  async checkClipboardSilently() {
+    try {
+      if (!navigator.permissions || !navigator.permissions.query) return;
+      const status = await navigator.permissions.query({ name: 'clipboard-read' });
+      if (status.state !== 'granted') return;
+      const text = await navigator.clipboard.readText();
+      this.maybeSuggestClip(text);
+    } catch (_) {
+      // Safari/Firefox는 clipboard-read 권한 조회 자체를 지원하지 않음 → 버튼 방식만 사용
+    }
+  },
+
+  maybeSuggestClip(text) {
+    const parsed = YouTubeUrl.parse(text);
+    if (!parsed.ok) return;
+    if (this.items.some((it) => it.videoId === parsed.videoId)) return;
+    let offered = null;
+    try {
+      offered = sessionStorage.getItem(CLIP_OFFERED_KEY);
+    } catch (_) {}
+    if (offered === parsed.videoId) return;
+    try {
+      sessionStorage.setItem(CLIP_OFFERED_KEY, parsed.videoId);
+    } catch (_) {}
+
+    this.clip = { text, videoId: parsed.videoId };
+    const { clipSuggest, clipThumb, clipTitle } = this.els;
+    clipThumb.src = YouTubeUrl.thumb(parsed.videoId);
+    clipTitle.textContent = `youtu.be/${parsed.videoId}`;
+    clipSuggest.hidden = false;
+    this.els.pasteBtn.hidden = true; // 제안 카드가 떠 있을 땐 같은 역할의 버튼은 숨김
+
+    // 제목은 곧바로 조회해서 채워 넣는다 (실패하면 주소 그대로)
+    VideoMeta.lookup([parsed.videoId]).then((res) => {
+      const meta = res.get(parsed.videoId);
+      if (this.clip && this.clip.videoId === parsed.videoId && meta && meta.title) {
+        clipTitle.textContent = meta.title;
+      }
+    });
+  },
+
+  acceptClipSuggestion() {
+    if (!this.clip) return;
+    const { text } = this.clip;
+    this.hideClipSuggestion();
+    this.handleAddResult(this.addFromText(text));
+  },
+
+  dismissClipSuggestion() {
+    this.hideClipSuggestion();
+    this.els.pasteBtn.focus();
+  },
+
+  hideClipSuggestion() {
+    this.clip = null;
+    this.els.clipSuggest.hidden = true;
+    this.els.pasteBtn.hidden = false;
+  },
+
+  async pasteFromClipboard() {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (_) {
+      this.showToast('클립보드를 읽지 못했어요. 입력창을 길게 눌러 붙여넣어 주세요.', { duration: 3500 });
+      this.els.urlInput.focus();
+      return;
+    }
+    if (!text.trim()) {
+      this.showToast('복사된 내용이 없어요. 유튜브에서 "링크 복사"를 먼저 해주세요.', { duration: 3500 });
+      return;
+    }
+    this.hideClipSuggestion();
+    const result = this.addFromText(text);
+    if (!result.ok && result.reason !== 'duplicate') {
+      // 유튜브 링크가 아니면 입력창에 넣어서 무엇이 복사됐는지 보여준다
+      this.els.urlInput.value = text.trim().slice(0, 300);
+    }
+    this.handleAddResult(result);
+  },
+
   // --- 다른 탭/창에서 큐가 바뀌면 이 화면도 맞춰줌 -------------------------
   wireStorageSync() {
     window.addEventListener('storage', (e) => {
@@ -605,6 +923,7 @@ const LineupApp = {
       this.items = QueueStore.load();
       this.render();
     });
+    // (다른 탭이 이미 조회한 정보도 localStorage를 통해 같이 넘어온다)
   },
 
   // =====================================================================

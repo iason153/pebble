@@ -41,10 +41,23 @@
       <button type="submit" class="btn-primary">담기</button>
     </form>
     <p id="add-error" class="add-error" role="alert" hidden></p>
-    <p id="clipboard-hint" class="clipboard-hint" hidden>
-      방금 복사한 링크가 있어요 —
-      <button id="btn-add-from-clipboard" type="button" class="link-btn">큐에 추가할까요?</button>
-    </p>
+    <button id="btn-paste" class="paste-btn" type="button" hidden>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M9 4h6v3H9zM7 5.5H5.5A1.5 1.5 0 0 0 4 7v12.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V7a1.5 1.5 0 0 0-1.5-1.5H17"/></svg>
+      복사한 링크 바로 담기
+    </button>
+
+    <!-- 클립보드 자동 감지 제안 (클립보드 읽기 권한이 허용된 브라우저) -->
+    <div id="clip-suggest" class="clip-suggest" role="region" aria-label="복사한 영상 제안" hidden>
+      <img id="clip-suggest-thumb" class="clip-suggest__thumb" alt="" width="64" height="36">
+      <div class="clip-suggest__text">
+        <span class="clip-suggest__label">방금 복사한 영상</span>
+        <span id="clip-suggest-title" class="clip-suggest__title"></span>
+      </div>
+      <button id="btn-clip-add" class="clip-suggest__add" type="button">담기</button>
+      <button id="btn-clip-close" class="clip-suggest__close" type="button" aria-label="제안 닫기">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
   </section>
 
   <!-- 통근시간 맞춤 큐 (4단계에서 실제 계산 로직 연결 예정) -->
@@ -60,6 +73,7 @@
     <div id="queue-head" class="queue-head" hidden>
       <h2 id="queue-heading" class="queue-heading">내 큐</h2>
       <span id="queue-count" class="queue-count">0개</span>
+      <span id="queue-total" class="queue-total" hidden></span>
     </div>
     <ul id="queue-list" class="queue-list"></ul>
     <div id="queue-empty" class="queue-empty">
@@ -87,6 +101,7 @@
 <!-- 스크린리더 전용 상태 안내 -->
 <p id="sr-status" class="sr-only" aria-live="polite"></p>
 
+<script src="js/config.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
