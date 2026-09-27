@@ -1,0 +1,285 @@
+/* Lineup — 1단계 앱 셸 스타일
+   원칙(설계문서 §4-4): 터치 조작 기준, 버튼 최소 48px, 한 화면에 핵심 기능 하나 */
+
+:root {
+  --brand: #5b3cc4;
+  --brand-dark: #46309a;
+  --bg: #f7f6fb;
+  --surface: #ffffff;
+  --text: #1f1b2e;
+  --text-muted: #6b6580;
+  --border: #e4e0f2;
+  --danger: #c0392b;
+  --radius: 14px;
+  --touch-min: 48px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* HTML hidden 속성이 class의 display 선언에 밀리지 않도록 보장
+   (예: .commute-panel { display:flex }와 [hidden]이 동시에 걸리는 경우) */
+[hidden] {
+  display: none !important;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Pretendard", "Malgun Gothic", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* 헤더 */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--brand);
+  letter-spacing: -0.02em;
+}
+
+/* 메인 영역 */
+.app-main {
+  flex: 1;
+  padding: 16px 20px 96px; /* 하단 재생버튼에 가리지 않게 여백 확보 */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 영상 추가 패널 */
+.add-panel form {
+  display: flex;
+  gap: 8px;
+}
+
+#input-url {
+  flex: 1;
+  min-height: var(--touch-min);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 1rem;
+  background: var(--surface);
+}
+
+#input-url:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.btn-primary {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  padding: 0 18px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--brand);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:active {
+  background: var(--brand-dark);
+}
+
+.clipboard-hint {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  min-height: var(--touch-min);
+}
+
+/* 통근시간 패널 (4단계 연결 전 스켈레톤) */
+.commute-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.commute-panel label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+#commute-slider {
+  flex: 1;
+  min-width: 120px;
+  min-height: var(--touch-min);
+}
+
+.commute-summary {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* 큐 목록 */
+.queue-panel {
+  flex: 1;
+}
+
+.queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  min-height: 64px;
+}
+
+.queue-item.is-trimmed {
+  opacity: 0.4;
+}
+
+.queue-item__handle {
+  flex-shrink: 0;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.queue-item__thumb {
+  flex-shrink: 0;
+  width: 72px;
+  height: 40px;
+  border-radius: 8px;
+  background: #ddd8ee;
+  object-fit: cover;
+}
+
+.queue-item__meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-item__title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-item__duration {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.queue-item__remove {
+  flex-shrink: 0;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.queue-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  padding: 40px 20px;
+}
+
+.icon-btn {
+  min-height: var(--touch-min);
+  padding: 0 12px;
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* 하단 재생 버튼 */
+.app-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+
+.btn-play {
+  width: 100%;
+  min-height: 52px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--brand);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-play:disabled {
+  background: #c9c3e0;
+  cursor: not-allowed;
+}

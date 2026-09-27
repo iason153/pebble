@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lineup — 유튜브 큐 관리</title>
+<meta name="description" content="유튜브 영상을 원하는 순서로 큐에 담아, 통근시간에 맞춰 한 번에 이어보는 도구">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#5b3cc4">
+<link rel="icon" href="icons/favicon-64.png" sizes="64x64">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Lineup">
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1 class="app-title">Lineup</h1>
+  <button id="btn-clear-all" class="icon-btn" type="button" aria-label="큐 전체 초기화" hidden>전체삭제</button>
+</header>
+
+<main class="app-main">
+
+  <!-- 영상 추가 영역 (1군: URL 직접 입력) -->
+  <section class="add-panel">
+    <form id="form-add-url" autocomplete="off">
+      <input
+        id="input-url"
+        type="url"
+        inputmode="url"
+        placeholder="유튜브 링크를 붙여넣으세요"
+        aria-label="유튜브 링크 입력"
+        required
+      >
+      <button type="submit" class="btn-primary">담기</button>
+    </form>
+    <p id="clipboard-hint" class="clipboard-hint" hidden>
+      방금 복사한 링크가 있어요 —
+      <button id="btn-add-from-clipboard" type="button" class="link-btn">큐에 추가할까요?</button>
+    </p>
+  </section>
+
+  <!-- 통근시간 맞춤 큐 (4단계에서 실제 계산 로직 연결 예정) -->
+  <section class="commute-panel" hidden>
+    <label for="commute-slider">이동시간</label>
+    <input id="commute-slider" type="range" min="5" max="90" step="5" value="20">
+    <span id="commute-value">20분</span>
+    <p id="commute-summary" class="commute-summary"></p>
+  </section>
+
+  <!-- 큐 목록 (2단계에서 실제 렌더링 로직 연결 예정) -->
+  <section class="queue-panel">
+    <ul id="queue-list" class="queue-list" aria-live="polite"></ul>
+    <p id="queue-empty" class="queue-empty">아직 담긴 영상이 없어요. 위에 유튜브 링크를 붙여넣어보세요.</p>
+  </section>
+
+</main>
+
+<!-- 재생 시작 (4단계에서 watch_videos 재생 로직 연결 예정) -->
+<footer class="app-footer">
+  <button id="btn-play-queue" class="btn-play" type="button" disabled>
+    재생 시작
+  </button>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>
