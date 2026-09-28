@@ -217,6 +217,54 @@ const Player = {
 };
 
 // ---------------------------------------------------------------------------
+// 실행 환경 판별 — 설치 안내를 "지금 이 폰·이 브라우저"에 맞춰 보여주기 위함
+// ---------------------------------------------------------------------------
+const Env = {
+  IN_APPS: [
+    { id: 'kakao', name: '카카오톡', re: /KAKAOTALK/i },
+    { id: 'naver', name: '네이버 앱', re: /NAVER\(inapp|NAVER\//i },
+    { id: 'band', name: '밴드', re: /BAND\//i },
+    { id: 'instagram', name: '인스타그램', re: /Instagram/i },
+    { id: 'facebook', name: '페이스북', re: /FBAN|FBAV|FB_IAB/i },
+    { id: 'line', name: '라인', re: /\bLine\//i },
+    { id: 'daum', name: '다음 앱', re: /DaumApps/i },
+  ],
+
+  detect() {
+    const ua = navigator.userAgent || '';
+    const ios = /iP(hone|od|ad)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const android = /Android/i.test(ua);
+    const inApp = this.IN_APPS.find((a) => a.re.test(ua)) || null;
+    let browser = 'other';
+    if (/SamsungBrowser/i.test(ua)) browser = 'samsung';
+    else if (/CriOS/i.test(ua)) browser = 'chrome-ios';
+    else if (/FxiOS|Firefox/i.test(ua)) browser = 'firefox';
+    else if (/Edg/i.test(ua)) browser = 'edge';
+    else if (/Chrome/i.test(ua)) browser = 'chrome';
+    else if (ios && /Safari/i.test(ua)) browser = 'safari';
+    const standalone =
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      window.navigator.standalone === true;
+    const platform = ios ? 'ios' : android ? 'android' : 'desktop';
+    return { ios, android, platform, inApp, browser, standalone };
+  },
+
+  /** 앱 안 브라우저에서 바깥 브라우저로 여는 주소 (없으면 null → 메뉴 안내로 대체)
+   *  현재 주소(utm 포함)를 그대로 넘겨서, 크롬으로 옮겨가도 "카페에서 온 방문"으로 집계되게 한다 */
+  externalOpenUrl(env, url) {
+    if (!env.inApp) return null;
+    // 카카오톡은 안드로이드·아이폰 모두 공식 "외부 브라우저로 열기" 주소를 지원
+    if (env.inApp.id === 'kakao') return `kakaotalk://web/openExternal?url=${encodeURIComponent(url)}`;
+    // 안드로이드는 크롬을 직접 지정해서 열 수 있음
+    if (env.android) {
+      const u = new URL(url);
+      return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=com.android.chrome;end`;
+    }
+    return null; // 아이폰의 다른 앱들은 메뉴에서 "Safari로 열기"를 눌러야 함
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 사용자 설정 (통근시간 등) — 큐와 별도 키로 저장
 // ---------------------------------------------------------------------------
 const Settings = {
@@ -421,6 +469,16 @@ const LineupApp = {
       playSheetList: $('play-sheet-list'),
       playAgainBtn: $('btn-play-again'),
       installBtn: $('btn-install'),
+      installSheet: $('install-sheet'),
+      installSheetTitle: $('install-sheet-title'),
+      installSheetDesc: $('install-sheet-desc'),
+      installSheetBody: $('install-sheet-body'),
+      installPrimaryBtn: $('btn-install-primary'),
+      inappBanner: $('inapp-banner'),
+      inappName: $('inapp-name'),
+      inappTarget: $('inapp-target'),
+      inappOpenBtn: $('btn-inapp-open'),
+      inappCloseBtn: $('btn-inapp-close'),
       sessionBar: $('session-bar'),
       sessionMeta: $('session-meta'),
       sessionListBtn: $('btn-session-list'),
@@ -1149,6 +1207,7 @@ const LineupApp = {
       if (e.key !== 'Escape') return;
       if (!playSheet.hidden) this.closeSheet(playSheet);
       if (!endSheet.hidden) this.closeSheet(endSheet);
+      if (!this.els.installSheet.hidden) this.closeSheet(this.els.installSheet);
     });
   },
 
@@ -1368,29 +1427,201 @@ const LineupApp = {
   // =====================================================================
   // 홈 화면 설치 (안드로이드 크롬 등) — 설치해야 "공유 → Lineup"이 뜬다
   // =====================================================================
+  // 설치를 어려워하는 사용자가 많아서(2026-09-28 가족 피드백):
+  //   - "설치" 버튼을 항상 보여주고, 누르면 지금 기기·브라우저에 맞는 방법을 안내
+  //   - 한 번에 설치 가능한 브라우저(안드로이드 크롬 등)는 "지금 설치하기" 한 번으로 끝
+  //   - 카카오톡·네이버 앱 안에서 열었으면 먼저 "크롬(사파리)으로 열기"로 안내
   wireInstall() {
-    const { installBtn } = this.els;
+    const { installBtn, installSheet, installPrimaryBtn, inappBanner, inappOpenBtn, inappCloseBtn } = this.els;
+    this.env = Env.detect();
+
+    // 이미 홈 화면 앱으로 열었으면 설치 관련 UI는 전부 숨김
+    if (this.env.standalone) return;
+
+    installBtn.hidden = false;
+    installBtn.addEventListener('click', () => this.openInstallSheet());
+    installSheet.addEventListener('click', (e) => {
+      if (e.target.closest('[data-close]')) this.closeSheet(installSheet);
+      const copyBtn = e.target.closest('[data-copy-url]');
+      if (copyBtn) this.copyAppUrl(copyBtn);
+    });
+    installPrimaryBtn.addEventListener('click', () => this.runInstallPrimary());
+
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       this.installPrompt = e;
-      installBtn.hidden = false;
       track('install_available');
-    });
-    installBtn.addEventListener('click', async () => {
-      if (!this.installPrompt) return;
-      this.installPrompt.prompt();
-      try {
-        const choice = await this.installPrompt.userChoice;
-        track('install_click', { outcome: (choice && choice.outcome) || 'unknown' });
-      } catch (_) {}
-      this.installPrompt = null;
-      installBtn.hidden = true;
+      // 시트가 열려 있으면 "지금 설치하기" 버튼이 바로 보이게 다시 그림
+      if (!installSheet.hidden) this.renderInstallSheet();
     });
     window.addEventListener('appinstalled', () => {
       installBtn.hidden = true;
+      this.closeSheet(installSheet);
       track('app_installed');
-      this.showToast('설치됐어요! 이제 유튜브 공유 메뉴에서 Lineup을 고를 수 있어요', { duration: 4500 });
+      const msg = this.env.android
+        ? '설치됐어요! 홈 화면의 Lineup 아이콘으로 열고, 유튜브 공유 메뉴에서도 Lineup을 고를 수 있어요'
+        : '설치됐어요! 홈 화면의 Lineup 아이콘으로 열어보세요';
+      this.showToast(msg, { duration: 5000 });
     });
+
+    // 앱 안 브라우저 안내 배너 (한 번 닫으면 이번 방문 동안은 안 보임)
+    if (this.env.inApp) {
+      let dismissed = false;
+      try {
+        dismissed = sessionStorage.getItem('lineup:inapp-dismissed') === '1';
+      } catch (_) {}
+      const target = this.env.ios ? '사파리' : '크롬';
+      const targetRo = this.env.ios ? '사파리로' : '크롬으로';
+      this.els.inappName.textContent = this.env.inApp.name;
+      this.els.inappTarget.textContent = target;
+      const ext = Env.externalOpenUrl(this.env, window.location.href);
+      inappOpenBtn.textContent = ext ? `${targetRo} 열기` : '여는 방법';
+      inappBanner.hidden = dismissed;
+      inappOpenBtn.addEventListener('click', () => {
+        track('inapp_open_click', { app: this.env.inApp.id, direct: !!ext });
+        if (ext) window.location.href = ext;
+        else this.openInstallSheet();
+      });
+      inappCloseBtn.addEventListener('click', () => {
+        inappBanner.hidden = true;
+        try {
+          sessionStorage.setItem('lineup:inapp-dismissed', '1');
+        } catch (_) {}
+      });
+      track('inapp_detected', { app: this.env.inApp.id });
+    }
+  },
+
+  /** 공유·설치용 깔끔한 주소 (utm 등 꼬리표 제거) */
+  appUrl() {
+    return new URL('./', window.location.href).toString();
+  },
+
+  openInstallSheet() {
+    this.renderInstallSheet();
+    this.openSheet(this.els.installSheet);
+    track('install_sheet_open', {
+      platform: this.env.platform,
+      browser: this.env.browser,
+      in_app: this.env.inApp ? this.env.inApp.id : 'none',
+      can_prompt: !!this.installPrompt,
+    });
+  },
+
+  renderInstallSheet() {
+    const env = this.env;
+    const { installSheetTitle, installSheetDesc, installSheetBody, installPrimaryBtn } = this.els;
+    const I = {
+      share: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v12M7.5 7.5 12 3l4.5 4.5M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>',
+      dots: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></svg>',
+      hdots: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>',
+      menu: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>',
+      plus: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    };
+    const chip = (label, icon = '') => `<span class="ui-chip">${icon}${label}</span>`;
+    const copyBox = () => `
+      <div class="install-copy">
+        <input type="text" readonly value="${this.appUrl()}" aria-label="Lineup 주소">
+        <button type="button" data-copy-url>주소 복사</button>
+      </div>`;
+
+    let desc = '';
+    let steps = [];
+    let note = '';
+    let extra = '';
+    let primary = null; // {label, action}
+
+    if (env.inApp) {
+      const target = env.ios ? '사파리' : '크롬';
+      const targetRo = env.ios ? '사파리로' : '크롬으로';
+      const ext = Env.externalOpenUrl(env, window.location.href);
+      installSheetTitle.textContent = `먼저 ${targetRo} 열어주세요`;
+      desc = `지금은 ${env.inApp.name} 안에서 열려 있어서 설치가 안 돼요. ${targetRo} 연 다음 다시 "설치"를 눌러주세요.`;
+      if (ext) {
+        primary = { label: `${targetRo} 열기`, action: () => (window.location.href = ext) };
+        steps = [`아래 ${chip(`${targetRo} 열기`)} 버튼을 눌러요.`, `${target}에서 Lineup이 열리면 오른쪽 위 ${chip('설치')}를 다시 눌러요.`];
+      } else {
+        steps = env.ios
+          ? [`화면 오른쪽 아래(또는 위)의 ${chip('', I.hdots)} 또는 ${chip('', I.share)} 버튼을 눌러요.`, `${chip('Safari로 열기')} (또는 "기본 브라우저로 열기")를 눌러요.`, `사파리에서 Lineup이 열리면 ${chip('설치')}를 다시 눌러요.`]
+          : [`화면 오른쪽 위의 ${chip('', I.dots)} 버튼을 눌러요.`, `${chip('다른 브라우저로 열기')} (또는 "Chrome으로 열기")를 눌러요.`, `크롬에서 Lineup이 열리면 ${chip('설치')}를 다시 눌러요.`];
+      }
+      note = '메뉴가 안 보이면 아래 주소를 복사해서 크롬·사파리 주소창에 붙여넣어도 돼요.';
+      extra = copyBox();
+    } else if (this.installPrompt) {
+      installSheetTitle.textContent = '홈 화면에 Lineup 설치하기';
+      desc = '버튼 한 번이면 끝나요. 홈 화면에 Lineup 아이콘이 생겨요.';
+      primary = { label: '지금 설치하기', action: () => this.promptInstall() };
+      steps = [`아래 ${chip('지금 설치하기')}를 눌러요.`, `뜨는 창에서 ${chip('설치')}를 눌러요.`];
+      if (env.android) note = '설치하면 유튜브의 공유 메뉴에도 Lineup이 생겨서, 링크 복사 없이 바로 담을 수 있어요. (처음엔 공유 메뉴 끝의 "더보기" 쪽에 있을 수 있어요)';
+    } else if (env.ios) {
+      installSheetTitle.textContent = '아이폰 홈 화면에 추가하기';
+      desc = env.browser === 'safari' ? '사파리에서 세 번만 누르면 돼요.' : '브라우저의 공유 버튼에서 추가할 수 있어요.';
+      steps = env.browser === 'safari'
+        ? [`화면 아래 가운데 ${chip('', I.share)} 공유 버튼을 눌러요. (안 보이면 화면을 살짝 위로 올려보세요)`, `목록을 아래로 내려 ${chip('홈 화면에 추가', I.plus)}를 눌러요.`, `오른쪽 위 ${chip('추가')}를 눌러요.`]
+        : [`주소창 옆의 ${chip('', I.share)} 공유 버튼을 눌러요.`, `${chip('홈 화면에 추가', I.plus)}를 눌러요.`, `${chip('추가')}를 눌러요.`];
+      note = '아이폰은 유튜브 공유 메뉴에 Lineup이 뜨지 않아요. 유튜브에서 "링크 복사" 후 Lineup 입력창에 붙여넣으면 바로 담겨요.';
+    } else if (env.android && env.browser === 'samsung') {
+      installSheetTitle.textContent = '갤럭시 홈 화면에 추가하기';
+      desc = '삼성 인터넷에서 추가하는 방법이에요.';
+      steps = [`화면 아래 오른쪽 ${chip('', I.menu)} 메뉴를 눌러요.`, `${chip('현재 페이지 추가')} (또는 "페이지 추가")를 눌러요.`, `${chip('홈 화면')}을 고르고 ${chip('추가')}를 눌러요.`];
+      note = '주소창에 ⬇ 모양 설치 아이콘이 보이면 그걸 눌러도 돼요. 메뉴 이름은 버전에 따라 조금 달라요.';
+    } else if (env.android) {
+      installSheetTitle.textContent = '홈 화면에 Lineup 설치하기';
+      desc = '크롬 메뉴에서 추가할 수 있어요.';
+      steps = [`화면 오른쪽 위 ${chip('', I.dots)} 메뉴를 눌러요.`, `${chip('홈 화면에 추가')} 또는 ${chip('앱 설치')}를 눌러요.`, `${chip('설치')} (또는 "추가")를 눌러요.`];
+      note = '설치하면 유튜브 공유 메뉴에도 Lineup이 생겨요. 이미 설치했다면 홈 화면의 Lineup 아이콘으로 열어주세요.';
+    } else {
+      installSheetTitle.textContent = '휴대폰에서 쓰면 더 편해요';
+      desc = 'Lineup은 출퇴근길 휴대폰용으로 만들었어요. 아래 주소를 휴대폰으로 보내서 열어보세요.';
+      steps = [`휴대폰 크롬(아이폰은 사파리)에서 아래 주소를 열어요.`, `오른쪽 위 ${chip('설치')}를 누르면 기기에 맞는 방법이 나와요.`];
+      note = 'PC 크롬에서도 주소창 오른쪽의 설치 아이콘으로 설치할 수 있어요.';
+      extra = copyBox();
+    }
+
+    installSheetDesc.textContent = desc;
+    installSheetBody.innerHTML =
+      `<ol class="install-steps">${steps.map((t) => `<li><span>${t}</span></li>`).join('')}</ol>` +
+      (note ? `<p class="install-note">${note}</p>` : '') +
+      extra;
+    this.installPrimary = primary;
+    installPrimaryBtn.hidden = !primary;
+    if (primary) installPrimaryBtn.textContent = primary.label;
+  },
+
+  runInstallPrimary() {
+    if (!this.installPrimary) return;
+    track('install_primary_click', { label: this.installPrimary.label });
+    this.installPrimary.action();
+  },
+
+  async promptInstall() {
+    if (!this.installPrompt) return;
+    this.installPrompt.prompt();
+    try {
+      const choice = await this.installPrompt.userChoice;
+      track('install_click', { outcome: (choice && choice.outcome) || 'unknown' });
+    } catch (_) {}
+    this.installPrompt = null;
+    // 취소한 경우엔 다시 누를 수 있도록 메뉴 안내 버전으로 바꿔 둔다
+    if (!this.els.installSheet.hidden) this.renderInstallSheet();
+  },
+
+  async copyAppUrl(btn) {
+    const url = this.appUrl();
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(url);
+      ok = true;
+    } catch (_) {
+      const input = btn.parentElement.querySelector('input');
+      input.focus();
+      input.select();
+      try {
+        ok = document.execCommand('copy');
+      } catch (_) {}
+    }
+    btn.textContent = ok ? '복사됨' : '길게 눌러 복사';
+    track('install_copy_url', { ok });
   },
 
   // --- 전체 삭제 (확인창 대신 "되돌리기" 토스트로 실수 복구) -------------

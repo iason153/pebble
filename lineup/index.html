@@ -23,12 +23,20 @@
   <h1 class="app-title"><span class="logo-badge" aria-hidden="true"></span>Lineup</h1>
   <div class="header-actions">
     <a class="help-link" href="guide.html" aria-label="사용법">사용법</a>
-    <button id="btn-install" class="install-btn" type="button" hidden>앱 설치</button>
-    <button id="btn-clear-all" class="icon-btn" type="button" aria-label="큐 전체 초기화" hidden>전체삭제</button>
+    <button id="btn-install" class="install-btn" type="button" hidden>설치</button>
   </div>
 </header>
 
 <main class="app-main">
+
+  <!-- 카카오톡·네이버 앱 등 "앱 안 브라우저"로 열었을 때 안내 -->
+  <div id="inapp-banner" class="inapp-banner" role="note" hidden>
+    <p class="inapp-banner__text"><b id="inapp-name">카카오톡</b> 안에서 열렸어요.<br><span id="inapp-target">크롬</span>에서 열어야 설치돼요.</p>
+    <button id="btn-inapp-open" class="inapp-banner__btn" type="button">크롬으로 열기</button>
+    <button id="btn-inapp-close" class="inapp-banner__close" type="button" aria-label="안내 닫기">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
 
   <!-- 영상 추가 영역 (1군: URL 직접 입력) -->
   <section class="add-panel">
@@ -87,6 +95,7 @@
       <h2 id="queue-heading" class="queue-heading">내 큐</h2>
       <span id="queue-count" class="queue-count">0개</span>
       <span id="queue-total" class="queue-total" hidden></span>
+      <button id="btn-clear-all" class="clear-all-btn" type="button" aria-label="큐 전체 비우기" hidden>전체삭제</button>
     </div>
     <ul id="queue-list" class="queue-list"></ul>
     <div id="queue-empty" class="queue-empty">
@@ -148,6 +157,21 @@
     <div class="sheet__actions">
       <button id="btn-end-confirm" class="sheet__btn sheet__btn--primary" type="button">끝내기</button>
       <button class="sheet__btn" type="button" data-close>취소</button>
+    </div>
+  </div>
+</div>
+
+<!-- 설치 안내 시트: 기기·브라우저에 맞는 방법을 자동으로 보여줌 -->
+<div id="install-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="install-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <h2 id="install-sheet-title" class="sheet__title">홈 화면에 Lineup 설치하기</h2>
+    <p id="install-sheet-desc" class="sheet__desc"></p>
+    <div id="install-sheet-body" class="install-body"></div>
+    <div class="sheet__actions">
+      <button id="btn-install-primary" class="sheet__btn sheet__btn--primary" type="button" hidden></button>
+      <button class="sheet__btn" type="button" data-close>닫기</button>
     </div>
   </div>
 </div>
