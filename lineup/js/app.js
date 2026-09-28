@@ -436,6 +436,7 @@ const LineupApp = {
     this.wireClipboard();
     this.wirePlay();
     this.wireInstall();
+    this.wireShare();
     this.processPendingShare();
 
     this.fetchMissingMeta();
@@ -1492,6 +1493,13 @@ const LineupApp = {
     }
   },
 
+  // --- 친구에게 공유하기 (js/share.js) -----------------------------------
+  wireShare() {
+    const btn = document.getElementById('btn-share');
+    if (!btn || !window.LineupShare) return;
+    btn.addEventListener('click', () => window.LineupShare.share('header'));
+  },
+
   /** 공유·설치용 깔끔한 주소 (utm 등 꼬리표 제거) */
   appUrl() {
     return new URL('./', window.location.href).toString();
@@ -1828,4 +1836,5 @@ const LineupApp = {
   },
 };
 
+window.LineupApp = LineupApp; // share.js 등 다른 스크립트가 토스트를 재사용할 수 있게
 document.addEventListener('DOMContentLoaded', () => LineupApp.init());

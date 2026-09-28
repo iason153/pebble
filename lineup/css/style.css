@@ -58,8 +58,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 64px; /* 전체삭제 버튼(48px)이 나타나도 헤더 높이가 흔들리지 않게 고정 */
-  padding: 8px 8px 8px 20px;
+  min-height: 64px; /* 버튼이 나타나도 헤더 높이가 흔들리지 않게 고정 */
+  padding: 8px 6px 8px 16px; /* 좁은 폰 기준 — 360px 이상에서 넓힘 */
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -70,14 +70,14 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .help-link {
   display: inline-flex;
   align-items: center;
   min-height: 40px;
-  padding: 0 10px;
+  padding: 0 6px;
   color: var(--text-muted);
   font-size: 0.9rem;
   text-decoration: none;
@@ -92,6 +92,24 @@ body {
   font-size: 0.88rem;
   font-weight: 700;
   text-decoration: none;
+}
+
+.share-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.share-btn:active {
+  background: #f0f0f0;
 }
 
 .install-btn {
@@ -1379,6 +1397,21 @@ body.has-sheet {
 }
 
 /* --- 데스크탑/태블릿 확장 (모바일 스타일 위에 "추가"만 함) ------------- */
+/* 보통 폭 이상의 폰: 헤더 여백을 원래대로 */
+@media (min-width: 360px) {
+  .app-header {
+    padding: 8px 8px 8px 20px;
+  }
+
+  .header-actions {
+    gap: 4px;
+  }
+
+  .help-link {
+    padding: 0 10px;
+  }
+}
+
 @media (min-width: 640px) {
   .app-header {
     min-height: 72px;
@@ -1458,6 +1491,11 @@ body.has-sheet {
   }
 
   .clear-all-btn:hover {
+    color: var(--brand);
+  }
+
+  .share-btn:hover {
+    background: #f2f2f2;
     color: var(--brand);
   }
 

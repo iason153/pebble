@@ -3,8 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lineup — 유튜브 큐 관리</title>
-<meta name="description" content="유튜브 영상을 원하는 순서로 큐에 담아, 통근시간에 맞춰 한 번에 이어보는 도구">
+<title>Lineup — 유튜브 영상을 순서대로, 가는 동안 볼 만큼만</title>
+<meta name="description" content="보고 싶은 유튜브 영상을 순서대로 담아두고, 출퇴근 시간에 맞춰 한 번에 이어보세요. 로그인 없이 무료.">
+<!-- 링크 미리보기 (카카오톡·문자·SNS 공유 시 카드) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pebble">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="Lineup — 유튜브 영상을 순서대로, 가는 동안 볼 만큼만">
+<meta property="og:description" content="보고 싶은 유튜브 영상을 순서대로 담아두고, 출퇴근 시간에 맞춰 한 번에 이어보세요. 로그인 없이 무료.">
+<meta property="og:url" content="https://pebbleitgo.com/lineup/">
+<meta property="og:image" content="https://pebbleitgo.com/lineup/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lineup — 유튜브 영상을 순서대로 담고, 가는 동안 볼 만큼만">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://pebbleitgo.com/lineup/">
+
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
@@ -23,6 +37,9 @@
   <h1 class="app-title"><span class="logo-badge" aria-hidden="true"></span>Lineup</h1>
   <div class="header-actions">
     <a class="help-link" href="guide.html" aria-label="사용법">사용법</a>
+    <button id="btn-share" class="share-btn" type="button" aria-label="Lineup 친구에게 공유하기">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>
+    </button>
     <button id="btn-install" class="install-btn" type="button" hidden>설치</button>
   </div>
 </header>
@@ -187,6 +204,7 @@
 
 <script src="js/config.js"></script>
 <script src="js/analytics.js"></script>
+<script src="js/share.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

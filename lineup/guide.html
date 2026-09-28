@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lineup 사용법 — 유튜브 영상을 순서대로, 가는 동안 볼 만큼만</title>
 <meta name="description" content="Lineup 사용법: 유튜브 링크를 붙여넣어 큐에 담고, 순서를 정하고, 출퇴근 시간에 맞춰 한 번에 이어보는 방법. 로그인 없이 무료.">
+<!-- 링크 미리보기 (카카오톡·문자·SNS 공유 시 카드) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pebble">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="Lineup 사용법 — 유튜브 영상을 순서대로, 가는 동안 볼 만큼만">
+<meta property="og:description" content="유튜브 링크를 담고, 순서를 정하고, 출퇴근 시간에 맞춰 한 번에 이어보는 방법. 로그인 없이 무료.">
+<meta property="og:url" content="https://pebbleitgo.com/lineup/guide.html">
+<meta property="og:image" content="https://pebbleitgo.com/lineup/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lineup — 유튜브 영상을 순서대로 담고, 가는 동안 볼 만큼만">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://pebbleitgo.com/lineup/guide.html">
+
 <meta name="theme-color" content="#e0201b">
 <link rel="icon" href="icons/favicon-64.png" sizes="64x64">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -208,6 +222,28 @@
     color: #333;
   }
 
+  .share-cta {
+    margin-top: 36px;
+    padding: 20px 16px;
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .share-cta p {
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+
+  .share-cta .guide-cta {
+    width: 100%;
+    border: none;
+    font-size: 1rem;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
   .guide-foot {
     margin-top: 40px;
     text-align: center;
@@ -361,8 +397,17 @@
     </details>
   </section>
 
+  <div class="share-cta">
+    <p>출퇴근길에 유튜브 보는 사람, 주변에 있죠?</p>
+    <button id="btn-share-guide" class="guide-cta" type="button">친구에게 Lineup 알려주기</button>
+  </div>
+
   <p class="guide-foot">Lineup은 Pebble이 만드는 작은 도구예요.<br>YouTube는 Google LLC의 상표이며, Lineup은 YouTube와 관련이 없는 독립 서비스입니다.</p>
 </main>
 
+<script src="js/share.js"></script>
+<script>
+  document.getElementById('btn-share-guide').addEventListener('click', () => LineupShare.share('guide'));
+</script>
 </body>
 </html>
