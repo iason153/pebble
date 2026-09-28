@@ -22,6 +22,81 @@
 <meta name="theme-color" content="#e0201b">
 <link rel="icon" href="icons/favicon-64.png" sizes="64x64">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<!-- 검색엔진용 구조화 데이터 (아래 "자주 묻는 질문"과 같은 내용) -->
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "회원가입이나 로그인이 필요한가요?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "필요 없어요. 큐는 지금 쓰는 휴대폰의 브라우저에만 저장되고, 서버로 보내지 않아요. 그래서 다른 기기와는 공유되지 않고, 브라우저 데이터를 지우면 큐도 지워져요. 서비스 개선을 위해 익명 방문 통계(Google Analytics)로 \"몇 개 담았는지, 재생을 눌렀는지\" 같은 사용 횟수만 봐요. 어떤 영상을 담았는지(주소·제목)는 수집하지 않아요."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "유튜브에서 순서대로 안 나와요.",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "재생 중 바의 목록을 누르면 영상을 하나씩 열 수 있어요. 순서대로 열어서 보시면 돼요."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "다른 앱으로 넘어가면 영상이 멈춰요.",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "유튜브 정책상 무료 계정은 앱을 전환하면 재생이 멈춰요. Lineup이 바꿀 수 없는 부분이라, 담을 때는 짧게 들렀다 뒤로 가기로 돌아가는 방식으로 만들었어요."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "\"재생할 수 없는 영상\"으로 떠요.",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "삭제됐거나 비공개로 바뀐 영상이에요. 재생할 때 자동으로 빠지니 ✕로 정리해 주세요."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "총 시간 뒤에 \"+\"는 뭐예요?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "라이브 방송처럼 길이를 알 수 없는 영상이 섞여 있다는 뜻이에요. 그 영상은 시간 계산에서 빠져요."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Pebble",
+        "item": "https://pebbleitgo.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Lineup",
+        "item": "https://pebbleitgo.com/lineup/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "사용법",
+        "item": "https://pebbleitgo.com/lineup/guide.html"
+      }
+    ]
+  }
+]
+</script>
 <link rel="stylesheet" href="css/style.css">
 <script src="js/config.js"></script>
 <script src="js/analytics.js"></script>

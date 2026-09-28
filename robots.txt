@@ -1,0 +1,5 @@
+# Pebble — pebbleitgo.com
+User-agent: *
+Allow: /
+
+Sitemap: https://pebbleitgo.com/sitemap.xml

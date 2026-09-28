@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 새 툴(폴더)이 생기면 여기에 url 블록을 추가하고 lastmod를 갱신할 것 -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://pebbleitgo.com/</loc>
+    <lastmod>2026-09-28</lastmod>
+  </url>
+  <url>
+    <loc>https://pebbleitgo.com/lineup/</loc>
+    <lastmod>2026-09-28</lastmod>
+  </url>
+  <url>
+    <loc>https://pebbleitgo.com/lineup/guide.html</loc>
+    <lastmod>2026-09-28</lastmod>
+  </url>
+</urlset>

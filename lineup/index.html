@@ -29,6 +29,39 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Lineup">
 
+<!-- 검색엔진용 구조화 데이터 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Lineup",
+  "url": "https://pebbleitgo.com/lineup/",
+  "description": "보고 싶은 유튜브 영상을 순서대로 담아두고, 출퇴근 시간에 맞춰 한 번에 이어보는 무료 웹앱. 로그인 없이 사용.",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Android, iOS, Windows, macOS (웹 브라우저)",
+  "inLanguage": "ko",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "KRW"
+  },
+  "image": "https://pebbleitgo.com/lineup/og-image.png",
+  "featureList": [
+    "유튜브 링크 붙여넣기로 큐에 담기",
+    "드래그로 재생 순서 정하기",
+    "이동 시간에 맞춰 볼 분량만 재생(가는 동안 볼 만큼만)",
+    "유튜브에서 순서대로 이어서 재생",
+    "보다가 다음 순서로 끼워넣기",
+    "홈 화면 설치 및 안드로이드 공유 메뉴로 담기"
+  ],
+  "publisher": {
+    "@type": "Organization",
+    "name": "Pebble",
+    "url": "https://pebbleitgo.com/"
+  }
+}
+</script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -122,6 +155,12 @@
       <a class="queue-empty__guide" href="guide.html">처음이라면 사용법 보기 →</a>
     </div>
   </section>
+
+  <!-- 앱 소개 (검색엔진·처음 온 사람용. 화면에 그대로 보이는 텍스트) -->
+  <footer class="app-about">
+    <p><b>Lineup</b>은 보고 싶은 유튜브 영상을 순서대로 담아두고, 출퇴근 시간에 맞춰 한 번에 이어보는 무료 도구예요. 로그인 없이 쓰고, 담은 목록은 이 기기에만 저장돼요.</p>
+    <p><a href="guide.html">사용법</a> · <a href="guide.html#faq-title">자주 묻는 질문</a> · <a href="/">Pebble</a></p>
+  </footer>
 
 </main>
 
