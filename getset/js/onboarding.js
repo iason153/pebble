@@ -80,7 +80,7 @@ window.GetsetOnboard = (function () {
       body.innerHTML = `<h2 class="ob-title">집은 어디예요?</h2>
         <p class="ob-desc">출발지로 쓰고, 중간에 집에 들를 때도 써요. 이 기기에만 저장돼요.</p>
         <button class="quick__btn ob-here" type="button" data-ob-here><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>지금 여기가 집이에요</button>
-        ${searchBox('아파트·빌라 이름이나 주소')}
+        ${searchBox('주소(고산로 600) 또는 아파트 이름')}
         ${picked(P.home && P.home.place)}`;
       next.textContent = P.home && P.home.place ? '다음' : '집은 나중에';
     } else if (step === 'homePark') {
@@ -165,7 +165,7 @@ window.GetsetOnboard = (function () {
       if (seq !== searchSeq) return;
       ul.innerHTML = results.length
         ? results.slice(0, 8).map((p, i) => `<li><button class="result" type="button" data-ob-pick="${i}"><span class="result__name">${esc(p.name)}</span><span class="result__addr">${esc(p.address)}</span></button></li>`).join('')
-        : '<li class="results__hint">검색 결과가 없어요</li>';
+        : '<li class="results__hint">검색 결과가 없어요.<br>도로명 주소(예: 고산로 600)나 동·번지(예: 산본동 1150)로 찾아보세요.<br>집에 있다면 위의 [지금 여기가 집이에요]가 가장 쉬워요.</li>';
     } catch (_) {
       if (seq === searchSeq) ul.innerHTML = '<li class="results__hint">검색을 못 했어요. 인터넷 연결을 확인해 주세요</li>';
     }

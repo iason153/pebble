@@ -58,19 +58,10 @@ window.GetsetPlaces = (function () {
     };
   }
 
-  /**
-   * @param {string} query
-   * @param {{lat:number,lng:number}|null} near  가까운 곳 우선 + 거리 표시용
-   * @returns {Promise<Array>}
-   */
-  async function search(query, near) {
-    await load();
-    const k = window.kakao.maps;
+  function keyword(k, query, near) {
     const ps = new k.services.Places();
     const opts = { size: 15 };
-    if (near && Number.isFinite(near.lat)) {
-      opts.location = new k.LatLng(near.lat, near.lng);
-    }
+    if (near && Number.isFinite(near.lat)) opts.location = new k.LatLng(near.lat, near.lng);
     return new Promise((resolve, reject) => {
       ps.keywordSearch(
         query,
@@ -83,6 +74,61 @@ window.GetsetPlaces = (function () {
         opts
       );
     });
+  }
+
+  /** 주소로 찾기 ("고산로 600", "산본동 1150") — 가게로 등록 안 된 집·빌라용 */
+  function address(k, query) {
+    const geocoder = new k.services.Geocoder();
+    return new Promise((resolve) => {
+      geocoder.addressSearch(
+        query,
+        (data, status) => {
+          if (status !== k.services.Status.OK || !Array.isArray(data)) return resolve([]);
+          resolve(
+            data.map((d) => {
+              const road = d.road_address || null;
+              const jibun = d.address || null;
+              const building = road && road.building_name ? road.building_name : '';
+              const addr = (road && road.address_name) || (jibun && jibun.address_name) || d.address_name || '';
+              return {
+                id: '',
+                name: building || addr,
+                address: building ? addr : road && jibun ? jibun.address_name : '',
+                lat: Number(d.y),
+                lng: Number(d.x),
+                categoryCode: '',
+                categoryName: '주소',
+                distance: null,
+                isAddress: true,
+              };
+            })
+          );
+        },
+        { size: 10 }
+      );
+    });
+  }
+
+  const looksLikeAddress = (q) => /(\d+\s*번?길|로\s*\d|길\s*\d|[동리가읍면]\s*\d|\d+-\d+)/.test(q);
+
+  /**
+   * 장소 이름 + 주소를 함께 찾는다. 주소처럼 보이면 주소 결과를 위로.
+   * @param {string} query
+   * @param {{lat:number,lng:number}|null} near  가까운 곳 우선 + 거리 표시용
+   * @returns {Promise<Array>}
+   */
+  async function search(query, near) {
+    await load();
+    const k = window.kakao.maps;
+    const [kw, ad] = await Promise.all([
+      keyword(k, query, near).catch((e) => e),
+      address(k, query).catch(() => []),
+    ]);
+    if (kw instanceof Error && !ad.length) throw kw;
+    const places = kw instanceof Error ? [] : kw;
+    // 같은 곳(50m 안)이 둘 다 나오면 하나만
+    const extra = ad.filter((a) => !places.some((p) => Math.abs(p.lat - a.lat) < 0.0005 && Math.abs(p.lng - a.lng) < 0.0005 && p.name === a.name));
+    return looksLikeAddress(query) ? extra.concat(places) : places.concat(extra);
   }
 
   /** 근처 같은 종류 찾기 (예: 점심 제안 — 음식점 FD6, 가까운 순) */

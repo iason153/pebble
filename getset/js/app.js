@@ -1548,7 +1548,7 @@
         status.textContent = results.length ? '' : '';
         $('place-results').innerHTML = results.length
           ? results.map((p, i) => this.placeItem(p, i)).join('')
-          : `<li class="results__hint">‘${esc(q)}’ 검색 결과가 없어요.<br>지점명이나 동네 이름을 함께 넣어 보세요.</li>`;
+          : `<li class="results__hint">‘${esc(q)}’ 검색 결과가 없어요.<br>가게는 지점명까지, 집은 도로명 주소(예: 고산로 600)로 찾아보세요.</li>`;
       } catch (err) {
         if (seq !== this.searchSeq) return;
         status.textContent = '';
