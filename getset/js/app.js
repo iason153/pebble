@@ -148,6 +148,14 @@
 
     wireDate() {
       $('row-date').addEventListener('click', () => this.openDateSheet());
+      $('day-chips').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-day]');
+        if (!b) return;
+        if (b.dataset.day === 'cal') this.openDateSheet();
+        else if (b.dataset.day !== this.date) this.selectDate(b.dataset.day, { quiet: true });
+      });
+      $('btn-home').addEventListener('click', () => this.restart());
+      $('stops-empty').addEventListener('click', () => $('btn-add').click());
       $('cal-prev').addEventListener('click', () => this.moveMonth(-1));
       $('cal-next').addEventListener('click', () => this.moveMonth(1));
       $('date-sheet').addEventListener('click', (e) => {
@@ -212,7 +220,59 @@
       $('cal-grid').innerHTML = cells.join('');
     },
 
-    selectDate(date) {
+    /** 맨 위 "1 언제 가요?" — 오늘·내일·모레 + 다른 날(달력) */
+    renderDayChips() {
+      const today = Store.todayStr();
+      const days = [0, 1, 2].map((n) => Store.addDays(today, n));
+      if (!days.includes(this.date)) days.push(this.date);
+      const chip = (d) => {
+        const dd = Store.parseDate(d);
+        const rel = this.relDay(d);
+        const on = d === this.date;
+        return `<button class="day-chip${on ? ' is-on' : ''}" type="button" data-day="${d}" aria-pressed="${on}"><b>${rel || `${dd.getMonth() + 1}/${dd.getDate()}`}</b><small>${rel ? `${dd.getMonth() + 1}/${dd.getDate()} ` : ''}${WEEK[dd.getDay()]}</small>${this.hasStops(d) && !on ? '<span class="cal__dot"></span>' : ''}</button>`;
+      };
+      $('day-chips').classList.toggle('day-chips--5', days.length > 3);
+      $('day-chips').innerHTML =
+        days.map(chip).join('') +
+        `<button class="day-chip day-chip--cal" type="button" data-day="cal" aria-label="달력에서 다른 날 고르기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><small>다른 날</small></button>`;
+    },
+
+    /**
+     * 로고를 누르면: 오늘로 돌아가서 넣던 볼일을 비우고 처음부터 (되돌리기 가능)
+     * 다른 날짜에 넣어 둔 계획·루틴·내 정보·기록은 건드리지 않음
+     */
+    restart() {
+      document.querySelectorAll('.sheet.is-open').forEach((sh) => this.hideSheetNow(sh));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const today = Store.todayStr();
+      const plan = this.plans[today];
+      const hadStops = plan && plan.stops.length;
+      if (this.date !== today) {
+        this.date = today;
+        Store.planFor(this.plans, today);
+      }
+      if (!hadStops && this.date === today) {
+        this.render();
+        return;
+      }
+      const snapshot = JSON.parse(JSON.stringify(this.plans[today]));
+      this.plans[today].stops = [];
+      this.plans[today].startTime = 'now';
+      delete this.plans[today].run;
+      if (this.profile.home && this.profile.home.place) this.plans[today].start = this.profile.home.place;
+      this.result = null;
+      this.save();
+      this.render();
+      track('restart', { stops: snapshot.stops.length });
+      this.offerUndo('처음부터 다시 시작해요', () => {
+        this.plans[today] = snapshot;
+        this.date = today;
+        this.save();
+        this.render();
+      });
+    },
+
+    selectDate(date, { quiet = false } = {}) {
       this.date = date;
       Store.planFor(this.plans, date);
       this.save();
@@ -220,7 +280,7 @@
       $('notice').hidden = true;
       this.render();
       track('date_select', { days_ahead: Math.round((Store.parseDate(date) - Store.parseDate(Store.todayStr())) / 86400000) });
-      this.showToast(`${this.relDay(date) ? this.relDay(date) + ' · ' : ''}${this.fullDay(date)} 계획이에요`);
+      if (!quiet) this.showToast(`${this.relDay(date) ? this.relDay(date) + ' · ' : ''}${this.fullDay(date)} 계획이에요`);
     },
 
     renderDate() {
@@ -326,7 +386,7 @@
       const from = !st ? '<b class="is-empty">출발지 정하기</b>' : this.isHome(st) ? '집에서' : `${esc(st.name.length > 10 ? st.name.slice(0, 9) + '…' : st.name)}에서`;
       const t = this.plan.startTime;
       const when = t === 'now' && this.isToday() ? '지금 출발' : `${fmtTime(t === 'now' ? '09:00' : t)} 출발`;
-      $('trip-line-text').innerHTML = `<b>${day}</b> · ${from} · ${when} · ${MODE_LABEL[this.plan.mode]}`;
+      $('trip-line-text').innerHTML = `${from} · <b>${when}</b> · ${MODE_LABEL[this.plan.mode]}`;
     },
 
     renderTime() {
@@ -393,6 +453,7 @@
       this.renderTime();
       this.setModeChecked($('day-mode'), this.plan.mode);
       this.renderTripLine();
+      this.renderDayChips();
     },
 
     // =================================================================
@@ -466,6 +527,8 @@
         .join('');
       const n = stops.length;
       $('stops-empty').hidden = n > 0;
+      $('plan-label').textContent = n ? '순서 추천받기' : '갈 곳을 먼저 넣어요';
+      $('btn-add').querySelector('.where__text').textContent = n ? '갈 곳 더 넣기' : '갈 곳 찾기';
       $('stops-hint').hidden = n < 1;
       $('stops-count').hidden = n === 0;
       $('stops-count').textContent = `${n}개`;

@@ -25,7 +25,7 @@
 <body>
 
 <header class="app-header">
-  <h1 class="app-title"><img class="app-title__mark" src="icons/icon.svg" alt="" width="28" height="28">Getset</h1>
+  <h1 class="app-title"><button id="btn-home" class="app-title__btn" type="button" aria-label="Getset — 처음부터 다시 시작"><img class="app-title__mark" src="icons/icon.svg" alt="" width="28" height="28">Getset</button></h1>
   <div class="header-actions">
     <button id="btn-share" class="icon-btn" type="button" aria-label="Getset 친구에게 공유하기">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>
@@ -70,18 +70,25 @@
     </div>
   </div>
 
-  <!-- 1) 가장 먼저: 어디 가세요? -->
-  <button id="btn-add" class="where" type="button">
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-    <span class="where__text">어디 가세요?</span>
-    <span class="where__plus" aria-hidden="true">+</span>
-  </button>
-
-  <!-- 2) 출발 정보는 한 줄로 (누르면 바꾸기) -->
-  <button id="trip-line" class="trip-line" type="button" aria-label="날짜·출발·시각·이동 바꾸기">
-    <span id="trip-line-text" class="trip-line__text"></span>
-    <span class="trip-line__edit">바꾸기</span>
-  </button>
+  <!-- ① 언제 → ② 어디 : 첫 화면에서 순서대로 보이게 -->
+  <section class="steps" aria-label="일정 만들기">
+    <div class="step">
+      <p class="step__label"><span class="step__num">1</span>언제 가요?</p>
+      <div id="day-chips" class="day-chips" role="group" aria-label="날짜 고르기"></div>
+    </div>
+    <div class="step">
+      <p class="step__label"><span class="step__num">2</span>어디 가요?</p>
+      <button id="btn-add" class="where" type="button">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <span class="where__text">갈 곳 찾기</span>
+        <span class="where__plus" aria-hidden="true">+</span>
+      </button>
+    </div>
+    <button id="trip-line" class="trip-line" type="button" aria-label="출발지·출발 시각·이동 수단 바꾸기">
+      <span id="trip-line-text" class="trip-line__text"></span>
+      <span class="trip-line__edit">바꾸기</span>
+    </button>
+  </section>
 
   <!-- 볼일 -->
   <section class="stops" aria-labelledby="stops-heading">
@@ -93,10 +100,11 @@
     <p id="stops-hint" class="stops__hint" hidden>넣은 순서는 상관없어요 · 시간은 −/+로, 예약 시간은 눌러서</p>
     <ul id="stop-list" class="stop-list"></ul>
 
-    <div id="stops-empty" class="stops-empty">
-      <p class="stops-empty__title">갈 곳만 넣으세요</p>
-      <p class="stops-empty__desc">은행, 병원, 마트처럼 갈 곳만 넣으면<br><b>어디부터 갈지</b>와 <b>실제로 끝나는 시각</b>을 정리해 드려요.<br><span class="muted">주차·엘리베이터·접수 시간까지 알아서 챙겨요</span></p>
-    </div>
+    <button id="stops-empty" class="empty-add" type="button">
+      <span class="empty-add__plus" aria-hidden="true">+</span>
+      <span class="empty-add__title">여기를 눌러<br>갈 곳을 넣어요</span>
+      <span class="empty-add__desc">은행, 병원, 마트… 갈 곳만 넣으면<br><b>어디부터 갈지</b>와 <b>끝나는 시각</b>을 알려 줘요</span>
+    </button>
 
     <div class="mini-row">
       <button id="btn-home-visit" class="mini-btn" type="button">
@@ -116,7 +124,8 @@
 
 <footer class="app-footer">
   <button id="btn-plan" class="btn-plan" type="button" disabled>
-    <span class="btn-plan__label">순서 추천받기</span>
+    <span class="step__num step__num--light" aria-hidden="true">3</span>
+    <span id="plan-label" class="btn-plan__label">순서 추천받기</span>
     <span id="plan-meta" class="btn-plan__meta"></span>
   </button>
 </footer>
