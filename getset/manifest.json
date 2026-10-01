@@ -1,0 +1,20 @@
+{
+  "name": "Getset — 뭐부터 할지, 바로 정리",
+  "short_name": "Getset",
+  "description": "볼일이 몰린 날, 갈 곳만 넣으면 동선 순서와 실제로 끝나는 시각까지 정리해 주는 도구",
+  "id": "/getset/",
+  "start_url": "/getset/?source=pwa",
+  "scope": "/getset/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F1E8",
+  "theme_color": "#1F4D3A",
+  "lang": "ko-KR",
+  "dir": "ltr",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

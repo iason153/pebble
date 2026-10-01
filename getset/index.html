@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Getset — 뭐부터 할지, 바로 정리</title>
+<meta name="description" content="볼일이 몰린 날, 할 일만 넣으면 동선 순서와 현실적인 시간표, 실제로 끝나는 시각까지 정리해 드려요. 로그인 없이 무료.">
+<!-- ⚠️ 공개 전 테스트 기간: 검색엔진에 노출하지 않음. 정식 공개(6단계) 때 이 줄을 지우고 sitemap에 추가 -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="canonical" href="https://pebbleitgo.com/getset/">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F4D3A">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="icons/favicon.ico" sizes="48x48">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Getset">
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1 class="app-title"><img class="app-title__mark" src="icons/icon.svg" alt="" width="28" height="28">Getset</h1>
+  <div class="header-actions">
+    <button id="btn-share" class="icon-btn" type="button" aria-label="Getset 친구에게 공유하기">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>
+    </button>
+    <button id="btn-install" class="install-btn" type="button" hidden>설치</button>
+  </div>
+</header>
+
+<main class="app-main">
+
+  <!-- 카카오톡·네이버 앱 안 브라우저 안내 -->
+  <div id="inapp-banner" class="inapp-banner" role="note" hidden>
+    <p class="inapp-banner__text"><b id="inapp-name">카카오톡</b> 안에서 열렸어요.<br><span id="inapp-target">크롬</span>에서 열어야 설치돼요.</p>
+    <button id="btn-inapp-open" class="inapp-banner__btn" type="button">크롬으로 열기</button>
+    <button id="btn-inapp-close" class="inapp-banner__close" type="button" aria-label="안내 닫기">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+
+  <!-- 지난 날짜 계획 복원 안내 -->
+  <div id="restore-banner" class="restore-banner" role="region" aria-label="지난 계획" hidden>
+    <p class="restore-banner__text"><b id="restore-date">어제</b> 넣어 둔 볼일 <b id="restore-count">0개</b>가 남아 있어요.</p>
+    <div class="restore-banner__actions">
+      <button id="btn-restore-keep" class="btn-soft" type="button">이어서 쓰기</button>
+      <button id="btn-restore-new" class="btn-line" type="button">새로 시작</button>
+    </div>
+  </div>
+
+  <!-- 출발 정보 -->
+  <section class="trip-card" aria-label="출발 정보">
+    <button id="row-start" class="trip-row" type="button">
+      <span class="trip-row__label">출발</span>
+      <span class="trip-row__value">
+        <span id="start-name" class="trip-row__main">출발지를 정해 주세요</span>
+        <span id="start-sub" class="trip-row__sub" hidden></span>
+      </span>
+      <svg class="trip-row__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+    </button>
+
+    <div class="trip-row trip-row--static">
+      <span class="trip-row__label" id="time-label">시각</span>
+      <div class="seg seg--time" role="radiogroup" aria-labelledby="time-label">
+        <button id="time-now" class="seg__btn" type="button" role="radio" aria-checked="true">지금 <span id="now-clock" class="seg__clock"></span></button>
+        <label class="seg__btn seg__btn--input" id="time-set-wrap">
+          <span class="sr-only">출발 시각 직접 정하기</span>
+          <input id="time-input" type="time" step="300" aria-label="출발 시각">
+        </label>
+      </div>
+    </div>
+
+    <button id="row-end" class="trip-row" type="button">
+      <span class="trip-row__label">끝</span>
+      <span class="trip-row__value">
+        <span id="end-name" class="trip-row__main">출발지로 돌아오기</span>
+        <span id="end-sub" class="trip-row__sub" hidden></span>
+      </span>
+      <svg class="trip-row__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+    </button>
+
+    <div class="trip-row trip-row--static trip-row--modes">
+      <span class="trip-row__label" id="mode-label">이동</span>
+      <div id="day-mode" class="modes" role="radiogroup" aria-labelledby="mode-label"></div>
+    </div>
+  </section>
+
+  <!-- 오늘 볼일 -->
+  <section class="stops" aria-labelledby="stops-heading">
+    <div class="stops__head">
+      <h2 id="stops-heading" class="stops__title">오늘 볼일</h2>
+      <span id="stops-count" class="stops__count" hidden></span>
+      <button id="btn-clear" class="text-btn" type="button" hidden>전체 비우기</button>
+    </div>
+    <p id="stops-hint" class="stops__hint" hidden>넣은 순서는 상관없어요. 순서는 Getset이 정해 드려요.</p>
+    <ul id="stop-list" class="stop-list"></ul>
+
+    <div id="stops-empty" class="stops-empty">
+      <p class="stops-empty__title">오늘 들를 곳을 넣어 보세요</p>
+      <p class="stops-empty__desc">은행, 병원, 마트처럼 갈 곳만 넣으면<br><b>어디부터 갈지</b>와 <b>실제로 끝나는 시각</b>을 정리해 드려요.</p>
+    </div>
+
+    <button id="btn-add" class="add-btn" type="button">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      볼일 추가
+    </button>
+  </section>
+
+  <footer class="app-about">
+    <p><b>Getset</b>은 볼일이 몰린 날, 갈 곳만 넣으면 동선 순서와 현실적인 시간표를 정리해 주는 무료 도구예요. 주차·걸어가기·대기처럼 내비가 계산하지 않는 시간까지 챙겨요. 로그인 없이 쓰고, 넣은 내용은 이 기기에만 저장돼요.</p>
+    <p><a href="/">Pebble</a></p>
+  </footer>
+</main>
+
+<footer class="app-footer">
+  <button id="btn-plan" class="btn-plan" type="button" disabled>
+    <span class="btn-plan__label">순서 추천받기</span>
+    <span id="plan-meta" class="btn-plan__meta"></span>
+  </button>
+</footer>
+
+<!-- 장소 찾기 시트 (볼일·출발지·끝나는 곳 공용) -->
+<div id="place-sheet" class="sheet sheet--tall" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="place-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="place-sheet-title" class="sheet__title">어디에 가세요?</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <form id="place-form" class="search" role="search" autocomplete="off" novalidate>
+      <svg class="search__icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="place-input" type="search" enterkeyhint="search" placeholder="장소 이름 (예: 군포시청)" aria-label="장소 검색">
+      <button id="place-clear" class="search__clear" type="button" aria-label="지우기" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M7 7l10 10M17 7 7 17"/></svg>
+      </button>
+    </form>
+    <div id="place-quick" class="quick"></div>
+    <p id="place-status" class="place-status" role="status"></p>
+    <ul id="place-results" class="results"></ul>
+  </div>
+</div>
+
+<!-- 볼일 상세 시트 (추가·수정) -->
+<div id="stop-sheet" class="sheet sheet--tall" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="stop-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="stop-sheet-title" class="sheet__title">볼일 추가</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet__scroll">
+      <div class="picked">
+        <div class="picked__text">
+          <strong id="picked-name" class="picked__name"></strong>
+          <span id="picked-addr" class="picked__addr"></span>
+        </div>
+        <button id="btn-repick" class="btn-line btn-line--sm" type="button">바꾸기</button>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="kind-select">어떤 곳인가요?</label>
+        <select id="kind-select" class="select"></select>
+        <p id="kind-note" class="field__note"></p>
+      </div>
+
+      <div class="field">
+        <span class="field__label" id="stay-label">머무는 시간</span>
+        <div id="stay-chips" class="chips" role="radiogroup" aria-labelledby="stay-label"></div>
+        <div id="stay-custom" class="stay-custom" hidden>
+          <input id="stay-input" class="num-input" type="number" inputmode="numeric" min="1" max="600" step="5" aria-label="머무는 시간(분)">
+          <span>분</span>
+        </div>
+        <p class="field__note">볼일 보는 시간이에요. 주차·걸어가기·대기 시간은 Getset이 따로 챙겨요.</p>
+      </div>
+
+      <details id="stop-more" class="more">
+        <summary class="more__summary">
+          <span>약속 시각 · 순서 · 이동수단</span>
+          <span id="more-badge" class="more__badge" hidden></span>
+          <svg class="more__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+        </summary>
+
+        <div class="field">
+          <label class="toggle-row">
+            <input id="fixed-on" type="checkbox">
+            <span class="toggle-row__text"><b>예약·약속 시각</b><small>이 시각에 맞춰 도착해요 (병원 예약, 미팅)</small></span>
+          </label>
+          <input id="fixed-time" class="time-input" type="time" step="300" aria-label="예약 시각" hidden>
+        </div>
+
+        <div class="field">
+          <label class="toggle-row">
+            <input id="deadline-on" type="checkbox">
+            <span class="toggle-row__text"><b>문 닫는 시각</b><small>이 시각 전에 볼일을 끝내야 해요 (은행, 관공서)</small></span>
+          </label>
+          <input id="deadline-time" class="time-input" type="time" step="300" aria-label="문 닫는 시각" hidden>
+        </div>
+
+        <div class="field">
+          <span class="field__label" id="order-label">순서</span>
+          <div id="order-seg" class="seg seg--3" role="radiogroup" aria-labelledby="order-label">
+            <button class="seg__btn" type="button" role="radio" data-order="any">상관없음</button>
+            <button class="seg__btn" type="button" role="radio" data-order="first">먼저</button>
+            <button class="seg__btn" type="button" role="radio" data-order="last">마지막에</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field__label" id="stop-mode-label">여기까지 가는 방법</span>
+          <div id="stop-mode" class="modes modes--with-default" role="radiogroup" aria-labelledby="stop-mode-label"></div>
+        </div>
+      </details>
+    </div>
+    <p id="stop-error" class="form-error" role="alert" hidden></p>
+    <div class="sheet__actions">
+      <button id="btn-stop-delete" class="sheet__btn sheet__btn--danger" type="button" hidden>삭제</button>
+      <button id="btn-stop-save" class="sheet__btn sheet__btn--primary" type="button">추가하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 끝나는 곳 시트 -->
+<div id="end-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="end-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <h2 id="end-sheet-title" class="sheet__title">어디서 끝나요?</h2>
+    <p class="sheet__desc">마지막 볼일 다음에 어디로 가는지에 따라 순서가 달라져요.</p>
+    <div class="options" role="radiogroup" aria-labelledby="end-sheet-title">
+      <button class="option" type="button" role="radio" data-end="return"><b>출발지로 돌아오기</b><small>집에서 나왔다가 집으로 와요</small></button>
+      <button class="option" type="button" role="radio" data-end="place"><b>다른 곳에서 끝나요</b><small id="end-place-hint">회사·약속 장소 등 정할 수 있어요</small></button>
+      <button class="option" type="button" role="radio" data-end="none"><b>상관없어요</b><small>마지막 볼일 장소에서 끝</small></button>
+    </div>
+  </div>
+</div>
+
+<!-- 설치 안내 시트 -->
+<div id="install-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="install-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <h2 id="install-sheet-title" class="sheet__title">홈 화면에 Getset 설치하기</h2>
+    <p id="install-sheet-desc" class="sheet__desc"></p>
+    <div id="install-sheet-body" class="install-body"></div>
+    <div class="sheet__actions">
+      <button id="btn-install-primary" class="sheet__btn sheet__btn--primary" type="button" hidden></button>
+      <button class="sheet__btn" type="button" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden>
+  <span id="toast-msg" class="toast__msg"></span>
+  <button id="toast-action" class="toast__action" type="button" hidden></button>
+</div>
+<p id="sr-status" class="sr-only" aria-live="polite"></p>
+
+<script src="js/config.js"></script>
+<script src="js/analytics.js"></script>
+<script src="js/share.js"></script>
+<script src="js/kinds.js"></script>
+<script src="js/store.js"></script>
+<script src="js/places.js"></script>
+<script src="js/install.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
