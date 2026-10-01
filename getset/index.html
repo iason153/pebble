@@ -68,7 +68,7 @@
     <button id="row-time" class="trip-row" type="button">
       <span class="trip-row__label">시각</span>
       <span class="trip-row__value">
-        <span id="time-name" class="trip-row__main">지금 바로 출발</span>
+        <span id="time-name" class="trip-row__main">지금 출발</span>
         <span id="time-sub" class="trip-row__sub"></span>
       </span>
       <svg class="trip-row__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
@@ -253,6 +253,23 @@
   </div>
 </div>
 
+<!-- 추천 결과 시트 -->
+<div id="result-sheet" class="sheet sheet--tall" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="result-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="result-title" class="sheet__title">이 순서로 가면 돼요</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="result-tabs" class="tabs" role="tablist" hidden></div>
+    <div id="result-body" class="sheet__scroll"></div>
+    <div class="sheet__actions">
+      <button id="btn-go" class="sheet__btn sheet__btn--primary" type="button">이대로 출발</button>
+    </div>
+  </div>
+</div>
+
 <!-- 끝나는 곳 시트 -->
 <div id="end-sheet" class="sheet" hidden>
   <div class="sheet__backdrop" data-close></div>
@@ -295,6 +312,7 @@
 <script src="js/kinds.js"></script>
 <script src="js/store.js"></script>
 <script src="js/places.js"></script>
+<script src="js/engine.js"></script>
 <script src="js/install.js"></script>
 <script src="js/app.js"></script>
 </body>
