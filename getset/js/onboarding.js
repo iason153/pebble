@@ -10,6 +10,9 @@ window.GetsetOnboard = (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const ALL = ['welcome', 'home', 'homePark', 'places', 'mode', 'consent'];
+  // 처음 실행은 집만 묻는다 (2026-10-01 단순화). 회사·이동수단·여유·기록 동의는 필요한 순간이나 "내 정보"에서
+  const FIRST = ['home', 'homePark'];
+  let first = false;
   const MODE_LABEL = { car: '자동차', walk: '걸어서', bike: '자전거', transit: '대중교통' };
 
   let P = null; // 고치는 중인 프로필
@@ -63,7 +66,7 @@ window.GetsetOnboard = (function () {
     const next = $('ob-next');
     const back = $('ob-back');
     back.hidden = idx === 0 || !!sub;
-    $('ob-skip').textContent = steps.length === ALL.length ? '나중에 할게요' : '닫기';
+    $('ob-skip').textContent = first || steps.length === ALL.length ? '나중에 할게요' : '닫기';
     $('ob-dots').innerHTML = steps.length > 1 ? steps.map((_, i) => `<span class="${i === idx ? 'is-on' : ''}"></span>`).join('') : '';
     next.hidden = false;
     next.disabled = false;
@@ -77,7 +80,8 @@ window.GetsetOnboard = (function () {
         <p class="ob-desc">주차 자리 찾기·엘리베이터·접수처럼 내비가 빼먹는 시간까지 챙기려면, 처음 한 번만 몇 가지 알려 주세요. <b>1분이면 돼요.</b></p></div>`;
       next.textContent = '시작하기';
     } else if (step === 'home') {
-      body.innerHTML = `<h2 class="ob-title">집은 어디예요?</h2>
+      body.innerHTML = `${first ? `<div class="ob-intro"><img src="icons/icon.svg" alt="" width="44" height="44"><p>갈 곳만 넣으면 <b>어디부터 갈지</b>와<br><b>실제로 끝나는 시각</b>을 정리해 드려요.</p></div>` : ''}
+        <h2 class="ob-title">집은 어디예요?</h2>
         <p class="ob-desc">출발지로 쓰고, 중간에 집에 들를 때도 써요. 이 기기에만 저장돼요.</p>
         <button class="quick__btn ob-here" type="button" data-ob-here><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>지금 여기가 집이에요</button>
         ${searchBox('주소(고산로 600) 또는 아파트 이름')}
@@ -91,8 +95,8 @@ window.GetsetOnboard = (function () {
       const l = P.home && P.home.leaveMin != null ? P.home.leaveMin : d.l;
       body.innerHTML = `<h2 class="ob-title">집에 차를 어떻게 세워요?</h2>
         ${parkingOptions(park, true)}
-        ${park === 'none' ? '' : stepper('ha', '주차하고 집 안까지 보통', a) + stepper('hl', '집에서 나와 차로 출발까지 보통', l)}`;
-      next.textContent = steps.length === 2 && idx === 1 ? '저장' : '다음';
+        ${park === 'none' ? '' : `<details class="ob-more"><summary>주차하고 집 안까지 몇 분인지 직접 정하기</summary>${stepper('ha', '주차하고 집 안까지 보통', a)}${stepper('hl', '집에서 나와 차로 출발까지 보통', l)}</details>`}`;
+      next.textContent = idx === steps.length - 1 ? (first ? '시작하기' : '저장') : '다음';
     } else if (step === 'places') {
       const list = P.places;
       body.innerHTML = `<h2 class="ob-title">자주 가는 곳이 있나요?</h2>
@@ -273,7 +277,7 @@ window.GetsetOnboard = (function () {
         render();
         return;
       }
-      finish(steps.length === ALL.length); // 처음 실행에서 "나중에" = 지금까지 입력한 것만 저장
+      finish(first || steps.length === ALL.length); // 처음 실행에서 "나중에" = 지금까지 입력한 것만 저장
     });
   }
 
@@ -304,7 +308,8 @@ window.GetsetOnboard = (function () {
       wired = true;
     }
     P = window.GetsetProfile.load();
-    steps = opts.steps || ALL;
+    first = !!opts.first;
+    steps = opts.steps || (first ? FIRST : ALL);
     idx = 0;
     sub = null;
     done = opts.onDone || null;

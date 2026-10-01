@@ -22,7 +22,6 @@
   };
 
   const MAX_STOPS = 12; // 설계문서 §6-2: 13곳 이상은 v1에서 제한
-  const STAY_CHIPS = [10, 30, 60, 90, 120, 180];
   const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 
   const ICON = {
@@ -89,7 +88,7 @@
       this.wireRun();
       this.render();
       this.showNotice();
-      if (!this.profile.onboarded) setTimeout(() => this.openOnboarding(), 300);
+      if (!this.profile.onboarded) setTimeout(() => this.openOnboarding(null, null, true), 300);
       // 값 파일(model.json)을 다 읽으면 이름·시간을 다시 그림. 관리자 시험 값이면 알림 띠 표시
       const onModel = () => {
         this.render();
@@ -101,7 +100,10 @@
         Kinds.clearOverride();
         window.location.reload();
       });
-      setInterval(() => this.renderTime(), 30 * 1000);
+      setInterval(() => {
+        this.renderTime();
+        this.renderTripLine();
+      }, 30 * 1000);
       this.registerServiceWorker();
     },
 
@@ -262,6 +264,7 @@
     // 출발 정보 (출발지 · 시각 · 끝나는 곳 · 그날 기본 이동수단)
     // =================================================================
     wireTrip() {
+      $('trip-line').addEventListener('click', () => this.openSheet($('trip-sheet')));
       $('row-start').addEventListener('click', () => this.openPlaceSheet('start'));
       $('row-end').addEventListener('click', () => this.openEndSheet());
       $('row-time').addEventListener('click', () => this.openTimeSheet());
@@ -313,6 +316,17 @@
     nowHHMM() {
       const d = new Date();
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    },
+
+    /** 메인의 한 줄: "오늘 · 집에서 · 오후 2:30 출발 · 자동차" */
+    renderTripLine() {
+      const rel = this.relDay(this.date);
+      const day = rel === '오늘' ? '오늘' : rel || this.fullDay(this.date);
+      const st = this.plan.start;
+      const from = !st ? '<b class="is-empty">출발지 정하기</b>' : this.isHome(st) ? '집에서' : `${esc(st.name.length > 10 ? st.name.slice(0, 9) + '…' : st.name)}에서`;
+      const t = this.plan.startTime;
+      const when = t === 'now' && this.isToday() ? '지금 출발' : `${fmtTime(t === 'now' ? '09:00' : t)} 출발`;
+      $('trip-line-text').innerHTML = `<b>${day}</b> · ${from} · ${when} · ${MODE_LABEL[this.plan.mode]}`;
     },
 
     renderTime() {
@@ -378,6 +392,7 @@
       this.renderDate();
       this.renderTime();
       this.setModeChecked($('day-mode'), this.plan.mode);
+      this.renderTripLine();
     },
 
     // =================================================================
@@ -394,6 +409,12 @@
         this.openPlaceSheet('stop');
       });
       $('stop-list').addEventListener('click', (e) => {
+        const st = e.target.closest('[data-stay-step]');
+        if (st) {
+          const [uid, dir] = st.dataset.stayStep.split('|');
+          this.stepStay(uid, Number(dir));
+          return;
+        }
         const b = e.target.closest('[data-uid]');
         if (b) this.openStopSheet(this.plan.stops.find((s) => s.uid === b.dataset.uid));
       });
@@ -423,32 +444,90 @@
 
     renderStops() {
       const stops = this.plan.stops;
+      const minus = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 12h12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>';
+      const plus = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 6v12M6 12h12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>';
       $('stop-list').innerHTML = stops
         .map((s) => {
           const kind = Kinds.get(s.kind);
-          return `<li>
-            <button class="stop" type="button" data-uid="${s.uid}" aria-label="${esc(s.place.name)} 고치기">
-              <span class="stop__body">
-                <span class="stop__kind">${esc(kind.label)}</span>
-                <span class="stop__name">${esc(s.place.name)}</span>
-                <span class="stop__meta">${this.stopMeta(s)}</span>
-              </span>
-              <svg class="stop__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+          const tags = this.stopTags(s);
+          return `<li class="stop2${s.kind === 'home' ? ' stop2--home' : ''}">
+            <button class="stop2__main" type="button" data-uid="${s.uid}" aria-label="${esc(s.place.name)} 고치기">
+              <span class="stop2__kind">${esc(kind.label)}</span>
+              <span class="stop2__name">${esc(s.place.name)}</span>
+              ${tags ? `<span class="stop2__tags">${tags}</span>` : ''}
             </button>
+            <div class="stop2__stay" role="group" aria-label="${esc(s.place.name)} 머무는 시간">
+              <button class="stop2__btn" type="button" data-stay-step="${s.uid}|-1" aria-label="10분 줄이기"${s.stay <= Store.STAY_MIN ? ' disabled' : ''}>${minus}</button>
+              <span class="stop2__min">${fmtMin(s.stay)}</span>
+              <button class="stop2__btn" type="button" data-stay-step="${s.uid}|1" aria-label="10분 늘리기"${s.stay >= Store.STAY_MAX ? ' disabled' : ''}>${plus}</button>
+            </div>
           </li>`;
         })
         .join('');
       const n = stops.length;
       $('stops-empty').hidden = n > 0;
-      $('stops-hint').hidden = n < 2;
+      $('stops-hint').hidden = n < 1;
       $('stops-count').hidden = n === 0;
       $('stops-count').textContent = `${n}개`;
       $('btn-clear').hidden = n === 0;
-      $('btn-add').classList.toggle('add-btn--first', n === 0);
       $('btn-add').hidden = n >= MAX_STOPS;
       $('btn-plan').disabled = n === 0;
       $('btn-routine-save').hidden = n < 2;
+      $('btn-routine-load').hidden = n >= 2 || !this.loadRoutines().length;
       $('plan-meta').textContent = n ? `볼일 ${n}개` : '';
+    },
+
+    /** 목록 카드에 붙는 작은 꼬리표 (사용자가 직접 정한 것만) */
+    stopTags(s) {
+      const t = [];
+      if (s.fixedAt) t.push(`<span class="tag tag--fixed">예약 ${fmtTime(s.fixedAt)}</span>`);
+      if (s.prefAt) t.push(`<span class="tag">${fmtTime(s.prefAt)}쯤</span>`);
+      if (s.deadline) t.push(`<span class="tag">${fmtTime(s.deadline)}까지</span>`);
+      if (s.order === 'first') t.push('<span class="tag">제일 먼저</span>');
+      if (s.order === 'last') t.push('<span class="tag">제일 마지막</span>');
+      if (s.mode && s.mode !== this.plan.mode) t.push(`<span class="tag tag--mode">${ICON[s.mode]}${MODE_LABEL[s.mode]}</span>`);
+      return t.join('');
+    },
+
+    quickAdd(place) {
+      const kind = this.kindFor(place);
+      const my = Profile.findMy(this.profile, place);
+      const stop = Store.cleanStop({
+        place,
+        kind,
+        stay: Kinds.get(kind).stay,
+        order: 'any',
+        mode: null,
+        parking: my && my.parking !== 'auto' && kind !== 'home' ? my.parking : 'auto',
+      });
+      if (!stop) return;
+      const hint = Learn.stayHint(Profile.placeKey(place));
+      if (hint) stop.stay = Math.max(Store.STAY_MIN, Math.round(hint.median / 5) * 5);
+      this.plan.stops.push(stop);
+      this.save();
+      this.render();
+      track('stop_add', { category: stop.kind, mode: this.plan.mode, has_fixed: false, has_pref: false, has_deadline: false, parking: stop.parking, quick: true });
+      // 영업시간 걸리는 곳이면 그 자리에서 알려 줌 (예: 토요일 은행)
+      const hrs = this.hoursFor(stop.kind, this.date);
+      const msg = hrs && hrs.closed ? `${place.name}: ${hrs.closedNote}` : `${place.name} 넣었어요 · ${fmtMin(stop.stay)}`;
+      this.showToast(msg, { actionLabel: '예약 시간 등', duration: 4500, onAction: () => this.openStopSheet(this.plan.stops.find((x) => x.uid === stop.uid)) });
+      const li = document.querySelector(`#stop-list [data-uid="${stop.uid}"]`);
+      if (li) {
+        li.closest('li').classList.add('is-new');
+        li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    },
+
+    /** 목록에서 바로 머무는 시간 조절: 20분까지 5분, 그 위로 10분씩 */
+    stepStay(uid, dir) {
+      const i = this.plan.stops.findIndex((x) => x.uid === uid);
+      if (i < 0) return;
+      const st = this.plan.stops[i];
+      const v = st.stay;
+      const d = v < 20 || (v === 20 && dir < 0) ? 5 : 10;
+      st.stay = Math.min(Store.STAY_MAX, Math.max(Store.STAY_MIN, v + dir * d));
+      this.save();
+      this.renderStops();
     },
 
     render() {
@@ -650,6 +729,7 @@
           <p class="summary__label">${rel === '오늘' ? '' : `${rel ? rel + ' · ' : ''}${this.fullDay(this.date)} · `}볼일이 모두 끝나는 시각</p>
           <p class="summary__time">${fmt(sim.doneAt)}</p>
           <p class="summary__meta">${fmt(input.startMin)} 출발 · ${stops.length}곳${sim.endLeg ? ` · ${fmt(sim.endLeg.arrive)} ${endLabel}` : ''}</p>
+          <p class="summary__incl">주차·엘리베이터·접수 시간까지 넣었어요${this.learnedCount(sim) ? ` · 내 기록 ${this.learnedCount(sim)}곳 반영` : ''}</p>
           ${latest ? `<p class="summary__slack">늦어도 ${fmt(latest)}엔 출발해야 시간 약속을 지켜요</p>` : ''}
         </section>`;
 
@@ -664,6 +744,7 @@
       const why = opt.reasons.length ? `<p class="why-line">${esc(opt.reasons[0])}</p>` : '';
       this.currentSuggestions = this.suggestionsFor(input, sim);
       const sug = this.currentSuggestions
+        .slice(0, 1)
         .map(
           (g, i) => `<section class="sug"><p class="sug__text">${esc(g.text)}</p><div class="sug__actions">${g.actions
             .map((a, j) => `<button class="${j === 0 ? 'btn-soft' : 'btn-line'} btn-line--sm" type="button" data-sug="${i}|${j}">${esc(a.label)}</button>`)
@@ -687,7 +768,8 @@
         const dl = Math.min(s.deadline != null ? s.deadline : Infinity, s.closeAt != null ? s.closeAt : Infinity);
         if (dl !== Infinity) {
           const over = row.finish - dl;
-          badges.push(over > 0 ? `<span class="badge badge--late">${t(dl)}까지 · ${over}분 늦음</span>` : `<span class="badge badge--ok">✓ ${t(dl)} 전</span>`);
+          if (over > 0) badges.push(`<span class="badge badge--late">${t(dl)}까지 · ${over}분 늦음</span>`);
+          else if (s.deadline != null) badges.push(`<span class="badge badge--ok">✓ ${t(s.deadline)} 전</span>`);
         }
         if (s.closed) badges.push(`<span class="badge badge--late">${esc(s.closedNote)}</span>`);
         const hasNext = p + 1 < sim.rows.length || sim.endLeg;
@@ -699,7 +781,7 @@
               <span class="card__body">
                 <span class="card__name">${esc(s.place.name)}</span>
                 <span class="card__time">${t(row.begin)} ~ ${t(row.finish)}<small>${fmtMin(s.stay)}</small></span>
-                <span class="card__sub">${t(row.arrive)} 도착${row.arriveOH ? ` · 들어가기까지 ${row.arriveOH}분` : ''}${row.wait ? ` · ${fmtMin(row.wait)} 비어요` : ''}${learned ? ' · 내 기록' : ''}</span>
+                ${row.wait >= 15 ? `<span class="card__sub">${fmtMin(row.wait)} 일찍 도착해요</span>` : ''}
                 ${badges.length ? `<span class="card__badges">${badges.join('')}</span>` : ''}
               </span>
               <svg class="card__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
@@ -708,7 +790,11 @@
               <p><b>${esc(kind.label)}</b>${row.mode === 'car' && row.parking && s.kind !== 'home' ? ` · ${esc(Kinds.PARKING[row.parking].label)}` : ''}</p>
               ${row.arriveOH ? `<p>도착 후 ${row.arriveOH}분: ${partsText(row.arriveParts || [])}</p>` : ''}
               ${hasNext && row.leaveOH ? `<p>끝나고 출발까지 ${row.leaveOH}분: ${partsText(row.leaveParts || [])}</p>` : ''}
-              <a class="map-link" href="${this.mapUrl(s.place)}" target="_blank" rel="noopener">카카오맵에서 보기</a>
+              <p>${t(row.arrive)} 도착${learned ? ' · 내 기록 반영' : ''}</p>
+              <div class="card__fix">
+                <button class="btn-line btn-line--sm" type="button" data-fix="${s.uid}">이 곳 고치기</button>
+                <a class="map-link" href="${this.mapUrl(s.place)}" target="_blank" rel="noopener">카카오맵</a>
+              </div>
             </div>
           </li>`);
       });
@@ -722,6 +808,10 @@
 
       $('result-title').textContent = opt.warnings.length ? '가장 나은 순서예요' : '이 순서로 가면 돼요';
       $('result-body').innerHTML = head + warn + why + sug + `<ol class="plan-list">${items.join('')}</ol>` + note;
+    },
+
+    learnedCount(sim) {
+      return sim.rows.filter((r) => (r.arriveParts || []).some(([l]) => l.startsWith('내 기록'))).length;
     },
 
     mapUrl(place) {
@@ -821,7 +911,9 @@
           });
         }
       }
-      return out.slice(0, 2);
+      // 보여 줄 순서: 집 들르기(쉬는 시간이 생김, 점심도 겸할 수 있음) → 식사 → 마트
+      const rank = { home: 0, meal: 1, mart: 2 };
+      return out.sort((a, b) => rank[a.type] - rank[b.type]).slice(0, 2);
     },
 
     hhmm(min) {
@@ -899,6 +991,15 @@
           const d = ex.parentElement.querySelector('.card__detail');
           d.hidden = !d.hidden;
           ex.setAttribute('aria-expanded', String(!d.hidden));
+          return;
+        }
+        const fx = e.target.closest('[data-fix]');
+        if (fx) {
+          const stop = this.plan.stops.find((x) => x.uid === fx.dataset.fix);
+          if (stop) {
+            this.fixFromResult = true;
+            this.openStopSheet(stop, { precise: true });
+          }
           return;
         }
         const sg = e.target.closest('[data-sug]');
@@ -1090,6 +1191,7 @@
         body.innerHTML = `<section class="summary"><p class="summary__label">실제로 끝난 시각</p><p class="summary__time">${endMin != null ? fmt(endMin) : '—'}</p>
           <p class="summary__meta">처음 계산: ${fmt(run.doneAt)}${endMin != null ? ` · ${endMin - run.doneAt > 0 ? endMin - run.doneAt + '분 늦게' : endMin - run.doneAt < 0 ? run.doneAt - endMin + '분 일찍' : '딱 맞게'}` : ''}</p></section>
           <p class="why-line">${n}곳의 기록이 다음 계산부터 반영돼요. 쓸수록 더 정확해져요.</p>
+          ${this.profile.consent === null ? `<section class="sug"><p class="sug__text">이 기록을 다른 사람들 계산에도 보탤까요?<br><small class="muted">가게·기관의 주차·대기 시간만 익명으로 보내요. 집·회사·동선은 안 보내요.</small></p><div class="sug__actions"><button class="btn-soft btn-line--sm" type="button" data-run="consent-yes">보탤게요</button><button class="btn-line btn-line--sm" type="button" data-run="consent-no">안 보낼래요</button></div></section>` : ''}
           <div class="run-end">
             <button class="btn-soft" type="button" data-run="feedback">어땠는지 의견 보내기</button>
             <button class="btn-line" type="button" data-run="close">일정 마치기</button>
@@ -1151,6 +1253,13 @@
           this.renderRun();
         } else if (act === 'replan') this.replan();
         else if (act === 'feedback') this.openFeedback('progress');
+        else if (act === 'consent-yes' || act === 'consent-no') {
+          this.profile.consent = act === 'consent-yes';
+          Profile.save(this.profile);
+          track('consent_set', { value: this.profile.consent, from: 'run_end' });
+          this.renderRun();
+          this.showToast(this.profile.consent ? '고마워요! 다음 기록부터 함께 보태요' : '알겠어요. 기록은 이 폰에서만 써요');
+        }
         else if (act === 'close') {
           if (this.runCurrent() && !confirm('일정을 그만할까요? 지금까지 기록은 남아요.')) return;
           run.done = true;
@@ -1257,9 +1366,10 @@
     // =================================================================
     // 내 정보 · 첫 실행 · 루틴 · 의견
     // =================================================================
-    openOnboarding(steps, after) {
+    openOnboarding(steps, after, first) {
       window.GetsetOnboard.open({
         steps,
+        first,
         onDone: (p, info) => {
           this.profile = Profile.load();
           this.syncHome();
@@ -1303,10 +1413,10 @@
       $('btn-home-visit').addEventListener('click', () => {
         if (!this.profile.home || !this.profile.home.place) {
           this.showToast('먼저 집을 알려 주세요');
-          this.openOnboarding(['home', 'homePark'], () => this.profile.home && this.openStopSheet(null, { place: this.profile.home.place }));
+          this.openOnboarding(['home', 'homePark'], () => this.profile.home && this.quickAdd(this.profile.home.place));
           return;
         }
-        this.openStopSheet(null, { place: this.profile.home.place });
+        this.quickAdd(this.profile.home.place);
       });
       $('btn-routine-load').addEventListener('click', () => this.openRoutines());
       $('btn-routine-save').addEventListener('click', () => this.saveRoutine());
@@ -1598,8 +1708,14 @@
         this.savePlaces();
       }
 
+      if (this.pickMode === 'stop' && !this.draft) {
+        // 새 볼일: 고르면 바로 목록에 (보통 시간·내 장소 주차로). 고치고 싶으면 목록에서 −/+ 또는 눌러서
+        this.closeSheet($('place-sheet'));
+        this.quickAdd(clean);
+        return;
+      }
       if (this.pickMode === 'stop') {
-        // 장소 → 상세 입력으로 이어서 (뒤로가기 한 번이면 목록으로)
+        // 고치는 중에 장소만 바꾼 경우
         this.hideSheetNow($('place-sheet'));
         if (this.draft && this.editingUid) {
           this.draft.place = clean;
@@ -1663,12 +1779,6 @@
       };
       $('stay-minus').addEventListener('click', () => step(-1));
       $('stay-plus').addEventListener('click', () => step(1));
-      $('stay-chips').addEventListener('click', (e) => {
-        const b = e.target.closest('[data-stay]');
-        if (!b) return;
-        this.draft.stay = Number(b.dataset.stay);
-        this.renderStopSheet();
-      });
 
       $('appt-seg').addEventListener('click', (e) => {
         const b = e.target.closest('[data-appt]');
@@ -1768,7 +1878,9 @@
       this.showModePick = false;
       this.showParkPick = false;
       $('stop-error').hidden = true;
-      $('stop-sheet-title').textContent = d.kind === 'home' ? (this.editingUid ? '집 들르기 고치기' : '집 들르기') : this.editingUid ? '볼일 고치기' : '볼일 추가';
+      $('stop-sheet-title').textContent = d.kind === 'home' ? '집 들르기' : this.editingUid ? '볼일 고치기' : '볼일 추가';
+      $('stop-more').open = !!opts.precise;
+      $('stop-more').hidden = d.kind === 'home';
       $('btn-stop-save').textContent = this.editingUid ? '저장' : '추가하기';
       $('btn-stop-delete').hidden = !this.editingUid;
 
@@ -1776,6 +1888,8 @@
       this.openSheet($('stop-sheet'), { replace: !!opts.replace });
       const scroller = document.querySelector('#stop-sheet .sheet__scroll');
       if (scroller) scroller.scrollTop = 0;
+      // 결과 화면의 "이 곳 고치기"로 왔으면 주차·영업시간 쪽을 바로 보여 줌
+      if (opts.precise && scroller) setTimeout(() => (scroller.scrollTop = $('stop-more').offsetTop - 12), 60);
     },
 
     renderStopSheet() {
@@ -1788,7 +1902,6 @@
       $('stay-value').textContent = fmtMin(d.stay);
       $('stay-minus').disabled = d.stay <= Store.STAY_MIN;
       $('stay-plus').disabled = d.stay >= Store.STAY_MAX;
-      $('stay-chips').innerHTML = STAY_CHIPS.map((m) => `<button class="chip chip--sm" type="button" aria-pressed="${d.stay === m}" data-stay="${m}">${fmtMin(m)}</button>`).join('');
       const hint = Learn.stayHint(Profile.placeKey(d.place));
       $('stay-note').textContent = hint
         ? `여기선 실제로 보통 ${fmtMin(hint.median)} 걸렸어요 (기록 ${hint.n}회) · −/+는 10분씩`
@@ -1889,6 +2002,10 @@
       this.save();
       this.closeSheet($('stop-sheet'));
       this.render();
+      if (this.fixFromResult) {
+        this.fixFromResult = false;
+        setTimeout(() => this.recompute(), 250);
+      }
     },
 
     deleteStop() {
@@ -1947,7 +2064,7 @@
     // 시트 공통 — 안드로이드 "뒤로" 버튼이 시트를 닫도록 방문 기록을 함께 관리
     // =================================================================
     wireSheets() {
-      ['place-sheet', 'stop-sheet', 'end-sheet', 'time-sheet', 'result-sheet', 'date-sheet', 'me-sheet', 'run-sheet', 'routine-sheet', 'feedback-sheet'].forEach((id) => {
+      ['place-sheet', 'stop-sheet', 'end-sheet', 'time-sheet', 'result-sheet', 'date-sheet', 'me-sheet', 'run-sheet', 'routine-sheet', 'feedback-sheet', 'trip-sheet'].forEach((id) => {
         $(id).addEventListener('click', (e) => {
           if (e.target.closest('[data-close]')) this.closeSheet($(id));
         });
@@ -1960,7 +2077,8 @@
       });
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
-        const open = document.querySelector('.sheet.is-open');
+        // 맨 위에 떠 있는 화면부터 닫기
+        const open = Array.from(document.querySelectorAll('.sheet.is-open')).sort((a, b) => (Number(b.style.zIndex) || 0) - (Number(a.style.zIndex) || 0))[0];
         if (open) this.closeSheet(open);
       });
     },

@@ -70,7 +70,68 @@
     </div>
   </div>
 
-  <!-- 출발 정보 -->
+  <!-- 1) 가장 먼저: 어디 가세요? -->
+  <button id="btn-add" class="where" type="button">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <span class="where__text">어디 가세요?</span>
+    <span class="where__plus" aria-hidden="true">+</span>
+  </button>
+
+  <!-- 2) 출발 정보는 한 줄로 (누르면 바꾸기) -->
+  <button id="trip-line" class="trip-line" type="button" aria-label="날짜·출발·시각·이동 바꾸기">
+    <span id="trip-line-text" class="trip-line__text"></span>
+    <span class="trip-line__edit">바꾸기</span>
+  </button>
+
+  <!-- 볼일 -->
+  <section class="stops" aria-labelledby="stops-heading">
+    <div class="stops__head">
+      <h2 id="stops-heading" class="stops__title">오늘 볼일</h2>
+      <span id="stops-count" class="stops__count" hidden></span>
+      <button id="btn-clear" class="text-btn" type="button" hidden>전체 비우기</button>
+    </div>
+    <p id="stops-hint" class="stops__hint" hidden>넣은 순서는 상관없어요 · 시간은 −/+로, 예약 시간은 눌러서</p>
+    <ul id="stop-list" class="stop-list"></ul>
+
+    <div id="stops-empty" class="stops-empty">
+      <p class="stops-empty__title">갈 곳만 넣으세요</p>
+      <p class="stops-empty__desc">은행, 병원, 마트처럼 갈 곳만 넣으면<br><b>어디부터 갈지</b>와 <b>실제로 끝나는 시각</b>을 정리해 드려요.<br><span class="muted">주차·엘리베이터·접수 시간까지 알아서 챙겨요</span></p>
+    </div>
+
+    <div class="mini-row">
+      <button id="btn-home-visit" class="mini-btn" type="button">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 11 12 4l8 7v8.5a.5.5 0 0 1-.5.5H15v-5.5H9V20H4.5a.5.5 0 0 1-.5-.5z"/></svg>
+        집 들르기
+      </button>
+      <button id="btn-routine-load" class="mini-btn" type="button">루틴</button>
+      <button id="btn-routine-save" class="mini-btn" type="button" hidden>루틴으로 저장</button>
+    </div>
+  </section>
+
+  <footer class="app-about">
+    <p><b>Getset</b>은 볼일이 몰린 날, 갈 곳만 넣으면 동선 순서와 현실적인 시간표를 정리해 주는 무료 도구예요. 주차 자리 찾기·엘리베이터·대기처럼 내비가 계산하지 않는 시간까지 챙겨요. 로그인 없이 쓰고, 넣은 내용은 이 기기에만 저장돼요.</p>
+    <p><button id="btn-feedback-2" class="link-btn" type="button">의견 보내기</button> · <a href="/">Pebble</a></p>
+  </footer>
+</main>
+
+<footer class="app-footer">
+  <button id="btn-plan" class="btn-plan" type="button" disabled>
+    <span class="btn-plan__label">순서 추천받기</span>
+    <span id="plan-meta" class="btn-plan__meta"></span>
+  </button>
+</footer>
+
+<!-- 출발 정보 시트 (메인의 한 줄을 누르면) -->
+<div id="trip-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="trip-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="trip-sheet-title" class="sheet__title">언제·어디서 출발해요?</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="sheet__scroll">
+
   <section class="trip-card" aria-label="출발 정보">
     <button id="row-date" class="trip-row" type="button">
       <span class="trip-row__label">날짜</span>
@@ -109,50 +170,12 @@
       <div id="day-mode" class="modes" role="radiogroup" aria-labelledby="mode-label"></div>
     </div>
   </section>
-
-  <!-- 볼일 -->
-  <section class="stops" aria-labelledby="stops-heading">
-    <div class="stops__head">
-      <h2 id="stops-heading" class="stops__title">오늘 볼일</h2>
-      <span id="stops-count" class="stops__count" hidden></span>
-      <button id="btn-clear" class="text-btn" type="button" hidden>전체 비우기</button>
     </div>
-    <p id="stops-hint" class="stops__hint" hidden>넣은 순서는 상관없어요. 순서는 Getset이 정해 드려요.</p>
-    <ul id="stop-list" class="stop-list"></ul>
-
-    <div id="stops-empty" class="stops-empty">
-      <p class="stops-empty__title">들를 곳을 넣어 보세요</p>
-      <p class="stops-empty__desc">은행, 병원, 마트처럼 갈 곳만 넣으면<br><b>어디부터 갈지</b>와 <b>실제로 끝나는 시각</b>을 정리해 드려요.</p>
+    <div class="sheet__actions">
+      <button class="sheet__btn sheet__btn--primary" type="button" data-close>확인</button>
     </div>
-
-    <div class="add-row-2">
-      <button id="btn-add" class="add-btn" type="button">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-        볼일 추가
-      </button>
-      <button id="btn-home-visit" class="add-btn add-btn--home" type="button">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 11 12 4l8 7v8.5a.5.5 0 0 1-.5.5H15v-5.5H9V20H4.5a.5.5 0 0 1-.5-.5z"/></svg>
-        집 들르기
-      </button>
-    </div>
-    <div class="routine-row">
-      <button id="btn-routine-load" class="text-btn" type="button">루틴 불러오기</button>
-      <button id="btn-routine-save" class="text-btn" type="button" hidden>루틴으로 저장</button>
-    </div>
-  </section>
-
-  <footer class="app-about">
-    <p><b>Getset</b>은 볼일이 몰린 날, 갈 곳만 넣으면 동선 순서와 현실적인 시간표를 정리해 주는 무료 도구예요. 주차 자리 찾기·엘리베이터·대기처럼 내비가 계산하지 않는 시간까지 챙겨요. 로그인 없이 쓰고, 넣은 내용은 이 기기에만 저장돼요.</p>
-    <p><button id="btn-feedback-2" class="link-btn" type="button">의견 보내기</button> · <a href="/">Pebble</a></p>
-  </footer>
-</main>
-
-<footer class="app-footer">
-  <button id="btn-plan" class="btn-plan" type="button" disabled>
-    <span class="btn-plan__label">순서 추천받기</span>
-    <span id="plan-meta" class="btn-plan__meta"></span>
-  </button>
-</footer>
+  </div>
+</div>
 
 <!-- 날짜(달력) 시트 -->
 <div id="date-sheet" class="sheet" hidden>
@@ -262,7 +285,6 @@
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
           </button>
         </div>
-        <div id="stay-chips" class="chips chips--center" role="group" aria-label="빠르게 고르기"></div>
         <p id="stay-note" class="field__note field__note--center"></p>
       </div>
 
@@ -300,7 +322,12 @@
         </div>
       </div>
 
-      <div class="settings">
+      <details id="stop-more" class="more more--precise">
+        <summary class="more__summary">
+          <span>더 정확하게 <small>가는 방법 · 주차 · 영업시간 · 장소 종류</small></span>
+          <svg class="more__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="settings">
         <div class="set-row">
           <span class="set-row__label">가는 방법</span>
           <span id="mode-line-text" class="set-row__value"></span>
@@ -326,7 +353,8 @@
           <label class="set-row__label" for="kind-select">장소 종류</label>
           <select id="kind-select" class="select select--sm"></select>
         </div>
-      </div>
+        </div>
+      </details>
     </div>
 
     <p id="stop-error" class="form-error" role="alert" hidden></p>

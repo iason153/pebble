@@ -1425,3 +1425,97 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .feedback-ctx { margin-top: 10px; }
 .routine-row { flex-wrap: wrap; }
 .link-btn { min-height: 40px; padding: 0 2px; }
+
+/* ── 단순화 (2026-10-01): 할 일 먼저, 설정은 한 줄, 정교함은 접어 두기 ───────── */
+
+/* 어디 가세요? — 화면의 주인공 */
+.where {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 64px; padding: 0 12px 0 18px;
+  border: 2px solid var(--green); border-radius: 18px;
+  background: #fff; color: var(--green-deep);
+  box-shadow: 0 6px 18px rgba(21, 54, 40, 0.10);
+  text-align: left;
+}
+.where:active { background: var(--green-soft); }
+.where__text { flex: 1; min-width: 0; font-size: 1.15rem; font-weight: 800; }
+.where__plus {
+  flex-shrink: 0; width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px; background: var(--green); color: #fff;
+  font-size: 1.6rem; font-weight: 700; line-height: 1;
+}
+
+/* 출발 정보 한 줄 */
+.trip-line {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 48px; padding: 6px 4px 6px 6px;
+  border: none; background: none; text-align: left;
+}
+.trip-line__text { flex: 1; min-width: 0; font-size: 0.92rem; line-height: 1.45; color: var(--muted); }
+.trip-line__text b { color: var(--text); }
+.trip-line__text b.is-empty { color: var(--green); }
+.trip-line__edit {
+  flex-shrink: 0; min-height: 36px; padding: 0 12px;
+  display: inline-flex; align-items: center;
+  border: 1.5px solid var(--line-strong); border-radius: 999px;
+  font-size: 0.82rem; font-weight: 700; color: var(--green-deep); white-space: nowrap;
+}
+#trip-sheet .trip-card { box-shadow: none; }
+
+/* 볼일 카드 + 바로 −/+ */
+.stop2 {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--line); border-left: 4px solid var(--green); border-radius: 14px;
+  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+  transition: background-color 0.6s ease;
+}
+.stop2--home { border-left-color: var(--green-deep); background: var(--green-soft); }
+.stop2.is-new { background: #FBF4E6; }
+.stop2__main {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  min-height: 64px; padding: 10px 6px 10px 14px;
+  border: none; background: none; text-align: left;
+}
+.stop2__main:active { background: rgba(31, 77, 58, 0.05); }
+.stop2__kind { font-size: 0.72rem; font-weight: 700; color: var(--green); }
+.stop2__name { font-size: 1rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stop2__tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.stop2__stay { flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 2px; }
+.stop2__btn {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 10px; background: var(--green-soft); color: var(--green-deep);
+}
+.stop2__btn:active { background: var(--green); color: #fff; }
+.stop2__btn:disabled { opacity: 0.35; }
+.stop2__min { min-width: 54px; text-align: center; font-size: 0.9rem; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.mini-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.mini-btn {
+  min-height: 44px; padding: 0 14px;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1.5px dashed var(--line-strong); border-radius: 999px;
+  background: rgba(255, 253, 248, 0.6); color: var(--green-deep);
+  font-size: 0.88rem; font-weight: 700; white-space: nowrap;
+}
+
+/* 고치기 화면: 더 정확하게 (접힘) */
+.more--precise { margin-top: 20px; }
+.more--precise .more__summary small { display: block; margin-top: 2px; font-size: 0.74rem; font-weight: 600; color: var(--muted); }
+.more--precise .settings { margin-top: 0; margin-bottom: 4px; }
+.more--precise[open] { padding-bottom: 12px; }
+
+/* 결과 */
+.summary__incl { margin: 8px 0 0; font-size: 0.8rem; color: #cfe0d5; }
+.card__fix { display: flex; align-items: center; gap: 14px; margin-top: 8px; }
+.card__fix .map-link { margin-top: 0; }
+
+/* 첫 실행 */
+.ob-intro { display: flex; align-items: center; gap: 12px; margin: 6px 0 4px; padding: 12px; border-radius: 14px; background: #fff; border: 1px solid var(--line); }
+.ob-intro img { flex-shrink: 0; border-radius: 10px; }
+.ob-intro p { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--muted); }
+.ob-intro b { color: var(--text); }
+.ob-more { margin-top: 14px; }
+.ob-more summary { min-height: 44px; display: flex; align-items: center; font-size: 0.88rem; font-weight: 700; color: var(--green); cursor: pointer; }
