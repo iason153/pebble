@@ -1125,3 +1125,138 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .leg__hint { flex-basis: 100%; font-size: 0.78rem; color: var(--green); font-weight: 700; }
 
 .result-note { margin: 14px 2px 4px; font-size: 0.78rem; line-height: 1.55; color: var(--muted); }
+
+/* ── 2026-10-01 2차 피드백 반영: 달력·숫자 시각·한 화면 볼일 입력·주차 ───────── */
+
+/* 안내 (다가오는 일정 / 지난 볼일) */
+.notice { padding: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
+.notice__text { margin: 0 0 10px; font-size: 0.92rem; line-height: 1.5; }
+.notice__actions { display: flex; gap: 8px; }
+.notice__actions > button { flex: 1; }
+.notice__actions > .btn-line { flex: 0 0 auto; }
+
+/* 달력 */
+.date-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.date-quick__btn {
+  position: relative;
+  min-height: 60px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 1.5px solid var(--line-strong); border-radius: 14px; background: #fff;
+}
+.date-quick__btn b { font-size: 1rem; }
+.date-quick__btn small { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.date-quick__btn[aria-pressed="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+.date-quick__btn[aria-pressed="true"] small { color: #d9e6dd; }
+.date-quick__btn .cal__dot { position: absolute; top: 8px; right: 10px; }
+
+.cal { margin-top: 14px; padding: 10px 6px 8px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.cal__head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px; }
+.cal__title { margin: 0; font-size: 1.02rem; font-weight: 800; color: var(--green-deep); }
+.cal__nav { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: none; color: var(--green-deep); }
+.cal__nav:disabled { color: var(--line-strong); cursor: default; }
+.cal__week, .cal__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal__week span { padding: 4px 0; text-align: center; font-size: 0.76rem; font-weight: 700; color: var(--muted); }
+.cal__week .sun, .cal__cell.sun { color: #B5483A; }
+.cal__week .sat, .cal__cell.sat { color: #2F5E8C; }
+.cal__cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  min-height: 40px;
+  margin: 1px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 12px; background: none;
+  font-size: 0.98rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.cal__cell:disabled { color: #c9c3b6 !important; cursor: default; }
+.cal__cell.is-today { box-shadow: inset 0 0 0 1.5px var(--green); }
+.cal__cell.is-selected { background: var(--green); color: #fff !important; }
+.cal__cell .cal__dot { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); }
+.cal__cell--empty { pointer-events: none; }
+.cal__dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
+.cal__cell.is-selected .cal__dot, .date-quick__btn[aria-pressed="true"] .cal__dot { background: var(--brass-hi); }
+.cal__legend { margin: 8px 6px 0; font-size: 0.78rem; color: var(--muted); }
+
+/* 숫자로 시각 넣기 */
+.tf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tf__ap { flex: 0 0 auto; }
+.tf__ap .seg__btn { min-height: 52px; padding: 0 14px; font-size: 1rem; }
+.tf__ap .seg__btn[aria-checked="true"] { background: var(--green); color: #fff; box-shadow: none; }
+.tf__nums { flex: 1 1 170px; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.tf__h, .tf__m {
+  width: 0; flex: 1 1 0; min-width: 0;
+  min-height: 56px;
+  padding: 0 6px;
+  border: 1.5px solid var(--line-strong); border-radius: 12px; background: #fff;
+  font-size: 1.5rem; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums;
+}
+.tf__h:focus, .tf__m:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(31, 77, 58, 0.15); }
+.tf__unit { flex-shrink: 0; font-size: 1rem; font-weight: 800; color: var(--muted); }
+
+.time-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
+.time-chip {
+  min-height: 60px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 1.5px solid var(--line-strong); border-radius: 14px; background: #fff;
+}
+.time-chip b { font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+.time-chip small { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.time-chip[aria-pressed="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+.time-chip[aria-pressed="true"] small { color: #d9e6dd; }
+
+/* 머무는 시간 스테퍼 */
+.stepper {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px; border: 1.5px solid var(--line-strong); border-radius: 18px; background: #fff;
+}
+.stepper__btn {
+  flex-shrink: 0;
+  width: 60px; height: 60px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 14px; background: var(--green-soft); color: var(--green-deep);
+}
+.stepper__btn:active { background: var(--green); color: #fff; }
+.stepper__btn:disabled { opacity: 0.35; }
+.stepper__value { flex: 1; min-width: 0; text-align: center; font-size: 1.6rem; font-weight: 800; color: var(--green-deep); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chips--center { justify-content: center; margin-top: 10px; }
+.chip--sm { min-height: 44px; min-width: 0; padding: 0 12px; font-size: 0.88rem; }
+.chip[aria-pressed="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+.field__note--center { text-align: center; }
+
+/* 정해진 시간 4가지 */
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pick {
+  min-height: 60px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 6px 4px;
+  border: 1.5px solid var(--line-strong); border-radius: 14px; background: #fff;
+}
+.pick b { font-size: 0.98rem; white-space: nowrap; }
+.pick small { font-size: 0.74rem; color: var(--muted); white-space: nowrap; }
+.pick[aria-checked="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+.pick[aria-checked="true"] small { color: #d9e6dd; }
+.appt-box__label { margin: 0 0 10px; font-size: 0.9rem; font-weight: 700; line-height: 1.5; color: var(--green-deep); }
+
+/* 가는 방법·주차·장소 종류 */
+.settings { margin-top: 20px; border: 1px solid var(--line); border-radius: 16px; background: #fff; overflow: hidden; }
+.set-row { display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 8px 10px 8px 14px; border-top: 1px solid var(--line); }
+.settings > .set-row:first-child { border-top: none; }
+.set-row__label { flex-shrink: 0; width: 64px; font-size: 0.84rem; font-weight: 700; color: var(--muted); }
+.set-row__value { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 0.95rem; }
+.set-row__value svg { flex-shrink: 0; color: var(--green); }
+.set-row .btn-line { flex-shrink: 0; }
+.set-row__more { padding: 0 12px 12px; }
+.set-row--select .select--sm { flex: 1; min-width: 0; min-height: 46px; font-size: 0.95rem; }
+.options--compact { gap: 6px; }
+.options--compact .option { min-height: 56px; padding: 8px 12px; }
+.oh-note { margin: 0; padding: 10px 14px 12px; border-top: 1px solid var(--line); background: var(--green-soft); font-size: 0.84rem; line-height: 1.55; color: var(--green-deep); }
+.oh-note .muted { font-size: 0.78rem; }
+
+/* 결과 시간표: 단계별 시간 */
+.tl-parts { margin: 2px 0 0; font-size: 0.76rem; line-height: 1.5; color: var(--muted); }
+.tl-line b { color: var(--text); }
+.badge--soft { background: #F4EBDB; color: #8a6a35; }
+
+@media (min-width: 360px) {
+  .time-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 360px) { .time-chips--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

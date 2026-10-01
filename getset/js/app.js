@@ -1,12 +1,12 @@
 'use strict';
 
 /**
- * Getset — 1단계: 오늘 볼일 입력 · 장소 검색 · 저장/복원
+ * Getset — 화면 동작
  *
  * 화면 흐름
- *   [볼일 추가] → 장소 찾기 시트(검색·최근 장소) → 볼일 상세 시트(종류·머무는 시간·옵션) → 목록
- *   [출발] → 장소 찾기 시트(현재 위치·집·검색)        [끝] → 끝나는 곳 시트
- *   [순서 추천받기] → 3단계(추천 엔진)에서 연결 예정
+ *   [날짜] 달력 → 그날 계획 (날짜마다 따로 저장)
+ *   [볼일 추가] → 장소 찾기 → 볼일 시트(한 화면: 머무는 시간·정해진 시간·순서·가는 방법·주차) → [추가하기]
+ *   [순서 추천받기] → engine.js → 결과 시트(끝나는 시각·이유·시간표)
  *
  * 개인정보: 장소 정보는 이 기기(localStorage)에만 저장. 통계엔 종류·개수·이동수단만.
  */
@@ -20,8 +20,8 @@
   };
 
   const MAX_STOPS = 12; // 설계문서 §6-2: 13곳 이상은 v1에서 제한
-  const STAY_BASE = [10, 20, 30, 45, 60, 90];
-  const QUICK_STAY = [10, 20, 30, 45, 60, 90]; // 빠른 추가 큰 버튼
+  const STAY_CHIPS = [10, 30, 60, 90, 120, 180];
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 
   const ICON = {
     car: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" d="M5 16.5V12l1.8-4.6A2 2 0 0 1 8.7 6h6.6a2 2 0 0 1 1.9 1.4L19 12v4.5M5 12h14M4 16.5h16v1.8a.7.7 0 0 1-.7.7H17.5a.7.7 0 0 1-.7-.7v-1.1H7.2v1.1a.7.7 0 0 1-.7.7H4.7a.7.7 0 0 1-.7-.7z"/><circle cx="8" cy="14.3" r="1" fill="currentColor"/><circle cx="16" cy="14.3" r="1" fill="currentColor"/></svg>',
@@ -32,31 +32,44 @@
   const MODE_LABEL = { car: '자동차', walk: '도보', bike: '자전거', transit: '대중교통' };
 
   const App = {
-    plan: null,
+    plans: null, // 날짜별 계획
+    date: null, // 지금 보고 있는 날짜
     places: null,
     saveWarned: false,
 
-    // 장소 찾기 시트 상태
-    pickMode: 'stop', // stop | start | end
+    pickMode: 'stop', // 장소 찾기: stop | start | end
     searchSeq: 0,
     searchTimer: null,
 
-    // 볼일 상세 시트 상태
-    draft: null, // 편집 중인 볼일 (새로 추가할 땐 uid 없음)
+    draft: null, // 볼일 시트에서 고치는 중인 볼일
     editingUid: null,
-    stayTouched: false,
+    apptType: 'none',
+
+    get plan() {
+      return this.plans[this.date];
+    },
 
     init() {
-      this.plan = Store.loadPlan();
+      this.plans = Store.loadPlans();
       this.places = Store.loadPlaces();
+      this.date = Store.todayStr();
+      Store.planFor(this.plans, this.date);
 
+      this.startTF = window.GetsetTimeField($('start-tf'), { onChange: () => ($('time-error').hidden = true) });
+      this.apptTF = window.GetsetTimeField($('appt-tf'), {
+        onChange: (v) => {
+          if (this.draft && this.apptType !== 'none') this.draft[this.apptKey()] = v;
+          $('stop-error').hidden = true;
+        },
+      });
+
+      this.wireDate();
       this.wireTrip();
       this.wireStops();
       this.wirePlaceSheet();
       this.wireStopSheet();
       this.wireEndSheet();
       this.wireSheets();
-      this.wireRestore();
       this.wireResult();
       $('btn-share').addEventListener('click', () => window.GetsetShare.share('header'));
       $('btn-plan').addEventListener('click', () => this.onPlan());
@@ -69,8 +82,8 @@
       });
 
       this.render();
-      this.tickClock();
-      setInterval(() => this.tickClock(), 30 * 1000);
+      this.showNotice();
+      setInterval(() => this.renderTime(), 30 * 1000);
       this.registerServiceWorker();
     },
 
@@ -78,8 +91,7 @@
     // 저장
     // =================================================================
     save() {
-      this.plan.date = this.plan.date || Store.todayStr();
-      const ok = Store.savePlan(this.plan);
+      const ok = Store.savePlans(this.plans);
       if (!ok && !this.saveWarned) {
         this.saveWarned = true;
         this.showToast('이 브라우저에선 저장이 안 돼요. 창을 닫으면 내용이 사라질 수 있어요.', { duration: 4500 });
@@ -90,65 +102,161 @@
       Store.savePlaces(this.places);
     },
 
-    // 지난 날짜의 계획이 남아 있으면 이어 쓸지 물어본다
-    wireRestore() {
-      const today = Store.todayStr();
-      const banner = $('restore-banner');
-      if (this.plan.date !== today && this.plan.stops.length) {
-        const [y, m, d] = this.plan.date.split('-').map(Number);
-        const then = new Date(y, m - 1, d);
-        const diff = Math.round((new Date(today) - new Date(this.plan.date)) / 86400000);
-        $('restore-date').textContent = diff === 1 ? '어제' : `${then.getMonth() + 1}월 ${then.getDate()}일에`;
-        $('restore-count').textContent = `${this.plan.stops.length}개`;
-        banner.hidden = false;
-        window.scrollTo(0, 0);
-      } else if (this.plan.date !== today) {
-        this.plan.date = today;
-        this.plan.startTime = 'now';
-        this.save();
-      }
-      $('btn-restore-keep').addEventListener('click', () => {
-        this.plan.date = today;
-        this.plan.startTime = 'now'; // 지난 날 출발 시각은 오늘과 안 맞을 수 있음
-        this.save();
-        banner.hidden = true;
-        this.render();
-        this.showToast('지난 볼일을 그대로 가져왔어요');
-      });
-      $('btn-restore-new').addEventListener('click', () => {
-        const snapshot = JSON.parse(JSON.stringify(this.plan));
-        this.plan.date = today;
-        this.plan.startTime = 'now';
-        this.plan.stops = []; // 출발지·끝나는 곳·이동수단은 그대로 둔다
-        this.save();
-        banner.hidden = true;
-        this.render();
-        this.offerUndo('새로 시작했어요', () => {
-          this.plan = snapshot;
-          this.plan.date = today;
-          this.save();
-          this.render();
-        });
+    // =================================================================
+    // 날짜 (달력)
+    // =================================================================
+    isToday() {
+      return this.date === Store.todayStr();
+    },
+
+    isWeekend(date = this.date) {
+      const d = Store.parseDate(date).getDay();
+      return d === 0 || d === 6;
+    },
+
+    /** "오늘" / "내일" / "모레" / "" */
+    relDay(date) {
+      const diff = Math.round((Store.parseDate(date) - Store.parseDate(Store.todayStr())) / 86400000);
+      return diff === 0 ? '오늘' : diff === 1 ? '내일' : diff === 2 ? '모레' : diff === -1 ? '어제' : '';
+    },
+
+    /** "10월 3일 (토)" */
+    fullDay(date) {
+      const d = Store.parseDate(date);
+      return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]})`;
+    },
+
+    wireDate() {
+      $('row-date').addEventListener('click', () => this.openDateSheet());
+      $('cal-prev').addEventListener('click', () => this.moveMonth(-1));
+      $('cal-next').addEventListener('click', () => this.moveMonth(1));
+      $('date-sheet').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-date]');
+        if (b && !b.disabled) this.selectDate(b.dataset.date);
       });
     },
 
+    openDateSheet() {
+      const d = Store.parseDate(this.date);
+      this.calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+      this.renderCalendar();
+      this.openSheet($('date-sheet'));
+    },
+
+    moveMonth(n) {
+      const now = new Date();
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      const next = new Date(this.calMonth.getFullYear(), this.calMonth.getMonth() + n, 1);
+      const max = new Date(now.getFullYear() + 1, now.getMonth(), 1);
+      if (next < first || next > max) return;
+      this.calMonth = next;
+      this.renderCalendar();
+    },
+
+    hasStops(date) {
+      return !!(this.plans[date] && this.plans[date].stops.length);
+    },
+
+    renderCalendar() {
+      const today = Store.todayStr();
+      $('date-quick').innerHTML = [0, 1, 2]
+        .map((n) => {
+          const d = Store.addDays(today, n);
+          const dd = Store.parseDate(d);
+          const on = d === this.date;
+          return `<button class="date-quick__btn" type="button" data-date="${d}" aria-pressed="${on}"><b>${this.relDay(d)}</b><small>${dd.getMonth() + 1}/${dd.getDate()} ${WEEK[dd.getDay()]}</small>${this.hasStops(d) ? '<span class="cal__dot"></span>' : ''}</button>`;
+        })
+        .join('');
+
+      const m = this.calMonth;
+      $('cal-title').textContent = `${m.getFullYear()}년 ${m.getMonth() + 1}월`;
+      const now = new Date();
+      $('cal-prev').disabled = m.getFullYear() === now.getFullYear() && m.getMonth() === now.getMonth();
+      const cells = [];
+      const lead = m.getDay();
+      for (let i = 0; i < lead; i++) cells.push('<span class="cal__cell cal__cell--empty"></span>');
+      const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+      for (let day = 1; day <= days; day++) {
+        const d = Store.todayStr(new Date(m.getFullYear(), m.getMonth(), day));
+        const wd = (lead + day - 1) % 7;
+        const past = d < today;
+        const cls = ['cal__cell'];
+        if (d === today) cls.push('is-today');
+        if (d === this.date) cls.push('is-selected');
+        if (wd === 0) cls.push('sun');
+        if (wd === 6) cls.push('sat');
+        cells.push(
+          `<button class="${cls.join(' ')}" type="button" data-date="${d}" ${past ? 'disabled' : ''} aria-label="${this.fullDay(d)}${this.hasStops(d) ? ', 볼일 있음' : ''}"${d === this.date ? ' aria-current="date"' : ''}>${day}${this.hasStops(d) ? '<span class="cal__dot"></span>' : ''}</button>`
+        );
+      }
+      $('cal-grid').innerHTML = cells.join('');
+    },
+
+    selectDate(date) {
+      this.date = date;
+      Store.planFor(this.plans, date);
+      this.save();
+      this.closeSheet($('date-sheet'));
+      $('notice').hidden = true;
+      this.render();
+      track('date_select', { days_ahead: Math.round((Store.parseDate(date) - Store.parseDate(Store.todayStr())) / 86400000) });
+      this.showToast(`${this.relDay(date) ? this.relDay(date) + ' · ' : ''}${this.fullDay(date)} 계획이에요`);
+    },
+
+    renderDate() {
+      const rel = this.relDay(this.date);
+      $('date-name').textContent = rel ? `${rel} · ${this.fullDay(this.date)}` : this.fullDay(this.date);
+      $('date-sub').textContent = this.isWeekend() ? '주말이라 마트·식당 주차가 더 오래 걸리게 계산해요' : '눌러서 다른 날 계획하기';
+      $('stops-heading').textContent = rel === '오늘' ? '오늘 볼일' : `${rel || this.fullDay(this.date)} 볼일`;
+    },
+
+    // 다가오는 일정 / 지난 볼일 가져오기 안내 (처음 열 때 한 번)
+    showNotice() {
+      const today = Store.todayStr();
+      if (this.hasStops(today)) return;
+      const dates = Object.keys(this.plans).filter((d) => this.hasStops(d)).sort();
+      const future = dates.find((d) => d > today);
+      const past = dates.filter((d) => d < today && d >= Store.addDays(today, -7)).pop();
+      const box = $('notice');
+      if (future) {
+        $('notice-text').innerHTML = `<b>${this.relDay(future) || this.fullDay(future)}</b>에 넣어 둔 볼일 <b>${this.plans[future].stops.length}개</b>가 있어요.`;
+        $('btn-notice-yes').textContent = '그날 계획 보기';
+        this.noticeAction = () => this.selectDate(future);
+      } else if (past) {
+        $('notice-text').innerHTML = `<b>${this.relDay(past) || this.fullDay(past)}</b> 넣어 둔 볼일 <b>${this.plans[past].stops.length}개</b>가 남아 있어요. 오늘로 가져올까요?`;
+        $('btn-notice-yes').textContent = '오늘로 가져오기';
+        this.noticeAction = () => {
+          this.plan.stops = this.plans[past].stops.map((s) => Object.assign({}, JSON.parse(JSON.stringify(s)), { uid: Store.newUid() }));
+          this.save();
+          this.render();
+          this.showToast('지난 볼일을 오늘로 가져왔어요');
+        };
+      } else return;
+      box.hidden = false;
+      $('btn-notice-yes').onclick = () => {
+        box.hidden = true;
+        this.noticeAction();
+      };
+      $('btn-notice-no').onclick = () => (box.hidden = true);
+    },
+
     // =================================================================
-    // 출발 정보 (출발지 · 시각 · 끝나는 곳 · 하루 기본 이동수단)
+    // 출발 정보 (출발지 · 시각 · 끝나는 곳 · 그날 기본 이동수단)
     // =================================================================
     wireTrip() {
       $('row-start').addEventListener('click', () => this.openPlaceSheet('start'));
       $('row-end').addEventListener('click', () => this.openEndSheet());
-
       $('row-time').addEventListener('click', () => this.openTimeSheet());
       $('time-options').addEventListener('click', (e) => {
         const b = e.target.closest('[data-time]');
-        if (!b) return;
-        this.setStartTime(b.dataset.time);
+        if (b) this.setStartTime(b.dataset.time);
       });
       $('btn-time-ok').addEventListener('click', () => {
-        const v = $('time-input').value;
-        if (!Store.isTime(v)) {
-          $('time-input').focus();
+        const v = this.startTF.get();
+        if (!v) {
+          $('time-error').textContent = '시와 분을 숫자로 넣어 주세요 (예: 오후 2시 30분)';
+          $('time-error').hidden = false;
+          this.startTF.focus();
           return;
         }
         this.setStartTime(v);
@@ -161,15 +269,11 @@
       });
     },
 
-    /** 이동수단 선택 버튼 묶음 (하루 기본용 / 볼일별용) */
     renderModes(box, withDefault, onPick) {
       const items = withDefault ? [['', '기본']] : [];
       Store.MODES.forEach((m) => items.push([m, MODE_LABEL[m]]));
       box.innerHTML = items
-        .map(
-          ([m, label]) =>
-            `<button class="mode" type="button" role="radio" data-mode="${m}">${m ? ICON[m] : ''}<span>${label}</span></button>`
-        )
+        .map(([m, label]) => `<button class="mode" type="button" role="radio" data-mode="${m}">${m ? ICON[m] : ''}<span>${label}</span></button>`)
         .join('');
       box.addEventListener('click', (e) => {
         const b = e.target.closest('[data-mode]');
@@ -178,21 +282,13 @@
     },
 
     setModeChecked(box, mode) {
-      box.querySelectorAll('[data-mode]').forEach((b) => {
-        const on = (b.dataset.mode || null) === (mode || null);
-        b.setAttribute('aria-checked', String(on));
-      });
-    },
-
-    tickClock() {
-      this.renderTime();
+      box.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-checked', String((b.dataset.mode || null) === (mode || null))));
     },
 
     /** 지금부터 n분 뒤를 5분 단위로 올린 "HH:MM" */
     suggestTime(after = 5) {
       const d = new Date(Date.now() + after * 60000);
-      const m = Math.ceil(d.getMinutes() / 5) * 5;
-      d.setMinutes(m, 0, 0);
+      d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     },
 
@@ -203,30 +299,31 @@
 
     renderTime() {
       const t = this.plan.startTime;
-      if (t === 'now') {
+      if (t === 'now' && this.isToday()) {
         $('time-name').textContent = `${fmtTime(this.nowHHMM())} 출발`;
         $('time-sub').textContent = '지금 시각 기준 · 눌러서 바꾸기';
       } else {
-        $('time-name').textContent = `${fmtTime(t)} 출발`;
+        $('time-name').textContent = `${fmtTime(t === 'now' ? '09:00' : t)} 출발`;
         $('time-sub').textContent = '눌러서 바꾸기';
       }
     },
 
     openTimeSheet() {
-      const opts = [
-        ['now', '지금 바로', `${fmtTime(this.nowHHMM())}`],
-        [this.suggestTime(10), '10분 뒤', null],
-        [this.suggestTime(30), '30분 뒤', null],
-        [this.suggestTime(60), '1시간 뒤', null],
-      ];
+      const opts = this.isToday()
+        ? [['now', '지금'], [this.suggestTime(10), '10분 뒤'], [this.suggestTime(30), '30분 뒤'], [this.suggestTime(60), '1시간 뒤']]
+        : [['08:00'], ['09:00'], ['10:00'], ['13:00'], ['14:00'], ['15:00']];
       const cur = this.plan.startTime;
+      $('time-options').classList.toggle('time-chips--2', opts.length === 4);
       $('time-options').innerHTML = opts
-        .map(([v, label, sub]) => {
+        .map(([v, label]) => {
           const on = v === cur;
-          return `<button class="option option--row" type="button" role="radio" aria-checked="${on}" data-time="${v}"><b>${label}</b><small>${sub || fmtTime(v)}</small></button>`;
+          const t = v === 'now' ? fmtTime(this.nowHHMM()) : fmtTime(v);
+          return `<button class="time-chip" type="button" aria-pressed="${on}" data-time="${v}">${label ? `<b>${label}</b><small>${t}</small>` : `<b>${t}</b>`}</button>`;
         })
         .join('');
-      $('time-input').value = cur === 'now' ? this.suggestTime(60) : cur;
+      this.startTF.set(cur === 'now' ? this.suggestTime(60) : cur);
+      $('time-error').hidden = true;
+      $('time-sheet-title').textContent = this.isToday() ? '몇 시에 출발해요?' : `${this.fullDay(this.date)} 몇 시에 출발해요?`;
       this.openSheet($('time-sheet'));
     },
 
@@ -252,17 +349,15 @@
       sub.textContent = s ? (this.isHome(s) ? '집' + (s.address ? ' · ' + s.address : '') : s.address) : '';
 
       const e = this.plan.end;
-      const endName = $('end-name');
-      const endSub = $('end-sub');
       if (e.type === 'place' && e.place) {
-        endName.textContent = e.place.name;
-        endSub.textContent = e.place.address;
-        endSub.hidden = !e.place.address;
+        $('end-name').textContent = e.place.name;
+        $('end-sub').textContent = e.place.address;
+        $('end-sub').hidden = !e.place.address;
       } else {
-        endName.textContent = e.type === 'none' ? '상관없어요 (마지막 볼일에서 끝)' : '출발지로 돌아오기';
-        endSub.hidden = true;
+        $('end-name').textContent = e.type === 'none' ? '상관없어요 (마지막 볼일에서 끝)' : '출발지로 돌아오기';
+        $('end-sub').hidden = true;
       }
-
+      this.renderDate();
       this.renderTime();
       this.setModeChecked($('day-mode'), this.plan.mode);
     },
@@ -298,8 +393,9 @@
     },
 
     stopMeta(s) {
-      const parts = [`${fmtMin(s.stay)}`];
+      const parts = [fmtMin(s.stay)];
       if (s.fixedAt) parts.push(`<span class="tag tag--fixed">예약 ${fmtTime(s.fixedAt)}</span>`);
+      if (s.prefAt) parts.push(`<span class="tag">${fmtTime(s.prefAt)}쯤</span>`);
       if (s.deadline) parts.push(`<span class="tag">${fmtTime(s.deadline)}까지</span>`);
       if (s.order === 'first') parts.push('<span class="tag">제일 먼저</span>');
       if (s.order === 'last') parts.push('<span class="tag">제일 마지막</span>');
@@ -309,8 +405,7 @@
 
     renderStops() {
       const stops = this.plan.stops;
-      const list = $('stop-list');
-      list.innerHTML = stops
+      $('stop-list').innerHTML = stops
         .map((s) => {
           const kind = Kinds.get(s.kind);
           return `<li>
@@ -333,9 +428,7 @@
       $('btn-clear').hidden = n === 0;
       $('btn-add').classList.toggle('add-btn--first', n === 0);
       $('btn-add').hidden = n >= MAX_STOPS;
-
-      const btn = $('btn-plan');
-      btn.disabled = n === 0;
+      $('btn-plan').disabled = n === 0;
       $('plan-meta').textContent = n ? `볼일 ${n}개` : '';
     },
 
@@ -354,20 +447,24 @@
 
     buildInput() {
       const now = new Date();
-      const startIsNow = this.plan.startTime === 'now';
-      const startMin = startIsNow ? now.getHours() * 60 + now.getMinutes() : this.toMin(this.plan.startTime);
+      const startIsNow = this.plan.startTime === 'now' && this.isToday();
+      const startMin = startIsNow ? now.getHours() * 60 + now.getMinutes() : this.toMin(this.plan.startTime === 'now' ? '09:00' : this.plan.startTime);
+      const weekend = this.isWeekend();
       return {
         start: this.plan.start,
         startMin,
         startIsNow,
+        weekend,
         end: this.plan.end,
         dayMode: this.plan.mode,
-        kindOf: Kinds.get,
+        overheadFn: (st, mode, which, at) => Kinds.overheadCached(st, mode, which, { weekend, atMin: at }),
         stops: this.plan.stops.map((s) => ({
           place: s.place,
           kind: s.kind,
+          parking: s.parking,
           stay: s.stay,
           fixedAt: s.fixedAt ? this.toMin(s.fixedAt) : null,
+          prefAt: s.prefAt ? this.toMin(s.prefAt) : null,
           deadline: s.deadline ? this.toMin(s.deadline) : null,
           order: s.order,
           mode: s.mode,
@@ -382,11 +479,9 @@
         return;
       }
       const input = this.buildInput();
-      const btn = $('btn-plan');
-      btn.disabled = true;
+      $('btn-plan').disabled = true;
       $('plan-meta').textContent = '계산 중…';
       track('plan_request', { stops: input.stops.length, modes: Array.from(new Set(input.stops.map((s) => s.mode || input.dayMode))).join(',') });
-      // 화면이 "계산 중"을 그릴 틈을 준 뒤 계산
       setTimeout(() => {
         let result = null;
         try {
@@ -421,7 +516,6 @@
       const fmt = window.GetsetEngine.fmt;
       const stops = input.stops;
 
-      // 추천안 2개일 때 탭
       const tabs = $('result-tabs');
       tabs.hidden = result.options.length < 2;
       tabs.innerHTML = result.options
@@ -429,12 +523,13 @@
         .join('');
 
       const endLabel = input.end.type === 'return' ? (this.isHome(this.plan.start) ? '집 도착' : '출발지 도착') : '도착';
+      const rel = this.relDay(this.date);
       const head = `
-        <section class="summary${result.ok || tab > 0 ? '' : ' summary--warn'}">
-          <p class="summary__label">볼일이 모두 끝나는 시각</p>
+        <section class="summary${opt.warnings.length ? ' summary--warn' : ''}">
+          <p class="summary__label">${rel === '오늘' ? '' : `${rel ? rel + ' · ' : ''}${this.fullDay(this.date)} · `}볼일이 모두 끝나는 시각</p>
           <p class="summary__time">${fmt(sim.doneAt)}</p>
           <p class="summary__meta">${fmt(input.startMin)} 출발 · 볼일 ${stops.length}곳${sim.endLeg ? ` · ${fmt(sim.endLeg.arrive)} ${endLabel}` : ''}</p>
-          ${sim.waitSum > 0 ? `<p class="summary__slack">예약 전 여유 ${sim.waitSum}분</p>` : ''}
+          ${sim.waitSum > 0 ? `<p class="summary__slack">중간에 비는 시간 ${fmtMin(sim.waitSum)}</p>` : ''}
         </section>`;
 
       const warn = opt.warnings.length
@@ -446,14 +541,12 @@
         : '';
 
       const why = `<ul class="why">${opt.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
+      const partsText = (parts) => parts.map(([l, m]) => `${esc(l)} ${m}분`).join(' · ');
 
-      const leg = (mode, min, dist, opts = {}) => {
-        const walkHint =
-          mode === 'car' && dist >= 30 && dist < 800
-            ? `<span class="leg__hint">가까워요 · 걸으면 약 ${Math.ceil((dist * 1.3) / 70)}분</span>`
-            : '';
+      const leg = (mode, min, dist) => {
+        const walkHint = mode === 'car' && dist >= 30 && dist < 800 ? `<span class="leg__hint">가까워요 · 걸으면 약 ${Math.ceil((dist * 1.3) / 70)}분</span>` : '';
         const what = min === 0 ? '바로 옆이에요' : `${MODE_LABEL[mode]} ${min}분`;
-        return `<li class="tl-leg">${ICON[mode]}<span class="leg__text">${what}<span class="leg__est">${dist >= 1000 ? (dist / 1000).toFixed(1) + 'km' : dist + 'm'} · 추정</span></span>${walkHint}${opts.extra || ''}</li>`;
+        return `<li class="tl-leg">${ICON[mode]}<span class="leg__text">${what}<span class="leg__est">${dist >= 1000 ? (dist / 1000).toFixed(1) + 'km' : dist + 'm'} · 추정</span></span>${walkHint}</li>`;
       };
 
       const items = [];
@@ -462,24 +555,26 @@
         const s = stops[row.i];
         const kind = Kinds.get(s.kind);
         items.push(leg(row.mode, row.travel, row.dist));
-        const ohLabel = row.mode === 'car' ? '주차·걸어가기' : '들어가기·대기';
-        const checks = [];
-        if (s.fixedAt != null) checks.push(row.late && !s.deadline ? `<span class="badge badge--late">예약 ${fmt(s.fixedAt)} · ${row.late}분 늦음</span>` : `<span class="badge badge--ok">예약 ${fmt(s.fixedAt)} ✓</span>`);
+        const badges = [];
+        if (s.fixedAt != null) badges.push(row.late && s.deadline == null ? `<span class="badge badge--late">예약 ${fmt(s.fixedAt)} · ${row.late}분 늦음</span>` : `<span class="badge badge--ok">예약 ${fmt(s.fixedAt)} ✓</span>`);
+        if (s.prefAt != null) badges.push(row.prefLate > 10 ? `<span class="badge badge--soft">${fmt(s.prefAt)}쯤 원했는데 ${row.prefLate}분 늦어요</span>` : `<span class="badge badge--ok">${fmt(s.prefAt)}쯤 ✓</span>`);
         if (s.deadline != null) {
           const over = row.finish - s.deadline;
-          checks.push(over > 0 ? `<span class="badge badge--late">${fmt(s.deadline)}까지 · ${over}분 늦음</span>` : `<span class="badge badge--ok">${fmt(s.deadline)} 전에 끝 ✓</span>`);
+          badges.push(over > 0 ? `<span class="badge badge--late">${fmt(s.deadline)}까지 · ${over}분 늦음</span>` : `<span class="badge badge--ok">${fmt(s.deadline)} 전에 끝 ✓</span>`);
         }
-        const next = p + 1 < sim.rows.length || sim.endLeg;
+        const parkLabel = row.mode === 'car' && row.parking ? Kinds.PARKING[row.parking].label : '';
+        const hasNext = p + 1 < sim.rows.length || sim.endLeg;
         items.push(`
           <li class="tl-node">
             <span class="tl-num">${p + 1}</span>
             <div class="tl-body">
-              <p class="tl-name">${esc(s.place.name)}<span class="tl-kind">${esc(kind.label)}</span></p>
-              <p class="tl-line">${fmt(row.arrive)} 도착${row.arriveOH ? ` · ${ohLabel} ${row.arriveOH}분` : ''}</p>
-              ${row.wait ? `<p class="tl-line tl-line--wait">예약까지 ${row.wait}분 기다려요</p>` : ''}
+              <p class="tl-name">${esc(s.place.name)}<span class="tl-kind">${esc(kind.label)}${parkLabel ? ' · ' + parkLabel : ''}</span></p>
+              <p class="tl-line">${fmt(row.arrive)} 도착${row.arriveOH ? ` → 볼일 시작까지 <b>${row.arriveOH}분</b>` : ''}</p>
+              ${row.arriveParts && row.arriveParts.length && row.arriveOH ? `<p class="tl-parts">${partsText(row.arriveParts)}</p>` : ''}
+              ${row.wait ? `<p class="tl-line tl-line--wait">${s.fixedAt != null ? '예약' : '원하는 시간'}까지 ${fmtMin(row.wait)} 비어요</p>` : ''}
               <p class="tl-main">${fmt(row.begin)} ~ ${fmt(row.finish)} <small>볼일 ${fmtMin(s.stay)}</small></p>
-              ${checks.length ? `<p class="tl-badges">${checks.join('')}</p>` : ''}
-              ${next && row.leaveOH ? `<p class="tl-line">${(p + 1 < sim.rows.length ? sim.rows[p + 1].mode : input.dayMode) === 'car' ? '차까지' : '나서기'} ${row.leaveOH}분</p>` : ''}
+              ${badges.length ? `<p class="tl-badges">${badges.join('')}</p>` : ''}
+              ${hasNext && row.leaveOH ? `<p class="tl-line">끝나고 출발까지 <b>${row.leaveOH}분</b></p><p class="tl-parts">${partsText(row.leaveParts || [])}</p>` : ''}
             </div>
           </li>`);
       });
@@ -490,9 +585,9 @@
         items.push(`<li class="tl-node tl-node--start"><span class="tl-dot"></span><div class="tl-body"><p class="tl-time">${fmt(sim.endLeg.arrive)} ${endLabel}</p><p class="tl-name">${esc(endName)}</p></div></li>`);
       }
 
-      const note = `<p class="result-note">이동 시간은 지금 <b>직선거리로 어림한 값(추정)</b>이에요. 자동차 실제 길찾기는 다음 단계에서 붙어요. 주차·대기 시간은 장소 종류별 보통 값이에요.${result.method === 'approx' ? ' 볼일이 많아서 빠른 계산으로 순서를 정했어요.' : ''}</p>`;
+      const note = `<p class="result-note">이동 시간은 지금 <b>직선거리로 어림한 값(추정)</b>이에요. 자동차 실제 길찾기는 다음 단계에서 붙어요. 주차·엘리베이터·접수 시간은 주차장 종류와 장소 종류별 보통 값이에요${input.weekend ? '(주말 혼잡 반영)' : ''}.${result.method === 'approx' ? ' 볼일이 많아서 빠른 계산으로 순서를 정했어요.' : ''}</p>`;
 
-      $('result-title').textContent = opt.warnings.length && tab === 0 ? '가장 나은 순서예요' : '이 순서로 가면 돼요';
+      $('result-title').textContent = opt.warnings.length ? '가장 나은 순서예요' : '이 순서로 가면 돼요';
       $('result-body').innerHTML = head + warn + why + `<ol class="timeline">${items.join('')}</ol>` + note;
       $('result-body').scrollTop = 0;
     },
@@ -704,74 +799,58 @@
     },
 
     // =================================================================
-    // 볼일 상세 시트
+    // 볼일 시트 — 한 화면에서 끝내고 [추가하기]
     // =================================================================
+    apptKey() {
+      return { fixed: 'fixedAt', pref: 'prefAt', deadline: 'deadline' }[this.apptType];
+    },
+
     wireStopSheet() {
       const sel = $('kind-select');
       sel.innerHTML = Kinds.LIST.map((k) => `<option value="${k.id}">${k.label}</option>`).join('');
       sel.addEventListener('change', () => {
+        const usual = Kinds.get(this.draft.kind).stay;
         this.draft.kind = sel.value;
         this.kindAuto = false;
-        if (!this.stayTouched) this.draft.stay = Kinds.get(sel.value).stay;
+        if (this.draft.stay === usual) this.draft.stay = Kinds.get(sel.value).stay; // 손대지 않았으면 새 종류의 보통값으로
         this.renderStopSheet();
       });
 
-      // ① 빠른 추가: 누르는 순간 추가 끝
-      $('quick-stay').addEventListener('click', (e) => {
-        const b = e.target.closest('[data-stay]');
-        if (!b) return;
-        this.draft.stay = Number(b.dataset.stay);
-        this.saveStop('quick');
-      });
-      $('btn-more').addEventListener('click', () => {
-        this.stopView = 'detail';
+      const step = (dir) => {
+        const s = this.draft.stay;
+        const d = s < 20 || (s === 20 && dir < 0) ? 5 : 10;
+        this.draft.stay = Math.min(Store.STAY_MAX, Math.max(Store.STAY_MIN, s + dir * d));
         this.renderStopSheet();
-        const sc = document.querySelector('#stop-sheet .sheet__scroll');
-        if (sc) sc.scrollTop = 0;
-      });
-
-      // ② 자세히
+      };
+      $('stay-minus').addEventListener('click', () => step(-1));
+      $('stay-plus').addEventListener('click', () => step(1));
       $('stay-chips').addEventListener('click', (e) => {
         const b = e.target.closest('[data-stay]');
         if (!b) return;
-        this.stayTouched = true;
-        if (b.dataset.stay === 'custom') {
-          this.customStay = true;
-          this.renderStopSheet();
-          const inp = $('stay-input');
-          inp.value = this.draft.stay;
-          inp.focus();
-          inp.select();
-          return;
-        }
-        this.customStay = false;
         this.draft.stay = Number(b.dataset.stay);
         this.renderStopSheet();
-      });
-      $('stay-input').addEventListener('input', (e) => {
-        const v = Math.round(Number(e.target.value));
-        if (Number.isFinite(v) && v >= 1 && v <= 600) this.draft.stay = v;
-        this.stayTouched = true;
       });
 
       $('appt-seg').addEventListener('click', (e) => {
         const b = e.target.closest('[data-appt]');
         if (!b) return;
-        const kind = b.dataset.appt;
-        const cur = this.draft.fixedAt || this.draft.deadline;
-        this.draft.fixedAt = null;
-        this.draft.deadline = null;
-        if (kind === 'fixed') this.draft.fixedAt = cur || this.suggestTime(60);
-        if (kind === 'deadline') this.draft.deadline = cur || '16:00';
+        const prev = this.apptType !== 'none' ? this.draft[this.apptKey()] : null;
+        this.draft.fixedAt = this.draft.prefAt = this.draft.deadline = null;
+        this.apptType = b.dataset.appt;
+        if (this.apptType !== 'none') {
+          const k = Kinds.get(this.draft.kind);
+          const def = this.apptType === 'deadline' ? (k.id === 'bank' ? '16:00' : '18:00') : this.apptType === 'pref' && k.id === 'food' ? '12:00' : null;
+          this.draft[this.apptKey()] = prev || def || this.apptTF.get() || null;
+          this.apptTF.set(this.draft[this.apptKey()]);
+        }
         $('stop-error').hidden = true;
         this.renderStopSheet();
-        if (kind !== 'none') setTimeout(() => $('appt-time').focus(), 0);
-      });
-      $('appt-time').addEventListener('change', (e) => {
-        const v = Store.isTime(e.target.value) ? e.target.value : null;
-        if (this.draft.fixedAt !== null) this.draft.fixedAt = v || '';
-        else this.draft.deadline = v || '';
-        $('stop-error').hidden = true;
+        // 시각이 비어 있으면 바로 시 칸에 커서 (단, 그새 사용자가 칸을 눌렀으면 건드리지 않음)
+        if (this.apptType !== 'none' && !this.draft[this.apptKey()]) {
+          setTimeout(() => {
+            if (!$('appt-tf').contains(document.activeElement)) this.apptTF.focus();
+          }, 50);
+        }
       });
 
       $('order-seg').addEventListener('click', (e) => {
@@ -791,6 +870,18 @@
         this.renderStopSheet();
       });
 
+      $('btn-parking-change').addEventListener('click', () => {
+        this.showParkPick = !this.showParkPick;
+        this.renderStopSheet();
+      });
+      $('parking-opts').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-parking]');
+        if (!b) return;
+        this.draft.parking = b.dataset.parking;
+        this.showParkPick = false;
+        this.renderStopSheet();
+      });
+
       $('btn-repick').addEventListener('click', () => {
         this.hideSheetNow($('stop-sheet'));
         this.pickMode = 'stop';
@@ -802,7 +893,7 @@
         this.openSheet($('place-sheet'), { replace: true, focus: $('place-input') });
       });
 
-      $('btn-stop-save').addEventListener('click', () => this.saveStop('detail'));
+      $('btn-stop-save').addEventListener('click', () => this.saveStop());
       $('btn-stop-delete').addEventListener('click', () => this.deleteStop());
     },
 
@@ -814,26 +905,28 @@
       if (stop) {
         this.editingUid = stop.uid;
         this.draft = JSON.parse(JSON.stringify(stop));
-        this.stayTouched = true;
         this.kindAuto = false;
-        this.stopView = 'detail';
       } else if (!opts.keepDraft) {
         const kind = Kinds.guess(opts.place);
         this.editingUid = null;
-        this.draft = { place: opts.place, kind, stay: Kinds.get(kind).stay, fixedAt: null, deadline: null, order: 'any', mode: null };
-        this.stayTouched = false;
+        this.draft = { place: opts.place, kind, stay: Kinds.get(kind).stay, fixedAt: null, prefAt: null, deadline: null, order: 'any', mode: null, parking: 'auto' };
         this.kindAuto = true;
-        this.stopView = 'quick';
       } else if (!this.editingUid) {
-        // 새 볼일을 만들던 중 장소만 바꾼 경우: 종류를 다시 추정
+        const usual = Kinds.get(this.draft.kind).stay;
         const kind = Kinds.guess(this.draft.place);
+        if (this.draft.stay === usual) this.draft.stay = Kinds.get(kind).stay;
         this.draft.kind = kind;
-        if (!this.stayTouched) this.draft.stay = Kinds.get(kind).stay;
         this.kindAuto = true;
       }
+      const d = this.draft;
+      this.apptType = d.fixedAt ? 'fixed' : d.prefAt ? 'pref' : d.deadline ? 'deadline' : 'none';
+      this.apptTF.set(d.fixedAt || d.prefAt || d.deadline || null);
       this.showModePick = false;
-      this.customStay = !this.stayChoices().includes(this.draft.stay);
+      this.showParkPick = false;
       $('stop-error').hidden = true;
+      $('stop-sheet-title').textContent = this.editingUid ? '볼일 고치기' : '볼일 추가';
+      $('btn-stop-save').textContent = this.editingUid ? '저장' : '추가하기';
+      $('btn-stop-delete').hidden = !this.editingUid;
 
       this.renderStopSheet();
       this.openSheet($('stop-sheet'), { replace: !!opts.replace });
@@ -841,89 +934,75 @@
       if (scroller) scroller.scrollTop = 0;
     },
 
-    stayChoices() {
-      const set = new Set(STAY_BASE);
-      set.add(Kinds.get(this.draft.kind).stay);
-      return Array.from(set).sort((a, b) => a - b);
-    },
-
     renderStopSheet() {
       const d = this.draft;
-      const detail = this.stopView === 'detail';
-      $('stop-sheet-title').textContent = this.editingUid ? '볼일 고치기' : detail ? '자세히 정하기' : '얼마나 있을 거예요?';
-      $('stop-quick').hidden = detail;
-      $('stop-detail').hidden = !detail;
-      $('stop-actions').hidden = !detail;
-      $('btn-stop-save').textContent = this.editingUid ? '저장' : '추가하기';
-      $('btn-stop-delete').hidden = !this.editingUid;
-
+      const k = Kinds.get(d.kind);
       $('picked-name').textContent = d.place.name;
       $('picked-addr').textContent = d.place.address || '';
 
-      const def = Kinds.get(d.kind).stay;
-      if (!detail) {
-        // 큰 버튼 6개 — 이 장소 종류의 "보통" 시간과 가장 가까운 칸에 표시
-        const near = QUICK_STAY.reduce((a, b) => (Math.abs(b - def) < Math.abs(a - def) ? b : a));
-        $('quick-stay').innerHTML = QUICK_STAY.map(
-          (m) => `<button class="big-btn${m === near ? ' is-usual' : ''}" type="button" data-stay="${m}"><b>${fmtMin(m)}</b>${m === near ? '<small>보통 이 정도예요</small>' : ''}</button>`
-        ).join('');
-        return;
-      }
+      // 머무는 시간
+      $('stay-value').textContent = fmtMin(d.stay);
+      $('stay-minus').disabled = d.stay <= Store.STAY_MIN;
+      $('stay-plus').disabled = d.stay >= Store.STAY_MAX;
+      $('stay-chips').innerHTML = STAY_CHIPS.map((m) => `<button class="chip chip--sm" type="button" aria-pressed="${d.stay === m}" data-stay="${m}">${fmtMin(m)}</button>`).join('');
+      $('stay-note').textContent = `${window.GetsetEngine.josa(k.label, '은', '는')} 보통 ${fmtMin(k.stay)} 정도예요 · −/+는 10분씩`;
 
-      $('stay-chips').innerHTML =
-        this.stayChoices()
-          .map((m) => {
-            const on = !this.customStay && d.stay === m;
-            return `<button class="chip" type="button" role="radio" aria-checked="${on}" data-stay="${m}">${fmtMin(m)}${m === def ? '<small>보통</small>' : ''}</button>`;
-          })
-          .join('') +
-        `<button class="chip" type="button" role="radio" aria-checked="${!!this.customStay}" data-stay="custom">직접</button>`;
-      $('stay-custom').hidden = !this.customStay;
-      if (this.customStay && document.activeElement !== $('stay-input')) $('stay-input').value = d.stay;
+      // 정해진 시간
+      $('appt-seg').querySelectorAll('[data-appt]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.appt === this.apptType)));
+      $('appt-box').hidden = this.apptType === 'none';
+      $('appt-help').textContent = {
+        fixed: '몇 시에 도착해야 해요? 이 시각은 꼭 지켜요.',
+        pref: '몇 시쯤 하고 싶어요? 최대한 맞춰 볼게요. (꼭은 아니에요)',
+        deadline: '몇 시에 문을 닫아요? 그 전에 끝나게 할게요.',
+        none: '',
+      }[this.apptType];
 
-      const appt = d.fixedAt !== null && d.fixedAt !== undefined ? 'fixed' : d.deadline !== null && d.deadline !== undefined ? 'deadline' : 'none';
-      $('appt-seg').querySelectorAll('[data-appt]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.appt === appt)));
-      $('appt-box').hidden = appt === 'none';
-      if (appt !== 'none') {
-        $('appt-help').textContent = appt === 'fixed' ? '몇 시에 도착해야 해요?' : '몇 시까지 끝내야 해요?';
-        const v = appt === 'fixed' ? d.fixedAt : d.deadline;
-        if (document.activeElement !== $('appt-time')) $('appt-time').value = v || '';
-      }
-
+      // 순서
       $('order-seg').querySelectorAll('[data-order]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.order === d.order)));
 
-      const dayMode = MODE_LABEL[this.plan.mode];
-      $('mode-line-text').innerHTML = d.mode ? `${ICON[d.mode]}<b>${MODE_LABEL[d.mode]}</b>로 가요` : `${ICON[this.plan.mode]}<b>${dayMode}</b> <span class="muted">(오늘 기본)</span>`;
+      // 가는 방법
+      const dayMode = this.plan.mode;
+      const mode = d.mode || dayMode;
+      $('mode-line-text').innerHTML = d.mode ? `${ICON[d.mode]}<b>${MODE_LABEL[d.mode]}</b>` : `${ICON[dayMode]}<b>${MODE_LABEL[dayMode]}</b><span class="muted">(그날 기본)</span>`;
       $('btn-mode-change').textContent = this.showModePick ? '닫기' : '바꾸기';
       $('stop-mode').hidden = !this.showModePick;
       this.setModeChecked($('stop-mode'), d.mode);
       const defBtn = $('stop-mode').querySelector('[data-mode=""] span');
-      if (defBtn) defBtn.textContent = `오늘 기본(${dayMode})으로`;
+      if (defBtn) defBtn.textContent = `그날 기본(${MODE_LABEL[dayMode]})으로`;
+
+      // 주차 (자동차일 때만)
+      const isCar = mode === 'car';
+      $('parking-row').hidden = !isCar;
+      const pid = d.parking && d.parking !== 'auto' ? d.parking : k.parking;
+      $('parking-line-text').innerHTML = `<b>${Kinds.PARKING[pid].label}</b>${d.parking === 'auto' || !d.parking ? '<span class="muted">(보통)</span>' : ''}`;
+      $('btn-parking-change').textContent = this.showParkPick ? '닫기' : '바꾸기';
+      $('parking-opts').hidden = !isCar || !this.showParkPick;
+      $('parking-opts').innerHTML = [['auto', `잘 모르겠어요`, `${k.label}의 보통 주차장(${Kinds.PARKING[k.parking].label})으로 계산`]]
+        .concat(Kinds.PARKING_IDS.map((id) => [id, Kinds.PARKING[id].label, Kinds.PARKING[id].desc]))
+        .map(([id, label, desc]) => `<button class="option" type="button" role="radio" aria-checked="${(d.parking || 'auto') === id}" data-parking="${id}"><b>${label}</b><small>${desc}</small></button>`)
+        .join('');
+
+      // 이 장소에서 더해지는 시간 미리보기
+      const when = { weekend: this.isWeekend(), atMin: 600 };
+      const a = Kinds.overhead(d, mode, 'arrive', when);
+      const l = Kinds.overhead(d, mode, 'leave', when);
+      $('oh-note').innerHTML = `도착해서 볼일 시작까지 <b>${a.total}분</b>, 끝나고 출발까지 <b>${l.total}분</b>을 더해요${this.isWeekend() && k.busy && isCar ? ' (주말 혼잡)' : ''}<br><span class="muted">${a.parts.map(([x, m]) => `${x} ${m}분`).join(' · ')}</span>`;
 
       $('kind-select').value = d.kind;
-      const cat = (d.place.categoryName || '').split('>').pop().trim();
-      $('kind-note').textContent = this.kindAuto && cat ? `장소 정보(${cat})를 보고 골랐어요. 다르면 바꿔 주세요.` : '';
-      $('kind-note').hidden = !$('kind-note').textContent;
     },
 
-    saveStop(from) {
+    saveStop() {
       const d = this.draft;
       const err = $('stop-error');
-      if (from === 'detail') {
-        if (d.fixedAt === '' || d.deadline === '') {
-          err.textContent = '시간을 골라 주세요';
+      if (this.apptType !== 'none') {
+        const v = this.apptTF.get();
+        if (!v) {
+          err.textContent = '시각을 숫자로 넣어 주세요 (예: 오후 2시 30분)';
           err.hidden = false;
+          this.apptTF.focus();
           return;
         }
-        if (this.customStay) {
-          const v = Math.round(Number($('stay-input').value));
-          if (!Number.isFinite(v) || v < 1 || v > 600) {
-            err.textContent = '머무는 시간을 1~600분 사이로 넣어 주세요';
-            err.hidden = false;
-            return;
-          }
-          d.stay = v;
-        }
+        d[this.apptKey()] = v;
       }
 
       const stop = Store.cleanStop(Object.assign({}, d, { uid: this.editingUid || Store.newUid() }));
@@ -938,12 +1017,12 @@
           category: stop.kind,
           mode: stop.mode || this.plan.mode,
           has_fixed: !!stop.fixedAt,
+          has_pref: !!stop.prefAt,
           has_deadline: !!stop.deadline,
-          quick: from === 'quick',
+          parking: stop.parking,
         });
         this.showToast(`${stop.place.name} 넣었어요 · ${fmtMin(stop.stay)}`);
       }
-      this.plan.date = Store.todayStr();
       this.save();
       this.closeSheet($('stop-sheet'));
       this.render();
@@ -1005,7 +1084,7 @@
     // 시트 공통 — 안드로이드 "뒤로" 버튼이 시트를 닫도록 방문 기록을 함께 관리
     // =================================================================
     wireSheets() {
-      ['place-sheet', 'stop-sheet', 'end-sheet', 'time-sheet', 'result-sheet'].forEach((id) => {
+      ['place-sheet', 'stop-sheet', 'end-sheet', 'time-sheet', 'result-sheet', 'date-sheet'].forEach((id) => {
         $(id).addEventListener('click', (e) => {
           if (e.target.closest('[data-close]')) this.closeSheet($(id));
         });

@@ -59,36 +59,48 @@
   // ---------------------------------------------------------------------
   // 한 순서를 실제로 따라가 보며 시간표를 만든다
   // ---------------------------------------------------------------------
-  function overhead(kind, mode, which) {
-    const pair = mode === 'car' ? kind.car : kind.light;
-    return pair[which === 'arrive' ? 0 : 1];
-  }
+  // 도착 후·출발 전 실질 시간은 kinds.js(주차장 종류·건물 안 시간·혼잡)가 계산해서 넘겨준다
+  const PREF_TOLERANCE = 10; // 원하는 시간: 10분까지 늦는 건 괜찮음
+  const PREF_WEIGHT = 3; // 그보다 늦으면 1분마다 끝나는 시각 3분 손해로 취급 (꼭 지킬 필요는 없음)
 
   function simulate(ctx, order, opts = {}) {
-    const { stops, start, end, dayMode, startMin, kindOf, travelFn } = ctx;
+    const { stops, start, end, dayMode, startMin, overheadFn, travelFn } = ctx;
     let t = startMin;
     let prev = start;
     let lateness = 0;
     let travelSum = 0;
     let waitSum = 0;
+    let soft = 0;
     const rows = [];
     const violations = [];
 
     for (let p = 0; p < order.length; p++) {
       const i = order[p];
       const s = stops[i];
-      const kind = kindOf(s.kind);
       const mode = s.mode || dayMode;
       const tr = travelFn(prev, s.place, mode);
       const leaveAt = t;
       t += tr.min;
       travelSum += tr.min;
       const arrive = t;
-      const arriveOH = tr.dist < 30 && p > 0 ? 0 : overhead(kind, mode, 'arrive');
+      // 바로 옆 건물(30m 안)로 걸어 옮기는 경우가 아니면 도착 후 실질 시간이 붙음
+      const aOH = tr.dist < 30 && p > 0 ? { total: 0, parts: [] } : overheadFn(s, mode, 'arrive', arrive);
+      const arriveOH = aOH.total;
       const ready = arrive + arriveOH;
       let begin = ready;
       let wait = 0;
       let late = 0;
+      let prefLate = 0;
+      if (s.prefAt != null) {
+        // 원하는 시간: 일찍 오면 그 시각까지 기다렸다 시작, 늦으면 조금 손해로만 취급
+        if (ready < s.prefAt) {
+          wait = s.prefAt - ready;
+          begin = s.prefAt;
+        } else if (ready - s.prefAt > PREF_TOLERANCE) {
+          prefLate = ready - s.prefAt;
+          soft += (prefLate - PREF_TOLERANCE) * PREF_WEIGHT;
+        }
+      }
       if (s.fixedAt != null) {
         if (ready <= s.fixedAt) {
           wait = s.fixedAt - ready;
@@ -109,16 +121,19 @@
 
       const next = p + 1 < order.length ? stops[order[p + 1]] : null;
       const nextMode = next ? next.mode || dayMode : end.type !== 'none' ? dayMode : null;
-      const leaveOH = nextMode ? overhead(kind, nextMode, 'leave') : 0;
+      // 차로 왔다가 차로 떠날 때만 주차장 시간(엘리베이터·출차)이 붙음. 걸어서 왔으면 차가 여기 없음
+      const leaveMode = nextMode ? (mode === 'car' && nextMode === 'car' ? 'car' : nextMode === 'car' ? 'walk' : nextMode) : null;
+      const lOH = leaveMode ? overheadFn(s, leaveMode, 'leave', finish) : { total: 0, parts: [] };
+      const leaveOH = lOH.total;
       const depart = finish + leaveOH;
 
       // 가지치기: 이미 지금까지가 최선보다 나쁘면 그만 (출발 준비 전 시각 기준이라 안전한 하한)
       if (opts.bound != null) {
-        const partial = opts.metric === 'travel' ? lateness * PENALTY + travelSum : lateness * PENALTY + finish;
+        const partial = opts.metric === 'travel' ? lateness * PENALTY + travelSum : lateness * PENALTY + finish + soft;
         if (partial > opts.bound) return null;
       }
 
-      rows.push({ i, mode, leaveAt, travel: tr.min, dist: tr.dist, arrive, arriveOH, ready, wait, begin, finish, leaveOH, depart, late });
+      rows.push({ i, mode, leaveAt, travel: tr.min, dist: tr.dist, arrive, arriveOH, arriveParts: aOH.parts, parking: aOH.parking || lOH.parking || null, ready, wait, begin, finish, leaveOH, leaveParts: lOH.parts, depart, late, prefLate });
       t = depart;
       prev = s.place;
     }
@@ -143,9 +158,10 @@
       travelSum,
       waitSum,
       lateness,
+      soft,
       violations,
-      costFast: lateness * PENALTY + finishAll + travelSum * 0.001,
-      costShort: lateness * PENALTY + travelSum + finishAll * 0.001,
+      costFast: lateness * PENALTY + finishAll + soft + travelSum * 0.001,
+      costShort: lateness * PENALTY + travelSum + soft + finishAll * 0.001,
     };
   }
 
@@ -166,41 +182,99 @@
     return true;
   }
 
-  /** 8곳 이하: 전부 계산 (그룹 순서 지키면서, 가지치기) */
+  /**
+   * 8곳 이하: 전부 계산 — 앞에서부터 한 곳씩 붙여가며 시간을 이어서 계산(되돌아갈 때 그대로 재사용)
+   * 이미 최선보다 나빠진 갈래는 더 보지 않는다(가지치기). 마지막에 최선 순서만 다시 따라가 시간표를 만든다.
+   */
   function bruteForce(ctx, metric) {
-    const n = ctx.stops.length;
-    const groups = ctx.stops.map(groupOf);
-    let best = null;
+    const { stops, start, end, dayMode, startMin, overheadFn, travelFn } = ctx;
+    const n = stops.length;
+    const groups = stops.map(groupOf);
+    const modes = stops.map((s) => s.mode || dayMode);
+    const endTarget = end.type === 'return' ? start : end.type === 'place' ? end.place : null;
     const used = new Array(n).fill(false);
+    const remainInGroup = [0, 0, 0];
+    groups.forEach((g) => remainInGroup[g]++);
     const order = [];
-    const costKey = metric === 'travel' ? 'costShort' : 'costFast';
+    let bestCost = Infinity;
+    let bestOrder = null;
+    const isTravel = metric === 'travel';
 
-    function rec(minGroup) {
+    // 두 지점 사이 이동은 순서와 상관없이 같으므로 미리 계산
+    const trMemo = new Map();
+    const tr = (ai, bi, mode) => {
+      const key = (ai + 1) * 256 + (bi + 1) * 4 + (mode === 'car' ? 0 : mode === 'walk' ? 1 : mode === 'bike' ? 2 : 3);
+      let v = trMemo.get(key);
+      if (!v) trMemo.set(key, (v = travelFn(ai >= 0 ? stops[ai].place : start, bi >= 0 ? stops[bi].place : endTarget, mode)));
+      return v;
+    };
+
+    function rec(prevIdx, tFinish, lateness, soft, travelSum, curGroup) {
       if (order.length === n) {
-        const sim = simulate(ctx, order);
-        if (!best || sim[costKey] < best[costKey]) best = sim;
+        let t = tFinish;
+        let travel = travelSum;
+        if (endTarget) {
+          const last = stops[prevIdx];
+          const lm = modes[prevIdx] === 'car' && dayMode === 'car' ? 'car' : dayMode === 'car' ? 'walk' : dayMode;
+          t += overheadFn(last, lm, 'leave', tFinish).total;
+          const leg = tr(prevIdx, -1, dayMode);
+          t += leg.min;
+          travel += leg.min;
+        }
+        const c = isTravel ? lateness * PENALTY + travel + soft + t * 0.001 : lateness * PENALTY + t + soft + travel * 0.001;
+        if (c < bestCost) {
+          bestCost = c;
+          bestOrder = order.slice();
+        }
         return;
       }
-      // 부분 순서로 가지치기
-      if (best && order.length >= 2) {
-        const part = simulate(ctx, order, { bound: best[costKey], metric });
-        if (!part) return;
-      }
-      for (let i = 0; i < n; i++) {
-        if (used[i] || groups[i] < minGroup) continue;
-        // 아직 안 쓴 더 앞 그룹이 남아 있으면 이 그룹은 못 감
-        let blocked = false;
-        for (let j = 0; j < n; j++) if (!used[j] && groups[j] < groups[i]) blocked = true;
-        if (blocked) continue;
-        used[i] = true;
-        order.push(i);
-        rec(groups[i]);
+      for (let j = 0; j < n; j++) {
+        if (used[j]) continue;
+        const g = groups[j];
+        if (g < curGroup) continue;
+        if (g > curGroup && remainInGroup[curGroup] > 0) continue; // 앞 그룹이 남아 있음
+        if (g > 1 && remainInGroup[1] > 0) continue;
+        if (g > 0 && remainInGroup[0] > 0) continue;
+        const s = stops[j];
+        const mode = modes[j];
+        let t = tFinish;
+        if (prevIdx >= 0) {
+          const lm = modes[prevIdx] === 'car' && mode === 'car' ? 'car' : mode === 'car' ? 'walk' : mode;
+          t += overheadFn(stops[prevIdx], lm, 'leave', tFinish).total;
+        }
+        const leg = tr(prevIdx, j, mode);
+        t += leg.min;
+        const oh = leg.dist < 30 && prevIdx >= 0 ? 0 : overheadFn(s, mode, 'arrive', t).total;
+        const ready = t + oh;
+        let begin = ready;
+        let late = 0;
+        let sft = 0;
+        if (s.prefAt != null) {
+          if (ready < s.prefAt) begin = s.prefAt;
+          else if (ready - s.prefAt > PREF_TOLERANCE) sft = (ready - s.prefAt - PREF_TOLERANCE) * PREF_WEIGHT;
+        }
+        if (s.fixedAt != null) {
+          if (ready <= s.fixedAt) begin = Math.max(begin, s.fixedAt);
+          else late += ready - s.fixedAt;
+        }
+        const finish = begin + s.stay;
+        if (s.deadline != null && finish > s.deadline) late += finish - s.deadline;
+        const L = lateness + late;
+        const S = soft + sft;
+        const T = travelSum + leg.min;
+        const bound = isTravel ? L * PENALTY + T + S : L * PENALTY + finish + S;
+        if (bound >= bestCost) continue;
+        used[j] = true;
+        remainInGroup[g]--;
+        order.push(j);
+        rec(j, finish, L, S, T, g);
         order.pop();
-        used[i] = false;
+        remainInGroup[g]++;
+        used[j] = false;
       }
     }
-    rec(0);
-    return best;
+    rec(-1, startMin, 0, 0, 0, 0);
+    return simulate(ctx, bestOrder);
   }
 
   /** 9~12곳: 근사 (여러 시작점 + 한 곳 옮기기/구간 뒤집기 개선) */
@@ -338,6 +412,16 @@
           : `${name(f)} 예약(${fmt(stops[f].fixedAt)})이 빨라서 여기부터 가요`
       );
     }
+    const pref = sim.order.filter((i) => stops[i].prefAt != null);
+    if (pref.length && out.length < 2) {
+      const q = pref[0];
+      const r = sim.rows[pos[q]];
+      out.push(
+        r.prefLate > 10
+          ? `${josa(name(q), '은', '는')} 원하는 시간(${fmt(stops[q].prefAt)})보다 ${r.prefLate}분 늦어져요. 다른 일정 때문에 어쩔 수 없었어요`
+          : `${josa(name(q), '은', '는')} 원하는 시간(${fmt(stops[q].prefAt)})에 맞췄어요`
+      );
+    }
     const dl = sim.order.filter((i) => stops[i].deadline != null && stops[i].fixedAt == null);
     if (dl.length && out.length < 2) {
       const d = dl[0];
@@ -404,14 +488,20 @@
     return out.slice(0, 3);
   }
 
+  /** overheadFn이 없을 때 쓰는 아주 단순한 값 (테스트·비상용) */
+  function defaultOverhead(stop, mode, which) {
+    const m = mode === 'car' ? (which === 'arrive' ? 7 : 4) : which === 'arrive' ? 3 : 1;
+    return { total: m, parts: [['이동·대기', m]] };
+  }
+
   // ---------------------------------------------------------------------
   // 바깥에서 부르는 함수
   // ---------------------------------------------------------------------
   /**
    * @param {object} input
    *   start {lat,lng,name}, startMin(자정부터 분), startIsNow, end {type, place},
-   *   dayMode, stops [{place, kind, stay, fixedAt(분|null), deadline(분|null), order, mode}],
-   *   kindOf(id) → {car:[도착,출발], light:[도착,출발]}
+   *   dayMode, stops [{place, kind, parking, stay, fixedAt, prefAt, deadline(분|null), order, mode}],
+   *   overheadFn(stop, mode, 'arrive'|'leave', 시각) → {total, parts} — kinds.js 현실 시간 모델
    *   travelFn (선택) — 4단계에서 실제 길찾기로 교체
    */
   function plan(input) {
@@ -425,7 +515,7 @@
       end: input.end || { type: 'return' },
       dayMode: input.dayMode || 'car',
       startMin: input.startMin,
-      kindOf: input.kindOf,
+      overheadFn: input.overheadFn || defaultOverhead,
       travelFn: input.travelFn || travel,
     };
 
@@ -461,7 +551,7 @@
       end: input.end || { type: 'return' },
       dayMode: input.dayMode || 'car',
       startMin: input.startMin,
-      kindOf: input.kindOf,
+      overheadFn: input.overheadFn || defaultOverhead,
       travelFn: input.travelFn || travel,
     };
     const sim = simulate(ctx, order);

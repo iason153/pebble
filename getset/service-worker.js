@@ -8,7 +8,7 @@
  * 버전을 올릴 때는 CACHE_NAME 숫자만 바꾸면 이전 캐시가 자동 정리된다.
  */
 
-const CACHE_NAME = 'getset-shell-v2';
+const CACHE_NAME = 'getset-shell-v3';
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/getset/
 
 const APP_SHELL = [
@@ -23,6 +23,7 @@ const APP_SHELL = [
   'js/store.js',
   'js/places.js',
   'js/engine.js',
+  'js/timefield.js',
   'js/install.js',
   'js/app.js',
   'icons/icon.svg',
