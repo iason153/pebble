@@ -83,6 +83,17 @@
 
       this.render();
       this.showNotice();
+      // 값 파일(model.json)을 다 읽으면 이름·시간을 다시 그림. 관리자 시험 값이면 알림 띠 표시
+      const onModel = () => {
+        this.render();
+        $('model-banner').hidden = Kinds.source !== 'override';
+      };
+      window.addEventListener('getset:model', onModel);
+      Kinds.ready.then(onModel);
+      $('btn-model-reset').addEventListener('click', () => {
+        Kinds.clearOverride();
+        window.location.reload();
+      });
       setInterval(() => this.renderTime(), 30 * 1000);
       this.registerServiceWorker();
     },
@@ -458,6 +469,8 @@
         end: this.plan.end,
         dayMode: this.plan.mode,
         overheadFn: (st, mode, which, at) => Kinds.overheadCached(st, mode, which, { weekend, atMin: at }),
+        travelParams: Kinds.travelParams,
+        pref: Kinds.prefParams,
         stops: this.plan.stops.map((s) => ({
           place: s.place,
           kind: s.kind,
@@ -557,7 +570,7 @@
         items.push(leg(row.mode, row.travel, row.dist));
         const badges = [];
         if (s.fixedAt != null) badges.push(row.late && s.deadline == null ? `<span class="badge badge--late">예약 ${fmt(s.fixedAt)} · ${row.late}분 늦음</span>` : `<span class="badge badge--ok">예약 ${fmt(s.fixedAt)} ✓</span>`);
-        if (s.prefAt != null) badges.push(row.prefLate > 10 ? `<span class="badge badge--soft">${fmt(s.prefAt)}쯤 원했는데 ${row.prefLate}분 늦어요</span>` : `<span class="badge badge--ok">${fmt(s.prefAt)}쯤 ✓</span>`);
+        if (s.prefAt != null) badges.push(row.prefLate > Kinds.prefParams.tolerance ? `<span class="badge badge--soft">${fmt(s.prefAt)}쯤 원했는데 ${row.prefLate}분 늦어요</span>` : `<span class="badge badge--ok">${fmt(s.prefAt)}쯤 ✓</span>`);
         if (s.deadline != null) {
           const over = row.finish - s.deadline;
           badges.push(over > 0 ? `<span class="badge badge--late">${fmt(s.deadline)}까지 · ${over}분 늦음</span>` : `<span class="badge badge--ok">${fmt(s.deadline)} 전에 끝 ✓</span>`);

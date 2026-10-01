@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Getset 관리</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#153628">
+<link rel="icon" href="../icons/favicon.ico" sizes="48x48">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin">
+
+<header class="app-header">
+  <h1 class="app-title"><img class="app-title__mark" src="../icons/icon.svg" alt="" width="28" height="28">Getset 관리</h1>
+  <a class="install-btn" href="../">앱으로</a>
+</header>
+
+<!-- 접근 비밀번호 (실수 방지용) -->
+<main id="lock" class="app-main">
+  <section class="card">
+    <h2 class="card__title">관리자 확인</h2>
+    <p class="card__desc">관리 비밀번호를 넣어 주세요.</p>
+    <form id="lock-form" class="lock-form" autocomplete="off">
+      <input id="lock-input" class="input" type="password" inputmode="text" aria-label="관리 비밀번호" placeholder="비밀번호">
+      <button class="btn-soft" type="submit">열기</button>
+    </form>
+    <p id="lock-error" class="form-error" hidden>비밀번호가 달라요</p>
+  </section>
+</main>
+
+<main id="admin" class="app-main" hidden>
+  <nav class="tabs admin-tabs" role="tablist">
+    <button class="tab" type="button" role="tab" data-tab="values" aria-selected="true"><b>기본값</b></button>
+    <button class="tab" type="button" role="tab" data-tab="measure" aria-selected="false"><b>현장 측정기</b></button>
+    <button class="tab" type="button" role="tab" data-tab="crowd" aria-selected="false"><b>모두의 기록</b></button>
+  </nav>
+
+  <!-- ───────── 기본값 ───────── -->
+  <section id="tab-values" class="tab-panel">
+    <div id="status" class="card status"></div>
+
+    <div class="card preview" id="preview"></div>
+
+    <details class="card group" open>
+      <summary class="group__summary">주차장 종류 <small>자동차로 갈 때 ①자리 찾기 ②입구까지 ⑤차까지 ⑥출차</small></summary>
+      <div id="parking-editor"></div>
+      <button id="btn-add-parking" class="btn-line add-row" type="button">+ 주차장 종류 추가</button>
+    </details>
+
+    <details class="card group">
+      <summary class="group__summary">장소 종류 <small>머무는 시간 · 건물 안 시간 · 보통 주차장</small></summary>
+      <div id="kind-editor"></div>
+    </details>
+
+    <details class="card group">
+      <summary class="group__summary">혼잡 <small>주말·점심에 자리 찾기가 더 걸림</small></summary>
+      <div id="busy-editor" class="fields"></div>
+    </details>
+
+    <details class="card group">
+      <summary class="group__summary">이동 어림 <small>실제 길찾기가 붙기 전까지 쓰는 속도</small></summary>
+      <div id="travel-editor" class="fields"></div>
+    </details>
+
+    <details class="card group">
+      <summary class="group__summary">원하는 시간 · 식사 · 여유 · 집 들르기</summary>
+      <div id="etc-editor" class="fields"></div>
+    </details>
+
+    <div class="card notes" id="notes"></div>
+  </section>
+
+  <!-- ───────── 현장 측정기 ───────── -->
+  <section id="tab-measure" class="tab-panel" hidden>
+    <div id="m-setup" class="card">
+      <h2 class="card__title">어디를 재나요?</h2>
+      <div class="field">
+        <label class="field__label" for="m-place">장소</label>
+        <div class="m-search">
+          <input id="m-place" class="input" type="search" placeholder="장소 이름 (검색 또는 직접 입력)" autocomplete="off">
+          <button id="m-search-btn" class="btn-line btn-line--sm" type="button">찾기</button>
+        </div>
+        <ul id="m-results" class="results m-results"></ul>
+        <p id="m-picked" class="field__note"></p>
+      </div>
+      <div class="field">
+        <label class="field__label" for="m-kind">장소 종류</label>
+        <select id="m-kind" class="select"></select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="m-parking">주차장 종류</label>
+        <select id="m-parking" class="select"></select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="m-memo">메모 (선택)</label>
+        <input id="m-memo" class="input" type="text" placeholder="예: 지하 3층까지 내려감, 엘베 1대">
+      </div>
+      <button id="m-start" class="btn-plan m-start" type="button">측정 시작</button>
+      <p class="field__note">주차장에 들어가는 순간 [측정 시작]을 누르세요. 화면이 꺼져도 기록은 남아요.</p>
+    </div>
+
+    <div id="m-run" class="card m-run" hidden>
+      <p id="m-run-place" class="m-run__place"></p>
+      <p class="m-run__label">지금 단계</p>
+      <p id="m-run-step" class="m-run__step"></p>
+      <p id="m-run-timer" class="m-run__timer">0:00</p>
+      <button id="m-next" class="m-next" type="button"></button>
+      <div class="m-run__actions">
+        <button id="m-skip" class="btn-line" type="button">이 단계 건너뛰기</button>
+        <button id="m-undo" class="btn-line" type="button">한 단계 되돌리기</button>
+      </div>
+      <ol id="m-log" class="m-log"></ol>
+      <button id="m-cancel" class="text-btn m-cancel" type="button">측정 취소</button>
+    </div>
+
+    <div class="card">
+      <h2 class="card__title">측정 결과 요약</h2>
+      <div id="m-summary"></div>
+      <div class="m-apply">
+        <label class="toggle-row"><input id="m-apply-stay" type="checkbox"><span class="toggle-row__text"><b>머무는 시간도 반영</b><small>볼일 시간은 사람마다 달라서 보통은 끄고 반영해요</small></span></label>
+        <button id="m-apply" class="btn-soft" type="button">요약을 기본값에 반영</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__head">
+        <h2 class="card__title">측정 기록</h2>
+        <button id="m-csv" class="btn-line btn-line--sm" type="button">CSV 내려받기</button>
+      </div>
+      <ul id="m-list" class="m-list"></ul>
+    </div>
+  </section>
+
+  <!-- ───────── 모두의 기록 ───────── -->
+  <section id="tab-crowd" class="tab-panel" hidden>
+    <div class="card">
+      <h2 class="card__title">모두의 기록</h2>
+      <p class="card__desc">사용자들이 익명으로 보낸 "도착 → 볼일 시작 → 끝 → 출발" 기록을 장소·주차장 종류별로 모아 보여주는 곳이에요.</p>
+      <p class="card__desc"><b>8단계(서버 기능)</b>에서 열립니다. 그때 여기서 "지하 주차장 대형마트 도착 후 평균 11분(230건)"처럼 보고 바로 기본값에 반영할 수 있어요.</p>
+    </div>
+  </section>
+</main>
+
+<!-- 하단 버튼 (기본값 탭) -->
+<footer id="admin-bar" class="app-footer admin-bar" hidden>
+  <div class="admin-bar__row">
+    <button id="btn-try" class="btn-line" type="button">이 폰에서 시험</button>
+    <button id="btn-export" class="btn-plan" type="button">값 파일 내려받기</button>
+  </div>
+  <div class="admin-bar__row admin-bar__row--sub">
+    <button id="btn-untry" class="text-btn" type="button">시험 해제</button>
+    <button id="btn-import" class="text-btn" type="button">파일 불러오기</button>
+    <button id="btn-revert" class="text-btn" type="button">올린 값으로 되돌리기</button>
+    <input id="import-file" type="file" accept="application/json,.json" hidden>
+  </div>
+</footer>
+
+<!-- 내려받기 시트 -->
+<div id="export-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="export-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <h2 id="export-title" class="sheet__title">값 파일 내려받기</h2>
+    <p class="sheet__desc">무엇을 왜 바꿨는지 한 줄로 남겨 주세요. 값 파일 안에 이력으로 저장돼요.</p>
+    <input id="export-note" class="input" type="text" placeholder="예: 지하 주차장 엘베 대기 3분으로 — 산본 이마트 실측">
+    <p id="export-error" class="form-error" hidden>변경 메모를 적어 주세요</p>
+    <ol class="export-steps">
+      <li><b>model.json</b> 파일이 내려받아져요.</li>
+      <li><a href="https://github.com/iason153/pebble/upload/main/getset/data" target="_blank" rel="noopener">깃허브 getset/data 폴더 올리기 화면</a>에 그 파일을 끌어다 놓고 Commit.</li>
+      <li>1~2분 뒤 모든 사용자에게 새 값이 적용돼요.</li>
+    </ol>
+    <div class="sheet__actions">
+      <button class="sheet__btn" type="button" data-close>취소</button>
+      <button id="btn-export-go" class="sheet__btn sheet__btn--primary" type="button">내려받기</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden>
+  <span id="toast-msg" class="toast__msg"></span>
+  <button id="toast-action" class="toast__action" type="button" hidden></button>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="../js/kinds.js"></script>
+<script src="../js/engine.js"></script>
+<script src="../js/places.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

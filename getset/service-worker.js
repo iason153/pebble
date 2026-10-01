@@ -8,7 +8,7 @@
  * 버전을 올릴 때는 CACHE_NAME 숫자만 바꾸면 이전 캐시가 자동 정리된다.
  */
 
-const CACHE_NAME = 'getset-shell-v3';
+const CACHE_NAME = 'getset-shell-v4';
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/getset/
 
 const APP_SHELL = [
@@ -26,6 +26,7 @@ const APP_SHELL = [
   'js/timefield.js',
   'js/install.js',
   'js/app.js',
+  'data/model.json',
   'icons/icon.svg',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -63,7 +64,8 @@ self.addEventListener('fetch', (event) => {
     return res;
   };
 
-  const fresh = req.mode === 'navigate' || ['document', 'script', 'style', 'manifest'].includes(req.destination);
+  // 값 파일(data/*.json)도 항상 최신을 먼저 — 관리 페이지에서 올린 값이 바로 반영되게
+  const fresh = req.mode === 'navigate' || ['document', 'script', 'style', 'manifest'].includes(req.destination) || url.pathname.endsWith('.json');
   if (fresh) {
     event.respondWith(
       fetch(req)

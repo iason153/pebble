@@ -16,7 +16,6 @@ window.GetsetStore = (function () {
   const RECENT_MAX = 12;
   const KEEP_DAYS = 30; // 지난 계획은 30일 지나면 정리
   const MODES = ['car', 'walk', 'bike', 'transit'];
-  const PARKINGS = ['auto', 'outdoor', 'underground', 'street'];
   const STAY_MIN = 5;
   const STAY_MAX = 600;
 
@@ -75,7 +74,8 @@ window.GetsetStore = (function () {
       deadline,
       order: s.order === 'first' || s.order === 'last' ? s.order : 'any',
       mode: MODES.includes(s.mode) ? s.mode : null, // null = 그날 기본 이동수단
-      parking: PARKINGS.includes(s.parking) ? s.parking : 'auto', // auto = 장소 종류의 보통 주차장
+      // auto = 장소 종류의 보통 주차장. 관리 페이지에서 새 주차장 종류를 만들 수 있으므로 모양만 검사
+      parking: typeof s.parking === 'string' && /^[a-z0-9_]{1,24}$/.test(s.parking) ? s.parking : 'auto',
     };
   }
 
@@ -177,6 +177,6 @@ window.GetsetStore = (function () {
     todayStr, parseDate, addDays, isTime, newUid,
     loadPlans, savePlans, planFor, cleanStop, cleanPlace,
     loadPlaces, savePlaces, pushRecent,
-    MODES, PARKINGS, STAY_MIN, STAY_MAX,
+    MODES, STAY_MIN, STAY_MAX,
   };
 })();

@@ -42,16 +42,20 @@
    *   대중교통 대기 8분 + 직선 × 1.4 ÷ 시속 20km + 걸어서 오가기 6분
    *   자동차(임시 어림) 2분 + 직선 × 1.35 ÷ 속도(시내 21km/h, 중거리 30km/h, 장거리 48km/h)
    */
-  function travel(a, b, mode) {
+  const TRAVEL_DEFAULT = { walkMpm: 70, bikeMpm: 250, detour: 1.3, transitWait: 8, transitAccess: 6, transitKmh: 20, transitDetour: 1.4, carBase: 2, carDetour: 1.35, carCityMpm: 350, carMidMpm: 500, carFarMpm: 800 };
+
+  /** 직선거리로 어림한 이동 시간. 계수는 값 파일(model.json → travel)에서 옴 */
+  function travel(a, b, mode, params) {
+    const P = params || TRAVEL_DEFAULT;
     const d = distM(a, b);
     let min;
     if (d < 30) min = 0;
-    else if (mode === 'walk') min = (d * 1.3) / 70;
-    else if (mode === 'bike') min = (d * 1.3) / 250;
-    else if (mode === 'transit') min = 8 + (d * 1.4) / (20000 / 60) + 6;
+    else if (mode === 'walk') min = (d * P.detour) / P.walkMpm;
+    else if (mode === 'bike') min = (d * P.detour) / P.bikeMpm;
+    else if (mode === 'transit') min = P.transitWait + (d * P.transitDetour) / ((P.transitKmh * 1000) / 60) + P.transitAccess;
     else {
-      const v = d < 3000 ? 350 : d < 15000 ? 500 : 800;
-      min = 2 + (d * 1.35) / v;
+      const v = d < 3000 ? P.carCityMpm : d < 15000 ? P.carMidMpm : P.carFarMpm;
+      min = P.carBase + (d * P.carDetour) / v;
     }
     return { min: Math.ceil(min), dist: Math.round(d) };
   }
@@ -60,11 +64,13 @@
   // 한 순서를 실제로 따라가 보며 시간표를 만든다
   // ---------------------------------------------------------------------
   // 도착 후·출발 전 실질 시간은 kinds.js(주차장 종류·건물 안 시간·혼잡)가 계산해서 넘겨준다
-  const PREF_TOLERANCE = 10; // 원하는 시간: 10분까지 늦는 건 괜찮음
-  const PREF_WEIGHT = 3; // 그보다 늦으면 1분마다 끝나는 시각 3분 손해로 취급 (꼭 지킬 필요는 없음)
+  // 원하는 시간: tolerance분까지 늦는 건 괜찮고, 그보다 늦으면 1분마다 끝나는 시각 weight분 손해로 취급
+  // (값은 model.json → pref, 기본 10분 / 3배)
 
   function simulate(ctx, order, opts = {}) {
     const { stops, start, end, dayMode, startMin, overheadFn, travelFn } = ctx;
+    const PREF_TOLERANCE = ctx.prefTol;
+    const PREF_WEIGHT = ctx.prefWeight;
     let t = startMin;
     let prev = start;
     let lateness = 0;
@@ -188,6 +194,8 @@
    */
   function bruteForce(ctx, metric) {
     const { stops, start, end, dayMode, startMin, overheadFn, travelFn } = ctx;
+    const PREF_TOLERANCE = ctx.prefTol;
+    const PREF_WEIGHT = ctx.prefWeight;
     const n = stops.length;
     const groups = stops.map(groupOf);
     const modes = stops.map((s) => s.mode || dayMode);
@@ -417,7 +425,7 @@
       const q = pref[0];
       const r = sim.rows[pos[q]];
       out.push(
-        r.prefLate > 10
+        r.prefLate > ctx.prefTol
           ? `${josa(name(q), '은', '는')} 원하는 시간(${fmt(stops[q].prefAt)})보다 ${r.prefLate}분 늦어져요. 다른 일정 때문에 어쩔 수 없었어요`
           : `${josa(name(q), '은', '는')} 원하는 시간(${fmt(stops[q].prefAt)})에 맞췄어요`
       );
@@ -516,7 +524,9 @@
       dayMode: input.dayMode || 'car',
       startMin: input.startMin,
       overheadFn: input.overheadFn || defaultOverhead,
-      travelFn: input.travelFn || travel,
+      travelFn: input.travelFn || ((a, b, m) => travel(a, b, m, input.travelParams)),
+      prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
+      prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
     };
 
     const fast = solve(ctx, 'fast');
@@ -552,7 +562,9 @@
       dayMode: input.dayMode || 'car',
       startMin: input.startMin,
       overheadFn: input.overheadFn || defaultOverhead,
-      travelFn: input.travelFn || travel,
+      travelFn: input.travelFn || ((a, b, m) => travel(a, b, m, input.travelParams)),
+      prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
+      prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
     };
     const sim = simulate(ctx, order);
     return { sim, reasons: [], warnings: warningsFor(ctx, sim), valid: validOrder(input.stops, order) };
