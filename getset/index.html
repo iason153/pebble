@@ -30,6 +30,9 @@
     <button id="btn-share" class="icon-btn" type="button" aria-label="Getset 친구에게 공유하기">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>
     </button>
+    <button id="btn-me" class="icon-btn" type="button" aria-label="내 정보">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.8 20c.9-3.6 3.8-5.6 7.2-5.6s6.3 2 7.2 5.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
     <button id="btn-install" class="install-btn" type="button" hidden>설치</button>
   </div>
 </header>
@@ -44,6 +47,13 @@
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
     </button>
   </div>
+
+  <!-- 진행 중인 일정 -->
+  <button id="run-bar" class="run-bar" type="button" hidden>
+    <span class="run-bar__dot" aria-hidden="true"></span>
+    <span id="run-bar-text" class="run-bar__text">진행 중</span>
+    <span class="run-bar__go">이어서 보기</span>
+  </button>
 
   <!-- 관리 페이지의 "이 폰에서만 먼저 적용" 중일 때 -->
   <div id="model-banner" class="model-banner" role="status" hidden>
@@ -115,15 +125,25 @@
       <p class="stops-empty__desc">은행, 병원, 마트처럼 갈 곳만 넣으면<br><b>어디부터 갈지</b>와 <b>실제로 끝나는 시각</b>을 정리해 드려요.</p>
     </div>
 
-    <button id="btn-add" class="add-btn" type="button">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-      볼일 추가
-    </button>
+    <div class="add-row-2">
+      <button id="btn-add" class="add-btn" type="button">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        볼일 추가
+      </button>
+      <button id="btn-home-visit" class="add-btn add-btn--home" type="button">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 11 12 4l8 7v8.5a.5.5 0 0 1-.5.5H15v-5.5H9V20H4.5a.5.5 0 0 1-.5-.5z"/></svg>
+        집 들르기
+      </button>
+    </div>
+    <div class="routine-row">
+      <button id="btn-routine-load" class="text-btn" type="button">루틴 불러오기</button>
+      <button id="btn-routine-save" class="text-btn" type="button" hidden>루틴으로 저장</button>
+    </div>
   </section>
 
   <footer class="app-about">
     <p><b>Getset</b>은 볼일이 몰린 날, 갈 곳만 넣으면 동선 순서와 현실적인 시간표를 정리해 주는 무료 도구예요. 주차 자리 찾기·엘리베이터·대기처럼 내비가 계산하지 않는 시간까지 챙겨요. 로그인 없이 쓰고, 넣은 내용은 이 기기에만 저장돼요.</p>
-    <p><a href="/">Pebble</a></p>
+    <p><button id="btn-feedback-2" class="link-btn" type="button">의견 보내기</button> · <a href="/">Pebble</a></p>
   </footer>
 </main>
 
@@ -296,7 +316,13 @@
         <div id="parking-opts" class="options options--compact set-row__more" role="radiogroup" aria-label="주차장 종류" hidden></div>
         <p id="oh-note" class="oh-note"></p>
 
-        <div class="set-row set-row--select">
+        <div id="hours-row" class="set-row">
+          <span class="set-row__label">영업시간</span>
+          <span id="hours-text" class="set-row__value"></span>
+          <button id="btn-hours" class="btn-line btn-line--sm" type="button">상관없음</button>
+        </div>
+
+        <div id="kind-row" class="set-row set-row--select">
           <label class="set-row__label" for="kind-select">장소 종류</label>
           <select id="kind-select" class="select select--sm"></select>
         </div>
@@ -322,8 +348,12 @@
     </div>
     <div id="result-tabs" class="tabs" role="tablist" hidden></div>
     <div id="result-body" class="sheet__scroll"></div>
-    <div class="sheet__actions">
+    <div class="sheet__actions sheet__actions--stack">
       <button id="btn-go" class="sheet__btn sheet__btn--primary" type="button">이대로 출발</button>
+      <div class="sheet__subactions">
+        <button id="btn-ics" class="text-btn" type="button">캘린더에 넣기</button>
+        <button id="btn-share-plan" class="text-btn" type="button">시간표 보내기</button>
+      </div>
     </div>
   </div>
 </div>
@@ -361,6 +391,84 @@
   </div>
 </div>
 
+<!-- 첫 실행 -->
+<div id="onboard" class="onboard" hidden>
+  <div class="onboard__panel" role="dialog" aria-modal="true" aria-label="처음 설정">
+    <div class="onboard__top">
+      <div id="ob-dots" class="onboard__dots" aria-hidden="true"></div>
+      <button id="ob-skip" class="text-btn" type="button">나중에 할게요</button>
+    </div>
+    <div id="ob-body" class="onboard__body"></div>
+    <div class="onboard__actions">
+      <button id="ob-back" class="sheet__btn" type="button">이전</button>
+      <button id="ob-next" class="sheet__btn sheet__btn--primary" type="button">다음</button>
+    </div>
+  </div>
+</div>
+
+<!-- 내 정보 -->
+<div id="me-sheet" class="sheet sheet--tall" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="me-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="me-title" class="sheet__title">내 정보</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="me-body" class="sheet__scroll"></div>
+  </div>
+</div>
+
+<!-- 진행 모드 -->
+<div id="run-sheet" class="sheet sheet--tall" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="run-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="run-title" class="sheet__title">지금 할 일</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="run-body" class="sheet__scroll"></div>
+  </div>
+</div>
+
+<!-- 루틴 -->
+<div id="routine-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="routine-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="routine-title" class="sheet__title">루틴</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="routine-body" class="sheet__scroll"></div>
+  </div>
+</div>
+
+<!-- 의견 보내기 -->
+<div id="feedback-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="feedback-title" class="sheet__title">의견 보내기</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <p class="sheet__desc">불편했던 점, 시간이 안 맞았던 곳, 있었으면 하는 기능 뭐든 좋아요.</p>
+    <div class="feedback-chips" id="feedback-chips">
+      <button class="chip chip--sm" type="button" data-fb="시간이 실제랑 달랐어요: ">시간이 안 맞았어요</button>
+      <button class="chip chip--sm" type="button" data-fb="순서가 이상했어요: ">순서가 이상해요</button>
+      <button class="chip chip--sm" type="button" data-fb="쓰기 어려웠어요: ">쓰기 어려워요</button>
+      <button class="chip chip--sm" type="button" data-fb="이런 기능이 있으면 좋겠어요: ">이런 기능 원해요</button>
+    </div>
+    <textarea id="feedback-text" class="textarea" rows="5" placeholder="여기에 적어 주세요"></textarea>
+    <label class="toggle-row feedback-ctx"><input id="feedback-ctx" type="checkbox" checked><span class="toggle-row__text"><b>오늘 계획도 같이 보내기</b><small>장소 이름과 계산된 시간표가 같이 가요 (고치는 데 큰 도움)</small></span></label>
+    <div class="sheet__actions">
+      <button id="btn-feedback-send" class="sheet__btn sheet__btn--primary" type="button">카톡 등으로 보내기</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" hidden>
   <span id="toast-msg" class="toast__msg"></span>
   <button id="toast-action" class="toast__action" type="button" hidden></button>
@@ -374,6 +482,9 @@
 <script src="js/store.js"></script>
 <script src="js/places.js"></script>
 <script src="js/engine.js"></script>
+<script src="js/profile.js"></script>
+<script src="js/learn.js"></script>
+<script src="js/onboarding.js"></script>
 <script src="js/timefield.js"></script>
 <script src="js/install.js"></script>
 <script src="js/app.js"></script>

@@ -85,6 +85,25 @@ window.GetsetPlaces = (function () {
     });
   }
 
+  /** 근처 같은 종류 찾기 (예: 점심 제안 — 음식점 FD6, 가까운 순) */
+  async function nearby(categoryCode, near, radius = 1500) {
+    await load();
+    const k = window.kakao.maps;
+    const ps = new k.services.Places();
+    return new Promise((resolve, reject) => {
+      ps.categorySearch(
+        categoryCode,
+        (data, status) => {
+          const S = k.services.Status;
+          if (status === S.OK) resolve(data.map(toPlace));
+          else if (status === S.ZERO_RESULT) resolve([]);
+          else reject(new Error('search-error'));
+        },
+        { location: new k.LatLng(near.lat, near.lng), radius, sort: k.services.SortBy ? k.services.SortBy.DISTANCE : undefined, size: 15 }
+      );
+    });
+  }
+
   /** 좌표 → "산본동" 같은 짧은 동네 이름 + 주소 */
   async function reverse(lat, lng) {
     await load();
@@ -129,5 +148,5 @@ window.GetsetPlaces = (function () {
     });
   }
 
-  return { load, search, reverse, current };
+  return { load, search, nearby, reverse, current };
 })();

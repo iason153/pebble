@@ -67,6 +67,56 @@
   // 원하는 시간: tolerance분까지 늦는 건 괜찮고, 그보다 늦으면 1분마다 끝나는 시각 weight분 손해로 취급
   // (값은 model.json → pref, 기본 10분 / 3배)
 
+  /**
+   * 도착해서 볼일을 할 수 있게 된 시각(ready)부터 실제 시작·끝·늦음을 계산 — 모든 시간 규칙이 여기 모임
+   *   - 영업 시작 전이면 문 열 때까지 기다림 (openAt)
+   *   - 원하는 시간(prefAt): 일찍 오면 기다렸다 시작, 많이 늦으면 약한 손해(soft)
+   *   - 예약(fixedAt): 일찍 오면 기다림, 늦으면 위반
+   *   - 점심 휴진 등(breaks): 볼일이 그 시간에 걸리면 끝난 뒤로 미룸 (예약은 사용자가 알고 잡았으니 그대로)
+   *   - 문 닫는 시간: 사용자가 넣은 deadline과 영업 종료 closeAt 중 이른 쪽까지 끝내야 함
+   *   - 쉬는 날(closed): 어떤 순서로도 못 지킴 → 위반으로 표시
+   */
+  function serve(s, ready, tol, weight) {
+    let begin = ready;
+    let late = 0;
+    let soft = 0;
+    let prefLate = 0;
+    const viol = [];
+    if (s.openAt != null && begin < s.openAt) begin = s.openAt;
+    if (s.prefAt != null) {
+      if (ready < s.prefAt) begin = Math.max(begin, s.prefAt);
+      else if (ready - s.prefAt > tol) {
+        prefLate = ready - s.prefAt;
+        soft = (prefLate - tol) * weight;
+      }
+    }
+    if (s.fixedAt != null) {
+      if (ready <= s.fixedAt) begin = Math.max(begin, s.fixedAt);
+      else {
+        late += ready - s.fixedAt;
+        viol.push({ type: 'fixed', minutes: ready - s.fixedAt });
+      }
+    }
+    if (s.breaks && s.fixedAt == null) {
+      for (const [b0, b1] of s.breaks) {
+        if (begin < b1 && begin + s.stay > b0) begin = b1;
+      }
+    }
+    const finish = begin + s.stay;
+    const userDl = s.deadline != null ? s.deadline : Infinity;
+    const closeDl = s.closeAt != null ? s.closeAt : Infinity;
+    const dl = Math.min(userDl, closeDl);
+    if (finish > dl) {
+      late += finish - dl;
+      viol.push({ type: userDl <= closeDl ? 'deadline' : 'hours', minutes: finish - dl });
+    }
+    if (s.closed) {
+      late += 60;
+      viol.push({ type: 'closed', minutes: 0 });
+    }
+    return { begin, wait: begin - ready, finish, late, soft, prefLate, viol };
+  }
+
   function simulate(ctx, order, opts = {}) {
     const { stops, start, end, dayMode, startMin, overheadFn, travelFn } = ctx;
     const PREF_TOLERANCE = ctx.prefTol;
@@ -77,6 +127,7 @@
     let travelSum = 0;
     let waitSum = 0;
     let soft = 0;
+    let sumFinish = 0; // 끝나는 시각이 같으면 볼일을 앞쪽에 몰아서 빨리 해치우는 순서를 고르기 위함
     const rows = [];
     const violations = [];
 
@@ -93,35 +144,11 @@
       const aOH = tr.dist < 30 && p > 0 ? { total: 0, parts: [] } : overheadFn(s, mode, 'arrive', arrive);
       const arriveOH = aOH.total;
       const ready = arrive + arriveOH;
-      let begin = ready;
-      let wait = 0;
-      let late = 0;
-      let prefLate = 0;
-      if (s.prefAt != null) {
-        // 원하는 시간: 일찍 오면 그 시각까지 기다렸다 시작, 늦으면 조금 손해로만 취급
-        if (ready < s.prefAt) {
-          wait = s.prefAt - ready;
-          begin = s.prefAt;
-        } else if (ready - s.prefAt > PREF_TOLERANCE) {
-          prefLate = ready - s.prefAt;
-          soft += (prefLate - PREF_TOLERANCE) * PREF_WEIGHT;
-        }
-      }
-      if (s.fixedAt != null) {
-        if (ready <= s.fixedAt) {
-          wait = s.fixedAt - ready;
-          begin = s.fixedAt;
-        } else {
-          late = ready - s.fixedAt;
-          violations.push({ i, type: 'fixed', minutes: late });
-        }
-      }
-      const finish = begin + s.stay;
-      if (s.deadline != null && finish > s.deadline) {
-        const m = finish - s.deadline;
-        late += m;
-        violations.push({ i, type: 'deadline', minutes: m });
-      }
+      const sv = serve(s, ready, PREF_TOLERANCE, PREF_WEIGHT);
+      const { begin, wait, finish, late, prefLate } = sv;
+      soft += sv.soft;
+      sumFinish += finish;
+      sv.viol.forEach((v) => violations.push({ i, type: v.type, minutes: v.minutes }));
       lateness += late;
       waitSum += wait;
 
@@ -166,8 +193,9 @@
       lateness,
       soft,
       violations,
-      costFast: lateness * PENALTY + finishAll + soft + travelSum * 0.001,
-      costShort: lateness * PENALTY + travelSum + soft + finishAll * 0.001,
+      // 우선순서: 약속 지키기 ≫ 가장 빨리 끝남 > 볼일을 앞쪽에 몰기 > 이동 적게 (뒤의 둘은 1분보다 작은 차이로만 작용)
+      costFast: lateness * PENALTY + finishAll + soft + sumFinish * 5e-5 + travelSum * 1e-6,
+      costShort: lateness * PENALTY + travelSum + soft + finishAll * 0.001 + sumFinish * 1e-6,
     };
   }
 
@@ -217,7 +245,7 @@
       return v;
     };
 
-    function rec(prevIdx, tFinish, lateness, soft, travelSum, curGroup) {
+    function rec(prevIdx, tFinish, lateness, soft, travelSum, curGroup, sumF) {
       if (order.length === n) {
         let t = tFinish;
         let travel = travelSum;
@@ -229,7 +257,7 @@
           t += leg.min;
           travel += leg.min;
         }
-        const c = isTravel ? lateness * PENALTY + travel + soft + t * 0.001 : lateness * PENALTY + t + soft + travel * 0.001;
+        const c = isTravel ? lateness * PENALTY + travel + soft + t * 0.001 + sumF * 1e-6 : lateness * PENALTY + t + soft + sumF * 5e-5 + travel * 1e-6;
         if (c < bestCost) {
           bestCost = c;
           bestOrder = order.slice();
@@ -254,34 +282,26 @@
         t += leg.min;
         const oh = leg.dist < 30 && prevIdx >= 0 ? 0 : overheadFn(s, mode, 'arrive', t).total;
         const ready = t + oh;
-        let begin = ready;
-        let late = 0;
-        let sft = 0;
-        if (s.prefAt != null) {
-          if (ready < s.prefAt) begin = s.prefAt;
-          else if (ready - s.prefAt > PREF_TOLERANCE) sft = (ready - s.prefAt - PREF_TOLERANCE) * PREF_WEIGHT;
-        }
-        if (s.fixedAt != null) {
-          if (ready <= s.fixedAt) begin = Math.max(begin, s.fixedAt);
-          else late += ready - s.fixedAt;
-        }
-        const finish = begin + s.stay;
-        if (s.deadline != null && finish > s.deadline) late += finish - s.deadline;
+        const sv = serve(s, ready, PREF_TOLERANCE, PREF_WEIGHT);
+        const finish = sv.finish;
+        const late = sv.late;
+        const sft = sv.soft;
         const L = lateness + late;
         const S = soft + sft;
         const T = travelSum + leg.min;
-        const bound = isTravel ? L * PENALTY + T + S : L * PENALTY + finish + S;
+        const F = sumF + finish;
+        const bound = isTravel ? L * PENALTY + T + S : L * PENALTY + finish + S + F * 5e-5;
         if (bound >= bestCost) continue;
         used[j] = true;
         remainInGroup[g]--;
         order.push(j);
-        rec(j, finish, L, S, T, g);
+        rec(j, finish, L, S, T, g, F);
         order.pop();
         remainInGroup[g]++;
         used[j] = false;
       }
     }
-    rec(-1, startMin, 0, 0, 0, 0);
+    rec(-1, startMin, 0, 0, 0, 0, 0);
     return simulate(ctx, bestOrder);
   }
 
@@ -448,6 +468,8 @@
     return sim.violations.map((v) => {
       const s = stops[v.i];
       const n = short(s.place.name);
+      if (v.type === 'closed') return `${josa(n, '은', '는')} 이날 보통 쉬어요${s.closedNote ? ` (${s.closedNote})` : ''}`;
+      if (v.type === 'hours') return `${josa(n, '은', '는')} 보통 ${fmt(s.closeAt)}에 문을 닫아요 — ${v.minutes}분 늦게 끝나요`;
       if (v.type === 'fixed' && s.fixedAt < ctx.startMin) return `${n} 예약(${fmt(s.fixedAt)})이 출발 시각보다 빨라요. 예약 시간을 확인해 주세요`;
       if (v.type === 'deadline' && s.deadline < ctx.startMin) return `${n} 문 닫는 시간(${fmt(s.deadline)})이 출발 시각보다 빨라요`;
       return v.type === 'fixed'
@@ -545,11 +567,51 @@
       o.warnings = warningsFor(ctx, o.sim);
     });
     const ok = fast.lateness === 0;
+    options.forEach((o) => (o.latest = latestStart(input, o.sim.order)));
     return {
       ok,
       options,
       suggestions: ok ? [] : suggestionsFor(ctx, input, fast),
       method: stops.length <= BRUTE_MAX ? 'exact' : 'approx',
+    };
+  }
+
+  /**
+   * 늦어도 몇 시엔 출발해야 하나 — 추천 순서 그대로 출발만 늦춰 보며, 예약·마감·영업시간을 다 지키는 가장 늦은 출발 시각
+   * 시간 약속이 하나도 없으면 null
+   */
+  function latestStart(input, order) {
+    const hard = input.stops.some((s) => s.fixedAt != null || s.deadline != null || s.closeAt != null);
+    if (!hard) return null;
+    const ctx = makeCtx(input);
+    const ok = (k) => simulate(Object.assign({}, ctx, { startMin: input.startMin + k }), order).lateness === 0;
+    if (!ok(0)) return null;
+    let lo = 0;
+    let hi = 1;
+    while (hi <= 720 && ok(hi)) {
+      lo = hi;
+      hi *= 2;
+    }
+    hi = Math.min(hi, 721);
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (ok(mid)) lo = mid;
+      else hi = mid;
+    }
+    return lo >= 720 ? null : input.startMin + lo;
+  }
+
+  function makeCtx(input) {
+    return {
+      stops: input.stops,
+      start: input.start,
+      end: input.end || { type: 'return' },
+      dayMode: input.dayMode || 'car',
+      startMin: input.startMin,
+      overheadFn: input.overheadFn || defaultOverhead,
+      travelFn: input.travelFn || ((a, b, m) => travel(a, b, m, input.travelParams)),
+      prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
+      prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
     };
   }
 
@@ -570,7 +632,7 @@
     return { sim, reasons: [], warnings: warningsFor(ctx, sim), valid: validOrder(input.stops, order) };
   }
 
-  const api = { plan, evaluate, travel, distM, fmt, josa, BRUTE_MAX, MAX_STOPS };
+  const api = { plan, evaluate, latestStart, travel, distM, fmt, josa, BRUTE_MAX, MAX_STOPS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GetsetEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
