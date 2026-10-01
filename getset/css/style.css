@@ -871,3 +871,99 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
   .btn-plan:not(:disabled):hover { background: var(--green); }
   .chip:hover:not([aria-checked="true"]), .mode:hover:not([aria-checked="true"]) { border-color: var(--green); }
 }
+
+/* ── 쉬운 볼일 추가 (2026-10-01 대표 피드백: 초등학생도 쓸 수 있게) ──────────
+   한 화면에 질문 하나. 큰 버튼을 누르면 바로 추가되고, 더 정할 것만 따로. */
+.big-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.big-btn {
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--text);
+}
+.big-btn b { font-size: 1.25rem; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.big-btn small { font-size: 0.76rem; font-weight: 700; color: var(--green); }
+.big-btn.is-usual { border: 2px solid var(--green); background: var(--green-soft); }
+.big-btn:active { background: var(--green); color: #fff; border-color: var(--green); }
+.big-btn:active small { color: #d9e6dd; }
+
+.more-link {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 0 14px 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--green-deep);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-align: left;
+}
+.more-link svg { flex-shrink: 0; color: var(--muted); }
+
+.seg--stack { flex: none; }
+.seg--stack .seg__btn { min-height: 48px; padding: 0 4px; font-size: 0.9rem; }
+
+.appt-box {
+  margin-top: 10px;
+  padding: 12px 14px 14px;
+  border-radius: 14px;
+  background: var(--green-soft);
+}
+.appt-box__label { display: block; margin-bottom: 8px; font-size: 0.92rem; font-weight: 800; color: var(--green-deep); }
+.time-input--big {
+  width: 100%;
+  max-width: none;
+  min-height: 56px;
+  margin-top: 0;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.mode-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.mode-line__text { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.mode-line__text svg { flex-shrink: 0; color: var(--green); }
+.mode-line .btn-line { flex-shrink: 0; }
+#stop-mode { margin-top: 8px; }
+
+/* 출발 시각 시트 */
+.option--row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; min-height: 58px; }
+.option--row small { font-size: 0.95rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.option--row[aria-checked="true"] small { color: var(--green-deep); }
+.time-pick { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.time-pick__label { display: block; margin-bottom: 8px; font-size: 0.9rem; font-weight: 800; }
+.time-pick__row { display: flex; gap: 8px; }
+.time-pick__row .time-input--big { flex: 1; min-width: 0; }
+.time-pick__row .btn-soft { flex-shrink: 0; min-height: 56px; }
+
+@media (min-width: 640px) {
+  .big-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* 고른 칸은 확실하게 (초록 바탕 + 흰 글씨) */
+.seg--stack .seg__btn[aria-checked="true"] { background: var(--green); color: #fff; box-shadow: none; }

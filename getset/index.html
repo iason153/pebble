@@ -65,16 +65,14 @@
       <svg class="trip-row__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
     </button>
 
-    <div class="trip-row trip-row--static">
-      <span class="trip-row__label" id="time-label">시각</span>
-      <div class="seg seg--time" role="radiogroup" aria-labelledby="time-label">
-        <button id="time-now" class="seg__btn" type="button" role="radio" aria-checked="true">지금 <span id="now-clock" class="seg__clock"></span></button>
-        <label class="seg__btn seg__btn--input" id="time-set-wrap">
-          <span class="sr-only">출발 시각 직접 정하기</span>
-          <input id="time-input" type="time" step="300" aria-label="출발 시각">
-        </label>
-      </div>
-    </div>
+    <button id="row-time" class="trip-row" type="button">
+      <span class="trip-row__label">시각</span>
+      <span class="trip-row__value">
+        <span id="time-name" class="trip-row__main">지금 바로 출발</span>
+        <span id="time-sub" class="trip-row__sub"></span>
+      </span>
+      <svg class="trip-row__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+    </button>
 
     <button id="row-end" class="trip-row" type="button">
       <span class="trip-row__label">끝</span>
@@ -149,17 +147,16 @@
   </div>
 </div>
 
-<!-- 볼일 상세 시트 (추가·수정) -->
-<div id="stop-sheet" class="sheet sheet--tall" hidden>
+<!-- 볼일 시트: ① 빠른 추가(얼마나 있을지 한 번 누르면 끝) ② 자세히 정하기·고치기 -->
+<div id="stop-sheet" class="sheet" hidden>
   <div class="sheet__backdrop" data-close></div>
   <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="stop-sheet-title">
     <div class="sheet__grip" aria-hidden="true"></div>
     <div class="sheet__top">
-      <h2 id="stop-sheet-title" class="sheet__title">볼일 추가</h2>
-      <button class="sheet__x" type="button" data-close aria-label="닫기">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
-      </button>
+      <h2 id="stop-sheet-title" class="sheet__title">얼마나 있을 거예요?</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
+
     <div class="sheet__scroll">
       <div class="picked">
         <div class="picked__text">
@@ -169,64 +166,89 @@
         <button id="btn-repick" class="btn-line btn-line--sm" type="button">바꾸기</button>
       </div>
 
-      <div class="field">
-        <label class="field__label" for="kind-select">어떤 곳인가요?</label>
-        <select id="kind-select" class="select"></select>
-        <p id="kind-note" class="field__note"></p>
+      <!-- ① 빠른 추가 -->
+      <div id="stop-quick">
+        <div id="quick-stay" class="big-grid" role="group" aria-label="머무는 시간"></div>
+        <p class="field__note">볼일 보는 시간만 골라 주세요. 주차하고 걸어가는 시간은 Getset이 알아서 더해요.</p>
+        <button id="btn-more" class="more-link" type="button">예약 시간이 있거나, 순서를 정하고 싶어요
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+        </button>
       </div>
 
-      <div class="field">
-        <span class="field__label" id="stay-label">머무는 시간</span>
-        <div id="stay-chips" class="chips" role="radiogroup" aria-labelledby="stay-label"></div>
-        <div id="stay-custom" class="stay-custom" hidden>
-          <input id="stay-input" class="num-input" type="number" inputmode="numeric" min="1" max="600" step="5" aria-label="머무는 시간(분)">
-          <span>분</span>
-        </div>
-        <p class="field__note">볼일 보는 시간이에요. 주차·걸어가기·대기 시간은 Getset이 따로 챙겨요.</p>
-      </div>
-
-      <details id="stop-more" class="more">
-        <summary class="more__summary">
-          <span>약속 시각 · 순서 · 이동수단</span>
-          <span id="more-badge" class="more__badge" hidden></span>
-          <svg class="more__chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
-        </summary>
-
+      <!-- ② 자세히 -->
+      <div id="stop-detail" hidden>
         <div class="field">
-          <label class="toggle-row">
-            <input id="fixed-on" type="checkbox">
-            <span class="toggle-row__text"><b>예약·약속 시각</b><small>이 시각에 맞춰 도착해요 (병원 예약, 미팅)</small></span>
-          </label>
-          <input id="fixed-time" class="time-input" type="time" step="300" aria-label="예약 시각" hidden>
-        </div>
-
-        <div class="field">
-          <label class="toggle-row">
-            <input id="deadline-on" type="checkbox">
-            <span class="toggle-row__text"><b>문 닫는 시각</b><small>이 시각 전에 볼일을 끝내야 해요 (은행, 관공서)</small></span>
-          </label>
-          <input id="deadline-time" class="time-input" type="time" step="300" aria-label="문 닫는 시각" hidden>
-        </div>
-
-        <div class="field">
-          <span class="field__label" id="order-label">순서</span>
-          <div id="order-seg" class="seg seg--3" role="radiogroup" aria-labelledby="order-label">
-            <button class="seg__btn" type="button" role="radio" data-order="any">상관없음</button>
-            <button class="seg__btn" type="button" role="radio" data-order="first">먼저</button>
-            <button class="seg__btn" type="button" role="radio" data-order="last">마지막에</button>
+          <span class="field__label" id="stay-label">얼마나 있을 거예요?</span>
+          <div id="stay-chips" class="chips" role="radiogroup" aria-labelledby="stay-label"></div>
+          <div id="stay-custom" class="stay-custom" hidden>
+            <input id="stay-input" class="num-input" type="number" inputmode="numeric" min="1" max="600" step="5" aria-label="머무는 시간(분)">
+            <span>분</span>
           </div>
         </div>
 
         <div class="field">
-          <span class="field__label" id="stop-mode-label">여기까지 가는 방법</span>
-          <div id="stop-mode" class="modes modes--with-default" role="radiogroup" aria-labelledby="stop-mode-label"></div>
+          <span class="field__label" id="appt-label">정해진 시간이 있나요?</span>
+          <div id="appt-seg" class="seg seg--stack" role="radiogroup" aria-labelledby="appt-label">
+            <button class="seg__btn" type="button" role="radio" data-appt="none">없어요</button>
+            <button class="seg__btn" type="button" role="radio" data-appt="fixed">예약 시간</button>
+            <button class="seg__btn" type="button" role="radio" data-appt="deadline">문 닫는 시간</button>
+          </div>
+          <div id="appt-box" class="appt-box" hidden>
+            <label class="appt-box__label" for="appt-time" id="appt-help"></label>
+            <input id="appt-time" class="time-input time-input--big" type="time" step="300">
+          </div>
         </div>
-      </details>
+
+        <div class="field">
+          <span class="field__label" id="order-label">언제 갈까요?</span>
+          <div id="order-seg" class="seg seg--stack" role="radiogroup" aria-labelledby="order-label">
+            <button class="seg__btn" type="button" role="radio" data-order="any">아무 때나</button>
+            <button class="seg__btn" type="button" role="radio" data-order="first">제일 먼저</button>
+            <button class="seg__btn" type="button" role="radio" data-order="last">제일 마지막</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">여기까지 가는 방법</span>
+          <div class="mode-line">
+            <span id="mode-line-text" class="mode-line__text"></span>
+            <button id="btn-mode-change" class="btn-line btn-line--sm" type="button">바꾸기</button>
+          </div>
+          <div id="stop-mode" class="modes modes--with-default" role="radiogroup" aria-label="이 볼일까지 가는 방법" hidden></div>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="kind-select">어떤 곳이에요?</label>
+          <select id="kind-select" class="select"></select>
+          <p id="kind-note" class="field__note"></p>
+        </div>
+      </div>
     </div>
+
     <p id="stop-error" class="form-error" role="alert" hidden></p>
-    <div class="sheet__actions">
+    <div id="stop-actions" class="sheet__actions" hidden>
       <button id="btn-stop-delete" class="sheet__btn sheet__btn--danger" type="button" hidden>삭제</button>
       <button id="btn-stop-save" class="sheet__btn sheet__btn--primary" type="button">추가하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 출발 시각 시트 -->
+<div id="time-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="time-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="time-sheet-title" class="sheet__title">언제 출발해요?</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="time-options" class="options" role="radiogroup" aria-labelledby="time-sheet-title"></div>
+    <div class="time-pick">
+      <label class="time-pick__label" for="time-input">직접 고르기</label>
+      <div class="time-pick__row">
+        <input id="time-input" class="time-input time-input--big" type="time" step="300">
+        <button id="btn-time-ok" class="btn-soft" type="button">이 시각으로</button>
+      </div>
     </div>
   </div>
 </div>
