@@ -8,7 +8,7 @@
  */
 window.GetsetShare = (function () {
   const TITLE = 'Getset — 뭐부터 할지, 바로 정리';
-  const TEXT = '볼일이 몰린 날, 할 일만 넣으면 순서와 실제로 끝나는 시각까지 정리해 주는 무료 도구예요.';
+  const TEXT = '오늘·내일 일정을 넣으면 몇 시에 나가야 하는지 알려 주는 무료 도구예요. 주차·엘리베이터 시간까지 계산해요.';
 
   function shareUrl(source) {
     const u = new URL('https://pebbleitgo.com/getset/');

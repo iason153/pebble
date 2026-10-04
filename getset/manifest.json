@@ -1,7 +1,7 @@
 {
   "name": "Getset — 뭐부터 할지, 바로 정리",
   "short_name": "Getset",
-  "description": "볼일이 몰린 날, 갈 곳만 넣으면 동선 순서와 실제로 끝나는 시각까지 정리해 주는 도구",
+  "description": "오늘·내일 일정을 넣으면 몇 시에 나가야 하는지 알려 주는 도구",
   "id": "/getset/",
   "start_url": "/getset/?source=pwa",
   "scope": "/getset/",

@@ -94,6 +94,24 @@ window.GetsetLearn = (function () {
     return { total: Math.max(0, Math.round(est)), n: pArr.length, kn: kArr.length };
   }
 
+  /**
+   * 길(이동) 보정 — 다녀온 뒤 "길에서 더 걸렸어요"라고 답한 비율을 모아 이동 시간에 곱한다
+   * ratio = 실제 이동 ÷ 계산한 이동. 기록이 적을 땐 1(그대로)과 섞는다
+   */
+  function addRoad(mode, ratio) {
+    if (!Number.isFinite(ratio)) return;
+    db.r = db.r || {};
+    const m = mc(mode);
+    db.r[m] = db.r[m] || [];
+    db.r[m].push(Math.round(Math.min(2, Math.max(0.6, ratio)) * 100) / 100);
+    if (db.r[m].length > KEEP) db.r[m].splice(0, db.r[m].length - KEEP);
+    save();
+  }
+  function roadFactor(mode) {
+    const arr = db.r && db.r[mc(mode)];
+    return arr && arr.length ? Math.round(blend(arr, 1) * 100) / 100 : 1;
+  }
+
   /** 이 장소에서 실제로 머문 시간 (기록 2회 이상일 때만) */
   function stayHint(key) {
     const arr = db.p[key] && db.p[key].s;
@@ -128,5 +146,5 @@ window.GetsetLearn = (function () {
     localStorage.removeItem(QUEUE_KEY);
   }
 
-  return { add, estimate, stayHint, summary, clear, queueObs, queueSize, clearQueue, median };
+  return { add, addRoad, roadFactor, estimate, stayHint, summary, clear, queueObs, queueSize, clearQueue, median };
 })();

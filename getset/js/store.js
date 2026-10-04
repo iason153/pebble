@@ -56,8 +56,18 @@ window.GetsetStore = (function () {
     return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
+  /** 근처 주차장을 골랐을 때: 주차장 이름·공영 여부·거기서 걸어가는 분 */
+  function cleanLot(l) {
+    const place = cleanPlace(l && l.place);
+    const walk = Math.round(Number(l && l.walk));
+    if (!place || !Number.isFinite(walk)) return null;
+    return { place, pub: !!l.pub, walk: Math.min(30, Math.max(1, walk)) };
+  }
+
   function cleanStop(s) {
-    const place = cleanPlace(s && s.place);
+    // 시간만 비워 둔 칸(점심 등)은 장소가 없다
+    const block = s && typeof s.block === 'string' && /^[a-z]{1,12}$/.test(s.block) ? s.block : null;
+    const place = block ? { id: '', name: String((s.place && s.place.name) || '식사').slice(0, 20), address: '', lat: 0, lng: 0, categoryCode: '', categoryName: '' } : cleanPlace(s && s.place);
     if (!place) return null;
     const stay = Math.round(Number(s.stay));
     // 정해진 시간은 하나만: 예약(fixedAt) / 원하는 시간(prefAt) / 문 닫는 시간(deadline)
@@ -76,6 +86,11 @@ window.GetsetStore = (function () {
       mode: MODES.includes(s.mode) ? s.mode : null, // null = 그날 기본 이동수단
       // auto = 장소 종류의 보통 주차장. 관리 페이지에서 새 주차장 종류를 만들 수 있으므로 모양만 검사
       ignoreHours: !!s.ignoreHours, // 이 곳은 영업시간 상관없음
+      block, // 'lunch' | 'dinner' | 'free' — 시간만 비우기
+      task: !block && typeof s.task === 'string' && /^[a-z]{1,12}$/.test(s.task) ? s.task : null, // 할 일(약국·주유 등): 장소는 동선에 맞춰 자동으로
+      pinned: !!s.pinned, // 할 일인데 사용자가 장소를 직접 고름 → 자동으로 안 바꿈
+      cands: !block && Array.isArray(s.cands) ? s.cands.map(cleanPlace).filter(Boolean).slice(0, 15) : [],
+      lot: !block ? cleanLot(s.lot) : null,
       parking: typeof s.parking === 'string' && /^[a-z0-9_]{1,24}$/.test(s.parking) ? s.parking : 'auto',
     };
   }
@@ -83,8 +98,8 @@ window.GetsetStore = (function () {
   function cleanPlan(raw, date) {
     const endType = raw && raw.end && ['return', 'place', 'none'].includes(raw.end.type) ? raw.end.type : 'return';
     const endPlace = cleanPlace(raw && raw.end && raw.end.place);
-    let startTime = raw && (raw.startTime === 'now' || isTime(raw.startTime)) ? raw.startTime : 'now';
-    if (startTime === 'now' && date !== todayStr()) startTime = '09:00'; // '지금'은 오늘만
+    // 'auto' = 약속 시간에 맞춰 자동으로 (v1.2 기본). 예전 '지금'도 자동으로 본다
+    const startTime = raw && isTime(raw.startTime) ? raw.startTime : 'auto';
     return {
       date,
       start: cleanPlace(raw && raw.start),
@@ -92,6 +107,10 @@ window.GetsetStore = (function () {
       end: { type: endType === 'place' && !endPlace ? 'return' : endType, place: endPlace },
       mode: raw && MODES.includes(raw.mode) ? raw.mode : 'car',
       stops: raw && Array.isArray(raw.stops) ? raw.stops.map(cleanStop).filter(Boolean).slice(0, 12) : [],
+      // 마지막으로 계산한 시간표(다녀온 뒤 묻기·한 군데 더에 씀)와 그 답
+      sched: raw && raw.sched && typeof raw.sched === 'object' ? raw.sched : null,
+      asked: raw && raw.asked && typeof raw.asked === 'object' ? raw.asked : {},
+      done: raw && Array.isArray(raw.done) ? raw.done.filter((x) => typeof x === 'string').slice(0, 20) : [],
     };
   }
 
@@ -140,7 +159,7 @@ window.GetsetStore = (function () {
     if (map[date]) return map[date];
     const dates = Object.keys(map).sort((a, b) => Math.abs(parseDate(a) - parseDate(date)) - Math.abs(parseDate(b) - parseDate(date)));
     const near = dates.length ? map[dates[0]] : null;
-    const plan = cleanPlan(near ? { start: near.start, end: near.end, mode: near.mode, startTime: near.startTime } : {}, date);
+    const plan = cleanPlan(near ? { start: near.start, end: near.end, mode: near.mode } : {}, date);
     map[date] = plan;
     return plan;
   }

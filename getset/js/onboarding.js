@@ -76,7 +76,7 @@ window.GetsetOnboard = (function () {
     if (step === 'welcome') {
       body.innerHTML = `<div class="ob-hero"><img src="icons/icon.svg" alt="" width="84" height="84">
         <h2 class="ob-title">반가워요! Getset이에요</h2>
-        <p class="ob-desc">볼일이 몰린 날, 갈 곳만 넣으면<br><b>어디부터 갈지</b>와 <b>실제로 끝나는 시각</b>을 정리해 드려요.</p>
+        <p class="ob-desc">오늘·내일 일정을 넣으면<br><b>몇 시에 나가야 하는지</b> 알려 드려요.</p>
         <p class="ob-desc">주차 자리 찾기·엘리베이터·접수처럼 내비가 빼먹는 시간까지 챙기려면, 처음 한 번만 몇 가지 알려 주세요. <b>1분이면 돼요.</b></p></div>`;
       next.textContent = '시작하기';
     } else if (step === 'home') {

@@ -1,11 +1,16 @@
 {
-  "version": 1,
-  "updated": "2026-10-01",
+  "version": 2,
+  "updated": "2026-10-04",
   "notes": [
     {
       "date": "2026-10-01",
       "version": 1,
       "text": "첫 값(초안). 현장 측정 전 — 대표 확정 필요"
+    },
+    {
+      "date": "2026-10-04",
+      "version": 2,
+      "text": "할 일 넣기용 종류 추가: 약국·현금 찾기·주유소, 주차 '차에서 바로'. 값은 초안"
     }
   ],
   "parking": {
@@ -150,6 +155,24 @@
           3
         ]
       ],
+      "out": [
+        [
+          "출차",
+          1
+        ]
+      ]
+    },
+    "drivein": {
+      "label": "차에서 바로 (주유소 등)",
+      "desc": "주차 없이 차를 세우고 바로 볼일을 보는 곳",
+      "find": [
+        [
+          "차 세우기",
+          1
+        ]
+      ],
+      "toDoor": [],
+      "toCar": [],
       "out": [
         [
           "출차",
@@ -368,6 +391,59 @@
       "hours": null
     },
     {
+      "id": "pharmacy",
+      "label": "약국",
+      "stay": 10,
+      "inside": [
+        1,
+        0
+      ],
+      "insideLabel": "차례 기다리기",
+      "outsideLabel": "",
+      "parking": "street",
+      "busy": false,
+      "hours": {
+        "weekday": [
+          "09:00",
+          "19:00"
+        ],
+        "sat": [
+          "09:00",
+          "14:00"
+        ],
+        "sun": null,
+        "breaks": []
+      }
+    },
+    {
+      "id": "atm",
+      "label": "현금 찾기(ATM)",
+      "stay": 5,
+      "inside": [
+        1,
+        0
+      ],
+      "insideLabel": "ATM 차례 기다리기",
+      "outsideLabel": "",
+      "parking": "street",
+      "busy": false,
+      "hours": null
+    },
+    {
+      "id": "gas",
+      "label": "주유소",
+      "stay": 7,
+      "inside": [
+        0,
+        0
+      ],
+      "insideLabel": "",
+      "outsideLabel": "",
+      "parking": "drivein",
+      "busy": false,
+      "hours": null
+    },
+    {
       "id": "etc",
       "label": "기타",
       "stay": 30,
@@ -415,7 +491,8 @@
     "carDetour": 1.35,
     "carCityMpm": 350,
     "carMidMpm": 500,
-    "carFarMpm": 800
+    "carFarMpm": 800,
+    "nearWalkM": 150
   },
   "pref": {
     "tolerance": 10,
@@ -452,5 +529,9 @@
   },
   "homeSuggest": {
     "minRest": 30
+  },
+  "lot": {
+    "find": 3,
+    "out": 2
   }
 }

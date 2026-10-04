@@ -82,7 +82,8 @@
     let soft = 0;
     let prefLate = 0;
     const viol = [];
-    if (s.openAt != null && begin < s.openAt) begin = s.openAt;
+    // 직접 정한 도착 시각이 있으면 보통 영업 시작 시간은 따지지 않음 (그 시간에 가기로 한 것이므로)
+    if (s.openAt != null && s.fixedAt == null && begin < s.openAt) begin = s.openAt;
     if (s.prefAt != null) {
       if (ready < s.prefAt) begin = Math.max(begin, s.prefAt);
       else if (ready - s.prefAt > tol) {
@@ -121,6 +122,7 @@
     const { stops, start, end, dayMode, startMin, overheadFn, travelFn } = ctx;
     const PREF_TOLERANCE = ctx.prefTol;
     const PREF_WEIGHT = ctx.prefWeight;
+    const startOH = ctx.startOH || null; // 집에서 나와 차까지 등 (첫 이동 전에 붙음)
     let t = startMin;
     let prev = start;
     let lateness = 0;
@@ -130,18 +132,60 @@
     let sumFinish = 0; // 끝나는 시각이 같으면 볼일을 앞쪽에 몰아서 빨리 해치우는 순서를 고르기 위함
     const rows = [];
     const violations = [];
+    let usedCar = false;
+    let pending = null; // 아직 "나오는 시간"을 안 붙인 직전 실제 장소 {row, s, mode}
 
     for (let p = 0; p < order.length; p++) {
       const i = order[p];
       const s = stops[i];
-      const mode = s.mode || dayMode;
+
+      // 시간만 비워 둔 칸(점심 등): 장소가 없으니 이동·주차 없이 그 자리에서 시간만 씀
+      if (s.anywhere) {
+        const sv = serve(s, t, PREF_TOLERANCE, PREF_WEIGHT);
+        soft += sv.soft;
+        sumFinish += sv.finish;
+        sv.viol.forEach((v) => violations.push({ i, type: v.type, minutes: v.minutes }));
+        lateness += sv.late;
+        if (opts.bound != null) {
+          const partial = opts.metric === 'travel' ? lateness * PENALTY + travelSum : lateness * PENALTY + sv.finish + soft;
+          if (partial > opts.bound) return null;
+        }
+        rows.push({ i, anywhere: true, mode: null, outAt: t, startOH: 0, startParts: [], leaveAt: t, travel: 0, dist: 0, arrive: t, arriveOH: 0, arriveParts: [], parking: null, ready: t, wait: sv.wait, begin: sv.begin, finish: sv.finish, leaveOH: 0, leaveParts: [], depart: sv.finish, late: sv.late, prefLate: sv.prefLate });
+        t = sv.finish;
+        continue;
+      }
+
+      let mode = s.mode || dayMode;
+      // 차로 다니는 날이라도 바로 근처(직선 nearWalk m 안)는 차를 두고 걸어간다
+      if (mode === 'car' && ctx.nearWalk && distM(prev, s.place) < ctx.nearWalk) mode = 'walk';
+      const outAt = t; // 직전 장소(또는 출발지)에서 걸어 나오기 시작하는 시각
+      let preOH = 0;
+      let preParts = [];
+      if (pending) {
+        // 차로 왔다가 차로 떠날 때만 주차장 시간(엘리베이터·출차)이 붙음. 걸어서 왔으면 차가 여기 없음
+        const leaveMode = pending.mode === 'car' && mode === 'car' ? 'car' : mode === 'car' ? 'walk' : mode;
+        const lOH = overheadFn(pending.s, leaveMode, 'leave', t);
+        pending.row.leaveOH = lOH.total;
+        pending.row.leaveParts = lOH.parts;
+        if (!pending.row.parking && lOH.parking) pending.row.parking = lOH.parking;
+        pending.row.depart = t + lOH.total;
+        preOH = lOH.total;
+        preParts = lOH.parts;
+      }
+      // 출발지(집)에 세워 둔 차를 처음 탈 때: 나와서 차까지 + 출차
+      if (startOH && mode === 'car' && !usedCar) {
+        preOH += startOH.total;
+        preParts = preParts.concat(startOH.parts);
+      }
+      if (mode === 'car') usedCar = true;
+      t += preOH;
       const tr = travelFn(prev, s.place, mode);
       const leaveAt = t;
       t += tr.min;
       travelSum += tr.min;
       const arrive = t;
       // 바로 옆 건물(30m 안)로 걸어 옮기는 경우가 아니면 도착 후 실질 시간이 붙음
-      const aOH = tr.dist < 30 && p > 0 ? { total: 0, parts: [] } : overheadFn(s, mode, 'arrive', arrive);
+      const aOH = tr.dist < 30 && pending ? { total: 0, parts: [] } : overheadFn(s, mode, 'arrive', arrive);
       const arriveOH = aOH.total;
       const ready = arrive + arriveOH;
       const sv = serve(s, ready, PREF_TOLERANCE, PREF_WEIGHT);
@@ -152,33 +196,35 @@
       lateness += late;
       waitSum += wait;
 
-      const next = p + 1 < order.length ? stops[order[p + 1]] : null;
-      const nextMode = next ? next.mode || dayMode : end.type !== 'none' ? dayMode : null;
-      // 차로 왔다가 차로 떠날 때만 주차장 시간(엘리베이터·출차)이 붙음. 걸어서 왔으면 차가 여기 없음
-      const leaveMode = nextMode ? (mode === 'car' && nextMode === 'car' ? 'car' : nextMode === 'car' ? 'walk' : nextMode) : null;
-      const lOH = leaveMode ? overheadFn(s, leaveMode, 'leave', finish) : { total: 0, parts: [] };
-      const leaveOH = lOH.total;
-      const depart = finish + leaveOH;
-
       // 가지치기: 이미 지금까지가 최선보다 나쁘면 그만 (출발 준비 전 시각 기준이라 안전한 하한)
       if (opts.bound != null) {
         const partial = opts.metric === 'travel' ? lateness * PENALTY + travelSum : lateness * PENALTY + finish + soft;
         if (partial > opts.bound) return null;
       }
 
-      rows.push({ i, mode, leaveAt, travel: tr.min, dist: tr.dist, arrive, arriveOH, arriveParts: aOH.parts, parking: aOH.parking || lOH.parking || null, ready, wait, begin, finish, leaveOH, leaveParts: lOH.parts, depart, late, prefLate });
-      t = depart;
+      const row = { i, mode, outAt, startOH: preOH, startParts: preParts, leaveAt, travel: tr.min, dist: tr.dist, arrive, arriveOH, arriveParts: aOH.parts, parking: aOH.parking || null, ready, wait, begin, finish, leaveOH: 0, leaveParts: [], depart: finish, late, prefLate };
+      rows.push(row);
+      t = finish;
       prev = s.place;
+      pending = { row, s, mode };
     }
 
     const doneAt = rows.length ? rows[rows.length - 1].finish : startMin;
     let endLeg = null;
     let finishAll = doneAt;
-    if (end.type !== 'none' && rows.length) {
+    if (end.type !== 'none' && pending) {
       const target = end.type === 'return' ? start : end.place;
+      const outAt = t;
+      const leaveMode = pending.mode === 'car' && dayMode === 'car' ? 'car' : dayMode === 'car' ? 'walk' : dayMode;
+      const lOH = overheadFn(pending.s, leaveMode, 'leave', t);
+      pending.row.leaveOH = lOH.total;
+      pending.row.leaveParts = lOH.parts;
+      if (!pending.row.parking && lOH.parking) pending.row.parking = lOH.parking;
+      pending.row.depart = t + lOH.total;
+      t += lOH.total;
       const tr = travelFn(prev, target, dayMode);
       travelSum += tr.min;
-      endLeg = { mode: dayMode, leaveAt: t, travel: tr.min, dist: tr.dist, arrive: t + tr.min, target: end.type };
+      endLeg = { mode: dayMode, outAt, startOH: lOH.total, leaveAt: t, travel: tr.min, dist: tr.dist, arrive: t + tr.min, target: end.type };
       finishAll = t + tr.min;
     }
 
@@ -235,6 +281,7 @@
     let bestCost = Infinity;
     let bestOrder = null;
     const isTravel = metric === 'travel';
+    const startOHmin = ctx.startOH ? ctx.startOH.total : 0;
 
     // 두 지점 사이 이동은 순서와 상관없이 같으므로 미리 계산
     const trMemo = new Map();
@@ -245,13 +292,13 @@
       return v;
     };
 
-    function rec(prevIdx, tFinish, lateness, soft, travelSum, curGroup, sumF) {
+    function rec(prevIdx, tFinish, lateness, soft, travelSum, curGroup, sumF, prevMode, usedCar) {
       if (order.length === n) {
         let t = tFinish;
         let travel = travelSum;
-        if (endTarget) {
+        if (endTarget && prevIdx >= 0) {
           const last = stops[prevIdx];
-          const lm = modes[prevIdx] === 'car' && dayMode === 'car' ? 'car' : dayMode === 'car' ? 'walk' : dayMode;
+          const lm = prevMode === 'car' && dayMode === 'car' ? 'car' : dayMode === 'car' ? 'walk' : dayMode;
           t += overheadFn(last, lm, 'leave', tFinish).total;
           const leg = tr(prevIdx, -1, dayMode);
           t += leg.min;
@@ -272,10 +319,28 @@
         if (g > 1 && remainInGroup[1] > 0) continue;
         if (g > 0 && remainInGroup[0] > 0) continue;
         const s = stops[j];
-        const mode = modes[j];
+        if (s.anywhere) {
+          const sv0 = serve(s, tFinish, PREF_TOLERANCE, PREF_WEIGHT);
+          const L0 = lateness + sv0.late;
+          const S0 = soft + sv0.soft;
+          const F0 = sumF + sv0.finish;
+          const bound0 = isTravel ? L0 * PENALTY + travelSum + S0 : L0 * PENALTY + sv0.finish + S0 + F0 * 5e-5;
+          if (bound0 >= bestCost) continue;
+          used[j] = true;
+          remainInGroup[g]--;
+          order.push(j);
+          rec(prevIdx, sv0.finish, L0, S0, travelSum, g, F0, prevMode, usedCar);
+          order.pop();
+          remainInGroup[g]++;
+          used[j] = false;
+          continue;
+        }
+        let mode = modes[j];
+        if (mode === 'car' && ctx.nearWalk && tr(prevIdx, j, 'car').dist < ctx.nearWalk) mode = 'walk';
         let t = tFinish;
+        if (startOHmin && mode === 'car' && !usedCar) t += startOHmin;
         if (prevIdx >= 0) {
-          const lm = modes[prevIdx] === 'car' && mode === 'car' ? 'car' : mode === 'car' ? 'walk' : mode;
+          const lm = prevMode === 'car' && mode === 'car' ? 'car' : mode === 'car' ? 'walk' : mode;
           t += overheadFn(stops[prevIdx], lm, 'leave', tFinish).total;
         }
         const leg = tr(prevIdx, j, mode);
@@ -295,13 +360,13 @@
         used[j] = true;
         remainInGroup[g]--;
         order.push(j);
-        rec(j, finish, L, S, T, g, F);
+        rec(j, finish, L, S, T, g, F, mode, usedCar || mode === 'car');
         order.pop();
         remainInGroup[g]++;
         used[j] = false;
       }
     }
-    rec(-1, startMin, 0, 0, 0, 0, 0);
+    rec(-1, startMin, 0, 0, 0, 0, 0, null, false);
     return simulate(ctx, bestOrder);
   }
 
@@ -322,7 +387,7 @@
         let bd = Infinity;
         for (const i of left) {
           if (groupOf(ctx.stops[i]) !== g) continue;
-          const d = distM(here, ctx.stops[i].place);
+          const d = ctx.stops[i].anywhere ? 0 : distM(here, ctx.stops[i].place);
           if (d < bd) {
             bd = d;
             bi = i;
@@ -330,7 +395,7 @@
         }
         nn.push(bi);
         left.delete(bi);
-        here = ctx.stops[bi].place;
+        if (!ctx.stops[bi].anywhere) here = ctx.stops[bi].place;
       }
     }
     seeds.push(nn);
@@ -549,6 +614,8 @@
       travelFn: input.travelFn || ((a, b, m) => travel(a, b, m, input.travelParams)),
       prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
       prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
+      startOH: input.startOH || null,
+      nearWalk: input.travelParams && Number(input.travelParams.nearWalkM) > 0 ? Number(input.travelParams.nearWalkM) : 0,
     };
 
     const fast = solve(ctx, 'fast');
@@ -612,6 +679,8 @@
       travelFn: input.travelFn || ((a, b, m) => travel(a, b, m, input.travelParams)),
       prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
       prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
+      startOH: input.startOH || null,
+      nearWalk: input.travelParams && Number(input.travelParams.nearWalkM) > 0 ? Number(input.travelParams.nearWalkM) : 0,
     };
   }
 
@@ -627,6 +696,8 @@
       travelFn: input.travelFn || ((a, b, m) => travel(a, b, m, input.travelParams)),
       prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
       prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
+      startOH: input.startOH || null,
+      nearWalk: input.travelParams && Number(input.travelParams.nearWalkM) > 0 ? Number(input.travelParams.nearWalkM) : 0,
     };
     const sim = simulate(ctx, order);
     return { sim, reasons: [], warnings: warningsFor(ctx, sim), valid: validOrder(input.stops, order) };
