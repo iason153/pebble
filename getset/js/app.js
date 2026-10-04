@@ -42,6 +42,12 @@
   };
   const MODE_LABEL = { car: '자동차', walk: '도보', bike: '자전거', transit: '대중교통' };
   const MODE_VERB = { car: '운전', walk: '걷기', bike: '자전거', transit: '대중교통' };
+  // 거기서 뭘 하는지 (장소 종류 → 아이콘·말)
+  const WHAT = {
+    hospital: ['🏥', '진료'], office: ['💼', '업무·미팅'], gov: ['🏛', '서류·민원'], bank: ['🏦', '은행 업무'], food: ['🍚', '식사·카페'],
+    mart: ['🛒', '장보기'], local: ['🧺', '동네 가게'], pickup: ['🧒', '픽업'], mall: ['🛍', '쇼핑'], post: ['📦', '우편·택배'],
+    pharmacy: ['💊', '약 사기'], atm: ['🏧', '현금 찾기'], gas: ['⛽', '주유'], etc: ['📌', '약속·기타'], home: ['🏠', '집'],
+  };
   const PUBLIC_LOT = /(공영|공용|시영|구영|군영|노상|환승|공공|주민센터|행정복지|구청|시청|군청|도서관|체육)/;
 
   const App = {
@@ -77,7 +83,17 @@
       this.ensurePlan(this.date);
 
       this.startTF = window.GetsetTimeField($('start-tf'), { onChange: () => ($('time-error').hidden = true) });
-      this.whenTF = window.GetsetTimeField($('when-tf'), { onChange: () => ($('when-error').hidden = true) });
+      this.whenTF = window.GetsetTimeField($('when-tf'), {
+        onChange: () => {
+          $('when-error').hidden = true;
+          if (this.whenCtx && this.whenCtx.any) {
+            // 시각을 넣기 시작하면 "정해진 시간 없어요"는 풀림
+            this.whenCtx.any = false;
+            $('btn-anytime').setAttribute('aria-pressed', 'false');
+            $('when-tf').classList.remove('is-off');
+          }
+        },
+      });
       this.apptTF = window.GetsetTimeField($('appt-tf'), {
         onChange: (v) => {
           if (this.draft && this.apptType !== 'none') this.draft[this.apptKey()] = v;
@@ -476,7 +492,7 @@
     // =================================================================
     wireStops() {
       $('btn-add-place').addEventListener('click', () => this.startAddPlace());
-      $('btn-add-task').addEventListener('click', () => this.startAddTask());
+      $('btn-add-task').addEventListener('click', () => this.startNeed(null));
       $('stop-list').addEventListener('click', (e) => {
         const st = e.target.closest('[data-stay-step]');
         if (st) {
@@ -484,8 +500,6 @@
           this.stepStay(uid, Number(dir));
           return;
         }
-        const w = e.target.closest('[data-when]');
-        if (w) return this.editWhen(w.dataset.when);
         const d = e.target.closest('[data-del]');
         if (d) return this.removeStop(d.dataset.del);
         const u = e.target.closest('[data-undone]');
@@ -495,8 +509,10 @@
           this.render();
           return;
         }
-        const b = e.target.closest('[data-uid]');
-        if (b) this.openDetail(b.dataset.uid);
+        const n = e.target.closest('[data-near]');
+        if (n) return this.startNeed(n.dataset.near);
+        const b = e.target.closest('[data-when], [data-uid]');
+        if (b) this.openWhen({ uid: b.dataset.when || b.dataset.uid });
       });
       $('btn-clear').addEventListener('click', () => {
         const snap = JSON.parse(JSON.stringify(this.plan));
@@ -505,7 +521,7 @@
         this.result = null;
         this.save();
         this.render();
-        this.offerUndo('일정을 모두 지웠어요', () => {
+        this.offerUndo('볼일을 모두 지웠어요', () => {
           this.plans[date] = snap;
           this.save();
           this.render();
@@ -515,7 +531,7 @@
 
     tooMany() {
       if (this.plan.stops.length < MAX_STOPS) return false;
-      this.showToast(`하루에 ${MAX_STOPS}개까지 넣을 수 있어요`);
+      this.showToast(`볼일은 하루에 ${MAX_STOPS}개까지 넣을 수 있어요`);
       return true;
     },
 
@@ -523,19 +539,33 @@
       if (this.tooMany()) return;
       this.editingUid = null;
       this.draft = null;
-      this.openPlaceSheet('stop');
+      this.openWhen({});
     },
 
-    startAddTask() {
-      if (this.tooMany()) return;
-      this.openSheet($('task-sheet'));
+    /** 간 김에 들르는 곳이면 그 볼일(부모) */
+    parentOf(s) {
+      return s && s.near ? this.plan.stops.find((x) => x.uid === s.near && !x.block && !x.near) || null : null;
+    },
+
+    kidsOf(uid, pos) {
+      return this.plan.stops.filter((s) => s.near === uid && (!pos || s.nearPos === pos));
+    },
+
+    /** "진료", "약 사기"처럼 거기서 뭘 하는지 */
+    whatLabel(s) {
+      const t = s.task && Tasks.get(s.task);
+      if (t) return t.label;
+      return (WHAT[s.kind] || WHAT.etc)[1];
+    },
+
+    whatIcon(s) {
+      const t = s.task && Tasks.get(s.task);
+      return t ? t.icon : (WHAT[s.kind] || WHAT.etc)[0];
     },
 
     /** 목록·달력에 보이는 이름 */
     stopTitle(s) {
-      if (s.block) return `${s.place.name} (시간만 비움)`;
-      const t = s.task && Tasks.get(s.task);
-      return t ? t.label : s.place.name;
+      return s.block ? `${s.place.name} (시간만 비움)` : s.place.name;
     },
 
     /** 시간 약속이 있으면 "HH:MM" */
@@ -553,35 +583,47 @@
     renderStops() {
       const stops = this.plan.stops;
       const done = new Set(this.plan.done || []);
+      const stepper = (s, small) => `<div class="item__stay${small ? ' item__stay--sm' : ''}" role="group" aria-label="${esc(s.place.name)} 머무는 시간">
+          ${small ? '' : `<span class="item__staylabel">${s.block ? '비워 둘<br>시간' : '머무는<br>시간'}</span>`}
+          <button class="item__btn" type="button" data-stay-step="${s.uid}|-1" aria-label="머무는 시간 줄이기"${s.stay <= Store.STAY_MIN ? ' disabled' : ''}>${ICON.minus}</button>
+          <span class="item__min">${fmtMin(s.stay)}</span>
+          <button class="item__btn" type="button" data-stay-step="${s.uid}|1" aria-label="머무는 시간 늘리기"${s.stay >= Store.STAY_MAX ? ' disabled' : ''}>${ICON.plus}</button>
+        </div>`;
+      const kid = (k) =>
+        done.has(k.uid)
+          ? ''
+          : `<div class="kid">
+          <button class="kid__name" type="button" data-uid="${k.uid}" aria-label="${esc(k.place.name)} 고치기"><small>${k.nearPos === 'before' ? '가기 전에' : '끝나고'} · ${esc(this.whatLabel(k))}</small><b>${this.whatIcon(k)} ${esc(k.place.name)}</b></button>
+          ${stepper(k, true)}
+          <button class="item__del" type="button" data-del="${k.uid}" aria-label="${esc(k.place.name)} 빼기">${ICON.x}</button>
+        </div>`;
       $('stop-list').innerHTML = stops
+        .filter((s) => !this.parentOf(s))
         .map((s) => {
-          const t = s.task && Tasks.get(s.task);
-          const kind = Kinds.get(s.kind);
           const isDone = done.has(s.uid);
-          const ico = s.block ? '🍚' : t ? t.icon : '';
-          const sub = s.block ? '어디서든 · 이 시간만 비워 둬요' : t ? `→ ${s.place.name}${s.pinned ? '' : ' (가는 길에 맞춰 골라요)'}` : kind.label;
+          const ico = s.block ? '🍚' : this.whatIcon(s);
+          const sub = s.block ? '어디서든 · 이 시간만 비워 둬요' : this.whatLabel(s);
           const hrs = !s.block && !s.ignoreHours ? this.hoursFor(s.kind, this.date) : null;
           const closed = hrs && hrs.closed ? `<span class="item__warn">${esc(hrs.closedNote)}</span>` : '';
           if (isDone) {
-            return `<li class="item item--done"><div class="item__top"><span class="item__name"><span class="item__title">${ico ? ico + ' ' : ''}${esc(this.stopTitle(s))}</span><span class="item__sub">다녀온 걸로 봤어요</span></span><button class="btn-line btn-line--sm" type="button" data-undone="${s.uid}">다시 넣기</button></div></li>`;
+            return `<li class="item item--done"><div class="item__top"><span class="item__name"><span class="item__title">${ico} ${esc(this.stopTitle(s))}</span><span class="item__sub">다녀온 걸로 봤어요</span></span><button class="btn-line btn-line--sm" type="button" data-undone="${s.uid}">다시 넣기</button></div></li>`;
           }
           return `<li class="item${s.block ? ' item--block' : ''}" data-item="${s.uid}">
             <div class="item__top">
-              <button class="item__name" type="button" data-uid="${s.uid}" aria-label="${esc(this.stopTitle(s))} 자세히 고치기">
-                <span class="item__title">${ico ? ico + ' ' : ''}${esc(this.stopTitle(s))}</span>
-                <span class="item__sub">${esc(sub)}</span>
+              <button class="item__name" type="button" data-uid="${s.uid}" aria-label="${esc(this.stopTitle(s))} 고치기">
+                <span class="item__title">${esc(this.stopTitle(s))}</span>
+                <span class="item__sub">${ico} ${esc(sub)}</span>
               </button>
               <button class="item__del" type="button" data-del="${s.uid}" aria-label="${esc(this.stopTitle(s))} 빼기">${ICON.x}</button>
             </div>
             ${closed}
+            ${this.kidsOf(s.uid, 'before').map(kid).join('')}
             <div class="item__row">
-              <button class="item__when${this.stopTime(s) ? ' is-set' : ''}" type="button" data-when="${s.uid}" aria-label="시간 정하기: ${this.whenText(s)}">${ICON.clock}<span>${this.whenText(s)}</span></button>
-              <div class="item__stay" role="group" aria-label="머무는 시간">
-                <button class="item__btn" type="button" data-stay-step="${s.uid}|-1" aria-label="머무는 시간 줄이기"${s.stay <= Store.STAY_MIN ? ' disabled' : ''}>${ICON.minus}</button>
-                <span class="item__min">${fmtMin(s.stay)}</span>
-                <button class="item__btn" type="button" data-stay-step="${s.uid}|1" aria-label="머무는 시간 늘리기"${s.stay >= Store.STAY_MAX ? ' disabled' : ''}>${ICON.plus}</button>
-              </div>
+              <button class="item__when${this.stopTime(s) ? ' is-set' : ''}" type="button" data-when="${s.uid}" aria-label="시간 고치기: ${this.whenText(s)}">${ICON.clock}<span>${this.whenText(s)}</span></button>
+              ${stepper(s, false)}
             </div>
+            ${this.kidsOf(s.uid, 'after').map(kid).join('')}
+            ${s.block ? '' : `<button class="item__near" type="button" data-near="${s.uid}"><span aria-hidden="true">🔎</span><b>이 근처에서 찾기</b><small>주차장·약국·은행·카페…</small></button>`}
           </li>`;
         })
         .join('');
@@ -591,8 +633,8 @@
       $('trip-line').hidden = n === 0;
       $('btn-clear').hidden = n === 0;
       $('btn-plan').disabled = live === 0;
-      $('plan-label').textContent = live ? '나갈 시간 보기' : n ? '남은 일정이 없어요' : '일정을 먼저 넣어요';
-      $('plan-meta').textContent = live ? `일정 ${live}개` : '';
+      $('plan-label').textContent = live ? '나갈 시간 보기' : n ? '남은 볼일이 없어요' : '볼일을 먼저 넣어요';
+      $('plan-meta').textContent = live ? `볼일 ${live}개` : '';
     },
 
     /** 새 일정 넣기 (갈 곳) */
@@ -627,19 +669,35 @@
       const v = st.stay;
       const d = v < 20 || (v === 20 && dir < 0) ? 5 : 10;
       st.stay = Math.min(Store.STAY_MAX, Math.max(Store.STAY_MIN, v + dir * d));
+      st.staySet = true;
       this.save();
       this.renderStops();
     },
 
+    /** 머무는 시간을 안 정했을 때 쓰는 보통 값 (필요한 것 → 그 일의 값, 내 기록 → 실제로 머문 시간, 아니면 하는 일 종류) */
+    usualStay(place, kind, task) {
+      const t = task && Tasks.get(task);
+      if (t && t.stay) return t.stay;
+      const hint = place && place.lat ? Learn.stayHint(Profile.placeKey(place)) : null;
+      if (hint) return Math.max(Store.STAY_MIN, Math.round(hint.median / 5) * 5);
+      return Kinds.get(kind || 'etc').stay;
+    },
+
+    /** 머무는 시간을 안 정했을 때 쓰는 보통 값 (할 일 → 그 일의 값, 내 기록 → 실제로 머문 시간, 아니면 장소 종류) */
+
+
     removeStop(uid) {
-      const i = this.plan.stops.findIndex((s) => s.uid === uid);
-      if (i < 0) return;
-      const [removed] = this.plan.stops.splice(i, 1);
+      const before = this.plan.stops.slice();
+      const target = before.find((s) => s.uid === uid);
+      if (!target) return;
+      // 볼일을 빼면 거기 붙여 둔 "간 김에 들를 곳"도 같이 빠짐
+      this.plan.stops = before.filter((s) => s.uid !== uid && s.near !== uid);
+      const n = before.length - this.plan.stops.length;
       this.save();
       this.render();
       this.replanIfOpen();
-      this.offerUndo(`${this.stopTitle(removed)} 뺐어요`, () => {
-        this.plan.stops.splice(i, 0, removed);
+      this.offerUndo(`${this.stopTitle(target)} 뺐어요${n > 1 ? ` (붙여 둔 ${n - 1}곳도)` : ''}`, () => {
+        this.plan.stops = before;
         this.save();
         this.render();
         this.replanIfOpen();
@@ -648,10 +706,7 @@
 
     /** 이름을 누르면: 시간만 비운 칸은 시간 고치기, 나머지는 자세히 고치기(주차·영업시간 등) */
     openDetail(uid) {
-      const s = this.plan.stops.find((x) => x.uid === uid);
-      if (!s) return;
-      if (s.block) return this.editWhen(uid);
-      this.openStopSheet(s);
+      this.openWhen({ uid });
     },
 
     render() {
@@ -664,63 +719,164 @@
     // "몇 시까지 가요?" — 갈 곳을 고른 바로 다음, 그리고 목록의 시간 버튼
     // =================================================================
     wireWhen() {
-      $('btn-when-ok').addEventListener('click', () => {
-        const v = this.whenTF.get();
-        if (!v) {
-          $('when-error').textContent = '시와 분을 숫자로 넣어 주세요 (예: 오후 2시 30분)';
-          $('when-error').hidden = false;
-          this.whenTF.focus();
-          return;
-        }
-        this.finishWhen(v);
+      $('btn-when-ok').addEventListener('click', () => this.finishWhen());
+      $('what-chips').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-kind]');
+        if (!b) return;
+        const c = this.whenCtx;
+        c.kind = b.dataset.kind;
+        c.kindPicked = true;
+        if (c.task && Tasks.get(c.task).kind !== c.kind) c.task = null;
+        $('when-error').hidden = true;
+        this.renderCardForm();
       });
-      $('btn-when-any').addEventListener('click', () => this.finishWhen(null));
+      $('btn-where').addEventListener('click', () => {
+        this.draft = null;
+        this.openPlaceSheet('stop');
+      });
+      $('btn-anytime').addEventListener('click', () => {
+        const c = this.whenCtx;
+        c.any = !c.any;
+        if (c.any) this.whenTF.set(null);
+        $('when-error').hidden = true;
+        this.renderCardForm();
+        if (!c.any) this.whenTF.focus();
+      });
+      $('when-stay').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-stay]');
+        if (!b) return;
+        this.whenStay = b.dataset.stay === 'auto' ? null : Number(b.dataset.stay);
+        this.renderCardForm();
+      });
+      $('btn-when-more').addEventListener('click', () => {
+        const s = this.whenCtx && this.plan.stops.find((x) => x.uid === this.whenCtx.uid);
+        if (!s) return;
+        this.closeSheet($('when-sheet'));
+        setTimeout(() => this.openStopSheet(s, { precise: true }), 300);
+      });
     },
 
     /** @param {{place?:object, uid?:string}} ctx */
+    /**
+     * 볼일 넣기·고치기 — 한 화면에서 ①뭐 해요 ②어디서 ③몇 시까지 ④얼마나 걸려요
+     * @param {{uid?:string, place?:object, kind?:string}} ctx  uid가 있으면 고치기
+     */
     openWhen(ctx, { replace = false } = {}) {
       const s = ctx.uid ? this.plan.stops.find((x) => x.uid === ctx.uid) : null;
-      const soft = !!(s && (s.block || s.prefAt)); // 식사처럼 "그쯤"이면 되는 일
-      this.whenCtx = Object.assign({ soft }, ctx);
-      const name = s ? this.stopTitle(s) : ctx.place.name;
-      $('when-title').textContent = soft ? '몇 시쯤 해요?' : '몇 시까지 가요?';
-      $('when-place').textContent = name;
-      $('when-help').textContent = soft ? '이 시각쯤에 하도록 맞춰요. 꼭은 아니에요.' : '이 시각에 맞춰 도착하도록, 나갈 시간을 알려 줘요.';
-      $('btn-when-ok').textContent = soft ? '이 시간쯤 할게요' : '이 시간까지 갈게요';
+      if (ctx.uid && !s) return;
+      const isKid = !!(s && this.parentOf(s));
+      this.whenCtx = {
+        uid: s ? s.uid : null,
+        place: s ? s.place : ctx.place || null,
+        kind: s ? s.kind : ctx.kind || null,
+        kindPicked: !!s || !!ctx.kind,
+        task: s ? s.task : null,
+        isBlock: !!(s && s.block),
+        isKid,
+        timeKey: s && s.deadline ? 'deadline' : s && (s.block || s.prefAt) ? 'prefAt' : 'fixedAt',
+        any: s ? !this.stopTime(s) : false,
+      };
+      this.whenStay = s && (s.staySet || s.block) ? s.stay : null;
       this.whenTF.set(s ? this.stopTime(s) : null);
+      $('when-title').textContent = s ? (s.block ? '비워 둔 시간 고치기' : isKid ? '간 김에 들를 곳' : '볼일 고치기') : '볼일 넣기';
+      $('btn-when-ok').textContent = s ? '저장' : '볼일 넣기';
       $('when-error').hidden = true;
+      this.renderCardForm();
       this.openSheet($('when-sheet'), { replace });
-      if (!s || !this.stopTime(s)) {
-        setTimeout(() => {
-          if (!$('when-tf').contains(document.activeElement)) this.whenTF.focus();
-        }, 120);
-      }
+      const sc = document.querySelector('#when-sheet .sheet__scroll');
+      if (sc) sc.scrollTop = 0;
+    },
+
+    renderCardForm() {
+      const c = this.whenCtx;
+      if (!c) return;
+      const hideTop = c.isBlock || c.isKid;
+      $('sec-what').hidden = hideTop;
+      $('sec-where').hidden = hideTop;
+      $('sec-time').hidden = c.isKid;
+      $('when-place').hidden = !hideTop;
+      if (hideTop) $('when-place').textContent = c.place.name;
+      $('sec-time').querySelector('.q__num').textContent = c.isBlock ? '1' : '3';
+      $('stay-num').textContent = c.isBlock ? '2' : c.isKid ? '1' : '4';
+
+      const ids = ['hospital', 'office', 'gov', 'bank', 'food', 'mart', 'pickup', 'mall', 'post', 'etc'].filter((id) => Kinds.get(id).id === id);
+      if (c.kind && !ids.includes(c.kind) && c.kind !== 'home') ids.unshift(c.kind);
+      $('what-chips').innerHTML = ids
+        .map((id) => `<button class="what" type="button" role="radio" aria-checked="${c.kind === id}" data-kind="${id}"><span aria-hidden="true">${(WHAT[id] || WHAT.etc)[0]}</span>${(WHAT[id] || WHAT.etc)[1]}</button>`)
+        .join('');
+
+      $('btn-where').classList.toggle('is-set', !!c.place);
+      $('btn-where').innerHTML = c.place
+        ? `<span class="where-btn__text"><b>${esc(c.place.name)}</b><small>${esc(c.place.address || '')}</small></span><em>바꾸기</em>`
+        : `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span class="where-btn__text"><b>장소 찾기</b><small>가게·기관 이름이나 주소</small></span>`;
+
+      $('time-q').textContent = c.timeKey === 'deadline' ? '몇 시 전에 끝내야 해요?' : c.timeKey === 'prefAt' ? '몇 시쯤 해요?' : '몇 시까지 가요?';
+      $('when-help').textContent = c.any
+        ? '다른 볼일에 맞춰 알맞은 때로 넣을게요.'
+        : c.timeKey === 'prefAt'
+        ? '이 시각쯤에 하도록 맞춰요. 꼭은 아니에요.'
+        : c.timeKey === 'deadline'
+        ? '그 전에 끝나도록 순서를 짜요.'
+        : '이 시각에 맞춰 도착하도록, 나갈 시간을 알려 줘요.';
+      $('btn-anytime').setAttribute('aria-pressed', String(c.any));
+      $('when-tf').classList.toggle('is-off', c.any);
+
+      c.usual = c.isBlock ? this.whenStay || 50 : this.usualStay(c.place, c.kind || (c.place ? this.kindFor(c.place) : 'etc'), c.task);
+      $('stay-q').textContent = c.isBlock ? '얼마나 비워 둘까요?' : '거기서 얼마나 걸려요?';
+      const list = Array.from(new Set([10, 20, 30, 40, 60, 90, 120].concat(this.whenStay != null ? [this.whenStay] : []))).sort((a, b) => a - b);
+      $('when-stay').innerHTML =
+        list.map((m) => `<button class="stay-chip" type="button" role="radio" aria-checked="${this.whenStay === m}" data-stay="${m}">${fmtMin(m)}</button>`).join('') +
+        (c.isBlock ? '' : `<button class="stay-chip stay-chip--auto" type="button" role="radio" aria-checked="${this.whenStay == null}" data-stay="auto">잘 모르겠어요 <small>보통 ${fmtMin(c.usual)}으로 계산</small></button>`);
+      $('btn-when-more').hidden = !c.uid || c.isBlock;
     },
 
     editWhen(uid) {
-      const s = this.plan.stops.find((x) => x.uid === uid);
-      if (!s) return;
-      if (s.deadline) return this.openStopSheet(s); // "문 닫기 전"은 자세히 고치기에서
       this.openWhen({ uid });
     },
 
-    finishWhen(v) {
-      const ctx = this.whenCtx;
-      if (!ctx) return;
+    finishWhen() {
+      const c = this.whenCtx;
+      if (!c) return;
+      const fail = (msg, el) => {
+        $('when-error').textContent = msg;
+        $('when-error').hidden = false;
+        if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      };
+      if (!c.place) return fail('② 어디서 하는지 골라 주세요', $('sec-where'));
+      const v = c.isKid || c.any ? null : this.whenTF.get();
+      if (!c.isKid && !c.any && !v) return fail("③ 몇 시까지인지 넣거나, '정해진 시간 없어요'를 눌러 주세요", $('sec-time'));
+      const kind = c.kind || this.kindFor(c.place);
       this.whenCtx = null;
       this.closeSheet($('when-sheet'));
-      if (ctx.uid) {
-        const s = this.plan.stops.find((x) => x.uid === ctx.uid);
+      if (c.uid) {
+        const s = this.plan.stops.find((x) => x.uid === c.uid);
         if (!s) return;
-        s.fixedAt = s.prefAt = s.deadline = null;
-        if (v) s[ctx.soft ? 'prefAt' : 'fixedAt'] = v;
+        if (!c.isBlock) {
+          s.place = c.place;
+          s.kind = Kinds.get(kind).id;
+          s.task = c.task;
+        }
+        if (!c.isKid) {
+          s.fixedAt = s.prefAt = s.deadline = null;
+          if (v) s[c.timeKey] = v;
+        }
+        if (this.whenStay != null) {
+          s.stay = this.whenStay;
+          s.staySet = true;
+        } else if (!c.isBlock) {
+          s.stay = c.usual;
+          s.staySet = false;
+        }
         this.save();
         this.render();
       } else {
-        const stop = this.addStop(ctx.place, v ? { fixedAt: v } : {});
+        const extra = { kind };
+        if (v) extra.fixedAt = v;
+        if (this.whenStay != null) Object.assign(extra, { stay: this.whenStay, staySet: true });
+        const stop = this.addStop(c.place, extra);
         if (!stop) return;
         const hrs = this.hoursFor(stop.kind, this.date);
-        this.showToast(hrs && hrs.closed ? `${stop.place.name}: ${hrs.closedNote}` : `${stop.place.name} 넣었어요${v ? ` · ${fmtTime(v)}까지` : ''}`);
+        this.showToast(hrs && hrs.closed ? `${stop.place.name}: ${hrs.closedNote}` : `${stop.place.name} 넣었어요 · ${fmtMin(stop.stay)} 걸리는 걸로 계산해요`, { duration: 3200 });
       }
       setTimeout(() => this.replanIfOpen(), 250);
     },
@@ -728,25 +884,33 @@
     // =================================================================
     // 할 일 넣기 — 장소는 앱이 "가는 길에 가장 덜 돌아가는 곳"으로 고름
     // =================================================================
+    // =================================================================
+    // 무엇이 필요해요? / 이 근처에서 찾기 — 주변을 찾아 리스트로 보여 주고, 고르면 볼일이 됨
+    // =================================================================
     wireTasks() {
-      $('task-grid').innerHTML = Tasks.LIST.map((t) => `<button class="task" type="button" data-task="${t.id}"><span class="task__ico" aria-hidden="true">${t.icon}</span><b>${t.label}</b></button>`).join('');
       $('task-grid').addEventListener('click', (e) => {
         const b = e.target.closest('[data-task]');
-        if (b) this.addTask(b.dataset.task);
+        if (!b) return;
+        if (b.dataset.task === 'lot') {
+          this.hideSheetNow($('task-sheet'));
+          this.openLots(this.needParent, { replace: true });
+        } else this.openNearList(b.dataset.task);
       });
       $('cand-list').addEventListener('click', (e) => {
         const b = e.target.closest('[data-cand]');
-        if (!b) return;
-        const s = this.plan.stops.find((x) => x.uid === this.candUid);
-        const c = this.candShown[Number(b.dataset.cand)];
-        if (!s || !c) return;
-        this.setTaskPlace(s, c);
-        this.closeSheet($('cand-sheet'));
+        if (b && this.listCtx) this.listCtx.onPick(this.listCtx.rows[Number(b.dataset.cand)]);
       });
-      $('btn-cand-search').addEventListener('click', () => {
-        this.hideSheetNow($('cand-sheet'));
-        this.pickMode = 'taskpick';
-        this.openPlaceSheetReplace('taskpick');
+      $('btn-cand-search').addEventListener('click', () => this.listCtx && this.listCtx.onSearch && this.listCtx.onSearch());
+      $('pos-sheet').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-pos]');
+        const p = this.posCtx;
+        if (!b || !p) return;
+        this.posCtx = null;
+        this.closeSheet($('pos-sheet'));
+        const stop = this.addStop(p.place, { task: p.t.id, kind: p.kind, stay: p.stay, near: p.parentUid, nearPos: b.dataset.pos });
+        if (stop) this.showToast(`${stop.place.name} 붙였어요 · ${fmtMin(stop.stay)} 걸리는 걸로 계산해요`, { duration: 3200 });
+        track('near_add', { task: p.t.id, pos: b.dataset.pos });
+        setTimeout(() => this.replanIfOpen(), 250);
       });
       $('lot-list').addEventListener('click', (e) => {
         const b = e.target.closest('[data-lot]');
@@ -758,191 +922,223 @@
           const l = this.lotShown[Number(b.dataset.lot)];
           s.lot = { place: Store.cleanPlace(l.place), pub: l.pub, walk: l.walk };
           track('lot_pick', { public: l.pub, walk: l.walk });
+          this.showToast(`${l.place.name}에 세우고 걸어서 ${l.walk}분으로 계산해요`, { duration: 3200 });
         }
         this.save();
+        this.render();
         this.closeSheet($('lot-sheet'));
-        setTimeout(() => this.showPlan({ keepScroll: true }), 250);
+        setTimeout(() => this.replanIfOpen(), 250);
       });
     },
 
-    /** 근처 검색의 기준점: 출발지 + 장소가 정해진 일정들 (최대 5곳) */
-    taskPoints() {
-      const pts = [];
-      const add = (p) => {
-        if (p && Number.isFinite(p.lat) && !pts.some((q) => Engine.distM(p, q) < 300)) pts.push(p);
+    /**
+     * @param {string|null} parentUid  볼일 카드의 [이 근처에서 찾기]면 그 볼일, 첫 화면의 [무엇이 필요해요?]면 null
+     */
+    startNeed(parentUid) {
+      const p = parentUid ? this.plan.stops.find((s) => s.uid === parentUid) : null;
+      if (!p && this.tooMany()) return;
+      if (!p && !this.plan.start) {
+        this.showToast('먼저 어디서 출발하는지 정해 주세요');
+        this.openPlaceSheet('start');
+        return;
+      }
+      this.needParent = p ? p.uid : null;
+      $('task-title').textContent = p ? `${short(p.place.name)} 근처에서 찾기` : '무엇이 필요해요?';
+      $('task-desc').innerHTML = p ? '간 김에 들를 곳을 고르세요. <b>가까운 순</b>으로 보여 드려요.' : '고르면 <b>주변에서 찾아</b> 가까운 순으로 보여 드려요.<br><small>집과 넣어 둔 볼일 근처를 찾아요</small>';
+      const car = p && (p.mode || this.plan.mode) === 'car' && !['home', 'gas'].includes(p.kind);
+      $('task-grid').innerHTML =
+        (car ? `<button class="task task--lot" type="button" data-task="lot"><span class="task__ico" aria-hidden="true">🅿</span><b>주차장${p.lot ? '<small>바꾸기</small>' : ''}</b></button>` : '') +
+        Tasks.LIST.map((t) => `<button class="task" type="button" data-task="${t.id}"><span class="task__ico" aria-hidden="true">${t.icon}</span><b>${t.label}</b></button>`).join('');
+      this.openSheet($('task-sheet'));
+    },
+
+    /** 근처 검색의 기준점: 출발지(집) + 장소가 정해진 볼일들 */
+    anchors() {
+      const out = [];
+      const add = (place, label, uid) => {
+        if (place && place.lat && !out.some((q) => Engine.distM(place, q.place) < 300)) out.push({ place, label, uid });
       };
-      add(this.plan.start);
+      const st = this.startPlace();
+      add(st, this.isHome(st) ? '집' : short(st ? st.name : ''), null);
       const done = new Set(this.plan.done || []);
       this.plan.stops.forEach((s) => {
-        if (!s.block && !s.task && !done.has(s.uid)) add(s.place);
+        if (!s.block && !done.has(s.uid) && !this.parentOf(s)) add(s.place, short(s.place.name), s.uid);
       });
-      if (this.plan.end.type === 'place') add(this.plan.end.place);
-      return pts.slice(0, 5);
+      return out.slice(0, 5);
     },
 
-    /** 그 분류의 근처 장소를 기준점마다 찾아 합침 (같은 검색은 기억해 둠). 실패한 기준점은 건너뜀 */
-    async nearbyAll(cat, pts) {
+    /** 기준점마다 근처를 찾아 가까운 순 한 줄로 */
+    async nearRows(cat, anchors, radius) {
       const lists = await Promise.all(
-        pts.map((p) => {
-          const key = `${cat}|${p.lat.toFixed(3)}|${p.lng.toFixed(3)}`;
+        anchors.map((a) => {
+          const key = `${cat}|${radius}|${a.place.lat.toFixed(3)}|${a.place.lng.toFixed(3)}`;
           if (this.nearCache.has(key)) return this.nearCache.get(key);
-          return Places.nearby(cat, p, 2000)
+          return Places.nearby(cat, a.place, radius)
             .then((r) => {
               this.nearCache.set(key, r);
               return r;
             })
-            .catch(() => []);
+            .catch(() => null);
         })
       );
+      if (lists.every((l) => l === null)) throw new Error('search-failed');
+      const tp = Kinds.travelParams;
       const seen = new Map();
-      lists.flat().forEach((p) => {
-        const c = Store.cleanPlace(p);
-        if (c && !seen.has(c.id || c.name)) seen.set(c.id || c.name, c);
+      lists.forEach((l, ai) => {
+        (l || []).forEach((p) => {
+          const c = Store.cleanPlace(p);
+          if (!c) return;
+          const dist = Math.round(Engine.distM(anchors[ai].place, c));
+          const k = c.id || c.name;
+          if (!seen.has(k) || seen.get(k).dist > dist) seen.set(k, { place: c, dist, anchor: anchors[ai] });
+        });
       });
-      const near = (c) => Math.min(...pts.map((p) => Engine.distM(p, c)));
       return Array.from(seen.values())
-        .sort((a, b) => near(a) - near(b))
-        .slice(0, 15);
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 15)
+        .map((r) => Object.assign(r, { walk: Math.max(1, Math.ceil((r.dist * (tp.detour || 1.3)) / (tp.walkMpm || 70))) }));
     },
+
+    /** 추천 순 리스트 시트 (맨 위가 추천) */
+    showList({ title, desc, rows, emptyText, onPick, onSearch, replace }) {
+      this.listCtx = { rows, onPick, onSearch };
+      $('cand-title').textContent = title;
+      $('cand-desc').innerHTML = desc;
+      $('btn-cand-search').hidden = !onSearch;
+      $('cand-list').innerHTML =
+        rows === null
+          ? '<li class="results__hint">찾는 중…</li>'
+          : rows.length
+          ? rows
+              .map(
+                (r, i) => `<li class="lot${i === 0 ? ' lot--best' : ''}"><div class="lot__text"><b>${esc(r.place.name)}</b><span>${i === 0 ? '<em class="lot__tag lot__tag--pub">가장 가까워요</em>' : ''}${esc(r.anchor.label)} 근처 · ${r.dist <= 900 ? `걸어서 ${r.walk}분` : fmtDist(r.dist)}</span></div><button class="btn-soft btn-line--sm" type="button" data-cand="${i}">여기로</button></li>`
+              )
+              .join('')
+          : `<li class="results__hint">${emptyText}</li>`;
+      if ($('cand-sheet').hidden) this.openSheet($('cand-sheet'), { replace });
+    },
+
+    async openNearList(taskId) {
+      const t = Tasks.get(taskId);
+      if (!t) return;
+      const parent = this.needParent ? this.plan.stops.find((s) => s.uid === this.needParent) : null;
+      const anchors = parent ? [{ place: parent.place, label: short(parent.place.name), uid: parent.uid }] : this.anchors();
+      this.hideSheetNow($('task-sheet'));
+      const title = `${t.icon} ${t.label}`;
+      const desc = parent ? `<b>${esc(short(parent.place.name))}</b>에서 가까운 순이에요. 고르면 그 볼일에 붙여 계산해요.` : '가까운 순이에요. 고르면 볼일로 넣어 순서와 나갈 시간을 계산해요.';
+      const kindOf = (place) => (t.kind && Kinds.get(t.kind).id === t.kind ? t.kind : this.kindFor(place));
+      const onSearch = () => {
+        this.closeSheet($('cand-sheet'));
+        setTimeout(() => {
+          this.openWhen({ kind: t.kind && Kinds.get(t.kind).id === t.kind ? t.kind : null });
+          this.openPlaceSheet('stop');
+          $('place-input').value = t.label;
+          $('place-input').dispatchEvent(new Event('input'));
+        }, 300);
+      };
+      const onPick = (r) => {
+        const kind = kindOf(r.place);
+        const stay = t.stay || this.usualStay(r.place, kind, null);
+        if (parent) {
+          this.posCtx = { place: r.place, t, kind, stay, parentUid: parent.uid };
+          const name = short(parent.place.name);
+          $('pos-desc').innerHTML = `<b>${esc(r.place.name)}</b> · ${esc(name)}에서 걸어서 ${r.walk}분`;
+          $('btn-pos-before').querySelector('b').textContent = `${name} 가기 전에`;
+          $('btn-pos-after').querySelector('b').textContent = `${name} 끝나고`;
+          this.hideSheetNow($('cand-sheet'));
+          this.openSheet($('pos-sheet'), { replace: true });
+          return;
+        }
+        const extra = { task: t.id, kind, stay };
+        if (t.id === 'meal') {
+          const now = this.isToday() ? this.nowMin() : 0;
+          const at = now <= 13 * 60 ? '12:00' : now <= 19 * 60 ? '18:30' : null;
+          if (at) extra.prefAt = at;
+        }
+        this.closeSheet($('cand-sheet'));
+        const stop = this.addStop(r.place, extra);
+        if (stop) this.showToast(`${stop.place.name} 넣었어요 · ${fmtMin(stop.stay)} 걸리는 걸로 계산해요`, { duration: 3200 });
+        track('need_add', { task: t.id });
+        setTimeout(() => this.replanIfOpen(), 250);
+      };
+      this.showList({ title, desc, rows: null, onPick, onSearch: parent ? null : onSearch, replace: true });
+      let rows = [];
+      let failed = false;
+      try {
+        rows = (await this.withTimeout(this.nearRows(t.cat, anchors, parent ? 800 : 2000), 8000)) || [];
+        if (!rows.length && parent) rows = (await this.withTimeout(this.nearRows(t.cat, anchors, 2000), 8000)) || [];
+      } catch (_) {
+        failed = true;
+      }
+      this.showList({ title, desc, rows, emptyText: failed ? '검색을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : `근처에서 ${t.label} 장소를 못 찾았어요.${parent ? '' : '<br>아래에서 이름으로 직접 찾아 주세요.'}`, onPick, onSearch: parent ? null : onSearch });
+    },
+
+    /** 식사·빈 시간: 그때 있을 볼일 장소들 근처를 리스트로 */
+    async openAround(cat, title, plan, anchors, mode) {
+      this.nearPlan = plan;
+      const desc = `${anchors.map((a) => `<b>${esc(a.label)}</b>`).join(' · ')} 근처예요. 고르면 그 시간쯤으로 넣고 다시 계산해요.`;
+      const onPick = (r) => {
+        if (this.swapBlock) {
+          this.plan.stops = this.plan.stops.filter((s) => s.uid !== this.swapBlock);
+          this.swapBlock = null;
+        }
+        this.closeSheet($('cand-sheet'));
+        const stop = this.addStop(r.place, { kind: 'food', stay: plan.stay || 50, staySet: false, prefAt: plan.prefAt || null });
+        if (stop) this.showToast(`${stop.place.name} 넣었어요 · ${fmtMin(stop.stay)} 걸리는 걸로 계산해요`, { duration: 3200 });
+        track('card_done', { type: mode });
+        setTimeout(() => this.showPlan({ keepScroll: true }), 250);
+      };
+      const onSearch = () => {
+        this.hideSheetNow($('cand-sheet'));
+        this.findNear(cat, anchors[0].place, mode, plan, title, true);
+      };
+      this.showList({ title, desc, rows: null, onPick, onSearch });
+      let rows = [];
+      let failed = false;
+      try {
+        rows = (await this.withTimeout(this.nearRows(cat, anchors, 800), 8000)) || [];
+        if (rows.length < 3) rows = (await this.withTimeout(this.nearRows(cat, anchors, 2000), 8000)) || rows;
+      } catch (_) {
+        failed = true;
+      }
+      this.showList({ title, desc, rows, emptyText: failed ? '검색을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : '근처에서 못 찾았어요. 아래에서 이름으로 찾아 주세요.', onPick, onSearch });
+    },
+
+    /** 그 시각 앞·뒤로 있을 장소 (식사·카페 리스트의 기준점) */
+    anchorsAt(sim, input, at) {
+      const real = sim.rows.filter((r) => !r.anywhere);
+      const out = [];
+      const add = (place, label) => {
+        if (place && place.lat && !out.some((q) => Engine.distM(q.place, place) < 300)) out.push({ place, label });
+      };
+      const prev = real.filter((r) => r.begin <= at).pop();
+      const next = real.find((r) => r.begin > at);
+      if (prev) add(input.stops[prev.i].place, short(input.stops[prev.i].place.name));
+      if (next) add(input.stops[next.i].place, short(input.stops[next.i].place.name));
+      if (!out.length) add(input.start, this.isHome(input.start) ? '집' : short(input.start.name));
+      return out;
+    },
+
+    /** 근처 검색의 기준점: 출발지 + 장소가 정해진 일정들 (최대 5곳) */
+
+    /** 그 분류의 근처 장소를 기준점마다 찾아 합침 (같은 검색은 기억해 둠). 실패한 기준점은 건너뜀 */
 
     withTimeout(promise, ms) {
       return Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
     },
 
-    async addTask(id) {
-      const t = Tasks.get(id);
-      if (!t) return;
-      this.closeSheet($('task-sheet'));
-      const pts = this.taskPoints();
-      if (!pts.length) {
-        this.showToast('먼저 어디서 출발하는지 정해 주세요');
-        this.openPlaceSheet('start');
-        return;
-      }
-      this.showToast(`가까운 ${t.label} 찾는 중…`, { duration: 6000 });
-      const list = (await this.withTimeout(this.nearbyAll(t.cat, pts), 7000)) || [];
-      if (!list.length) {
-        this.showToast(`근처에서 ${t.label} 장소를 못 찾았어요. 이름으로 찾아 넣어 주세요`, { duration: 4500 });
-        setTimeout(() => {
-          this.startAddPlace();
-          $('place-input').value = t.label;
-          $('place-input').dispatchEvent(new Event('input'));
-        }, 300);
-        return;
-      }
-      const place = list[0];
-      const kind = t.kind && Kinds.get(t.kind).id === t.kind ? t.kind : this.kindFor(place);
-      const extra = { task: id, cands: list, kind, stay: t.stay || Kinds.get(kind).stay };
-      if (id === 'meal') {
-        const now = this.isToday() ? this.nowMin() : 0;
-        const at = now <= 13 * 60 ? '12:00' : now <= 19 * 60 ? '18:30' : null;
-        if (at) extra.prefAt = at;
-      }
-      const stop = this.addStop(place, extra);
-      if (!stop) return;
-      this.showToast(`${t.label} 넣었어요 · 가는 길에 가까운 곳으로 골라요`, { duration: 3200 });
-      setTimeout(() => this.replanIfOpen(), 250);
-    },
 
-    setTaskPlace(s, place) {
-      const t = Tasks.get(s.task);
-      s.place = Store.cleanPlace(place);
-      s.pinned = true;
-      if (t && !t.kind) s.kind = this.kindFor(s.place);
-      this.save();
-      this.render();
-      this.replanIfOpen();
-    },
 
     /** 계산 전: 할 일들의 후보 장소를 지금 동선 기준으로 새로 찾음 (실패해도 넘어감) */
-    async refreshTasks() {
-      const done = new Set(this.plan.done || []);
-      const list = this.plan.stops.filter((s) => s.task && !s.pinned && !done.has(s.uid) && Tasks.get(s.task));
-      if (!list.length) return;
-      const pts = this.taskPoints();
-      if (!pts.length) return;
-      await Promise.all(
-        list.map(async (s) => {
-          const found = await this.nearbyAll(Tasks.get(s.task).cat, pts);
-          if (found.length) s.cands = found;
-        })
-      );
-    },
 
     /**
      * 추천 순서에서 각 할 일의 앞·뒤 장소를 보고, 가장 덜 돌아가는 후보로 바꿈
      * @returns {boolean} 하나라도 바뀌었는지
      */
-    pickBestCands(out) {
-      const { input, result } = out;
-      const sim = result.options[0].sim;
-      const real = sim.rows.filter((r) => !r.anywhere);
-      const endPlace = input.end.type === 'return' ? input.start : input.end.type === 'place' ? input.end.place : null;
-      let changed = false;
-      real.forEach((r, p) => {
-        const es = input.stops[r.i];
-        const s = this.plan.stops.find((x) => x.uid === es.uid);
-        if (!s || !s.task || s.pinned || s.cands.length < 2) return;
-        const prev = p === 0 ? input.start : input.stops[real[p - 1].i].place;
-        const next = p + 1 < real.length ? input.stops[real[p + 1].i].place : endPlace;
-        const best = this.sortCands(s.cands, prev, next, r.mode, input.travelFn)[0];
-        if (best && Profile.placeKey(best) !== Profile.placeKey(s.place)) {
-          s.place = best;
-          const t = Tasks.get(s.task);
-          if (t && !t.kind) s.kind = this.kindFor(best);
-          changed = true;
-        }
-      });
-      if (changed) this.save();
-      return changed;
-    },
 
     /** 덜 돌아가는 순서로 */
-    sortCands(cands, prev, next, mode, travelFn) {
-      const cost = (c) => {
-        const a = travelFn(prev, c, mode);
-        const b = next ? travelFn(c, next, mode) : { min: 0, dist: 0 };
-        return a.min + b.min + (a.dist + b.dist) / 1e5;
-      };
-      return cands
-        .map((c) => ({ c, v: cost(c) }))
-        .sort((x, y) => x.v - y.v)
-        .map((x) => x.c);
-    },
 
     /** 할 일의 "다른 곳" 고르기 */
-    openCands(uid) {
-      const s = this.plan.stops.find((x) => x.uid === uid);
-      if (!s) return;
-      this.candUid = uid;
-      let list = s.cands.slice();
-      let detour = null;
-      if (this.result) {
-        const { input, result } = this.result;
-        const real = result.options[0].sim.rows.filter((r) => !r.anywhere);
-        const p = real.findIndex((r) => input.stops[r.i].uid === uid);
-        if (p >= 0) {
-          const endPlace = input.end.type === 'return' ? input.start : input.end.type === 'place' ? input.end.place : null;
-          const prev = p === 0 ? input.start : input.stops[real[p - 1].i].place;
-          const next = p + 1 < real.length ? input.stops[real[p + 1].i].place : endPlace;
-          list = this.sortCands(list, prev, next, real[p].mode, input.travelFn);
-          const direct = next ? input.travelFn(prev, next, real[p].mode).min : 0;
-          detour = (c) => input.travelFn(prev, c, real[p].mode).min + (next ? input.travelFn(c, next, real[p].mode).min : 0) - direct;
-        }
-      }
-      this.candShown = list;
-      const t = Tasks.get(s.task);
-      $('cand-title').textContent = `${t ? t.label : '할 일'} — 다른 곳으로`;
-      $('cand-list').innerHTML = list.length
-        ? list
-            .map((c, i) => {
-              const on = Profile.placeKey(c) === Profile.placeKey(s.place);
-              return `<li class="lot${on ? ' is-on' : ''}"><div class="lot__text"><b>${esc(c.name)}</b><span>${detour ? `${Math.max(0, detour(c))}분 돌아가요 · ` : ''}${esc(c.address)}</span></div><button class="${on ? 'btn-line' : 'btn-soft'} btn-line--sm" type="button" data-cand="${i}">${on ? '지금 여기' : '여기로'}</button></li>`;
-            })
-            .join('')
-        : '<li class="results__hint">근처 후보를 못 찾았어요. 이름으로 직접 찾아 주세요.</li>';
-      this.openSheet($('cand-sheet'));
-    },
 
     // =================================================================
     // 엔진에 넘길 값 만들기
@@ -1126,8 +1322,33 @@
           return f !== 1 ? { min: Math.ceil(r.min * f), dist: r.dist } : r;
         },
         pref: Kinds.prefParams,
-        stops: this.plan.stops.filter((s) => !done.has(s.uid)).map((s) => this.engineStop(s)),
+        stops: this.chainStops(this.plan.stops.filter((s) => !done.has(s.uid))),
       };
+    },
+
+    /**
+     * 엔진용 볼일 목록. "간 김에 들르는 곳"은 그 볼일 바로 앞(가기 전에)·바로 뒤(끝나고)에 붙어 다니게 묶는다
+     * (묶인 곳끼리 가까우면 차를 두고 걸어가는 걸로 계산 — travel.chainWalkM)
+     */
+    chainStops(live) {
+      const by = new Map(live.map((s) => [s.uid, this.engineStop(s)]));
+      live.forEach((p) => {
+        if (p.near || p.block) return;
+        const kids = live.filter((k) => k.near === p.uid);
+        if (!kids.length) return;
+        const seq = kids.filter((k) => k.nearPos === 'before').concat([p], kids.filter((k) => k.nearPos !== 'before'));
+        seq.forEach((x, i) => {
+          const e = by.get(x.uid);
+          e.order = p.order;
+          if (x !== p) e.mode = p.mode;
+          if (i > 0) e.prevUid = seq[i - 1].uid;
+        });
+        // 가기 전에 들르는 곳이 있어도 차는 본 볼일의 주차장에 세우는 걸로 계산
+        const first = by.get(seq[0].uid);
+        const main = by.get(p.uid);
+        if (seq[0] !== p && !seq[0].lot) Object.assign(first, { parking: main.parking === 'auto' ? Kinds.get(p.kind).parking : main.parking, lotWalk: main.lotWalk });
+      });
+      return live.map((s) => by.get(s.uid));
     },
 
     /**
@@ -1263,12 +1484,7 @@
       $('plan-meta').textContent = '계산 중…';
       try {
         if (this.refreshDone()) this.save();
-        await this.withTimeout(this.refreshTasks().catch(() => {}), 5000);
-        let out = this.computePlan();
-        for (let k = 0; out && k < 2; k++) {
-          if (!this.pickBestCands(out)) break;
-          out = this.computePlan();
-        }
+        const out = this.computePlan();
         this.render();
         if (!out) {
           const left = this.plan.stops.length - (this.plan.done || []).length;
@@ -1336,6 +1552,7 @@
         this.backAt = sim.doneAt;
       }
 
+      const guessed = real.filter((r) => { const x = this.plan.stops.find((y) => y.uid === stops[r.i].uid); return x && !x.staySet; }).length;
       const urgent = startKind === 'now' && outAt <= input.startMin + 5; // 지금 바로 나가야 하는 경우만
       const lateNow = urgent && opt.warnings.length > 0;
       const untilOut = this.isToday() ? outAt - now : null;
@@ -1345,6 +1562,7 @@
           <p class="go__time"><b>${urgent ? '지금' : fmt(outAt)}</b><span>${urgent ? (lateNow ? ' 바로 나가야 해요' : ' 나가면 돼요') : '에 나가세요'}</span></p>
           <p class="go__meta">${urgent ? `${fmt(outAt)} 출발 기준 · ` : untilOut != null && untilOut > 0 ? `<b>${fmtMin(untilOut)} 뒤</b> · ` : ''}${firstStop ? `먼저 ${esc(short(firstStop.place.name))}` : ''}</p>
           <p class="go__back">${backText}</p>
+          <p class="go__stay">머무는 시간 모두 <b>${fmtMin(real.reduce((a, r) => a + stops[r.i].stay, 0))}</b>${guessed ? ` · ${guessed}곳은 보통 값` : ''}</p>
           <p class="go__incl">주차·엘리베이터·접수 시간까지 넣었어요${this.learnedCount(sim) ? ` · 내 기록 ${this.learnedCount(sim)}곳 반영` : ''}</p>
         </section>`;
 
@@ -1382,8 +1600,8 @@
           items.push(`<li class="tl tl--block">
             <div class="tl__box">
               <p class="tl__name">🍚 ${esc(s.place.name)} <small>시간만 비움</small></p>
-              <p class="tl__time">${t(row.begin)} ~ ${t(row.finish)} · ${fmtMin(es.stay)}</p>
-              <div class="tl__acts"><button class="tl__act" type="button" data-fix="${s.uid}">시간 고치기</button><button class="tl__act" type="button" data-act="meal-find" data-at="${row.begin}" data-uid="${s.uid}">근처 식당 찾기</button></div>
+              <p class="tl__time">${t(row.begin)} ~ ${t(row.finish)} · ${fmtMin(es.stay)} 비워 둬요</p>
+              <div class="tl__acts"><button class="tl__act" type="button" data-fix="${s.uid}">시간 고치기</button><button class="tl__act" type="button" data-act="meal-find" data-at="${row.begin}" data-uid="${s.uid}">근처 식당 보기</button></div>
             </div>
           </li>`);
           return;
@@ -1415,8 +1633,9 @@
         if (row.wait >= 15 && row.outAt !== out && row !== real[0]) badges.push(`<span class="badge badge--soft">앞 일정 뒤 ${fmtMin(row.wait)} 여유</span>`);
 
         const acts = [];
-        if (task) acts.push(`<button class="tl__act" type="button" data-cands="${s.uid}">다른 곳</button>`);
-        if (row.mode === 'car' && es.kind !== 'home' && es.kind !== 'gas') acts.push(`<button class="tl__act" type="button" data-lots="${s.uid}">🅿 ${s.lot ? '주차장 바꾸기' : '주차장 찾기'}</button>`);
+        const isKid = !!this.parentOf(s);
+        if (!isKid) acts.push(`<button class="tl__act tl__act--near" type="button" data-near="${s.uid}">🔎 이 근처에서 찾기</button>`);
+        if (!isKid && row.mode === 'car' && es.kind !== 'home' && es.kind !== 'gas') acts.push(`<button class="tl__act" type="button" data-lots="${s.uid}">🅿 ${s.lot ? '주차장 바꾸기' : '주차장'}</button>`);
         acts.push(`<a class="tl__act" href="${this.mapUrl(s.lot ? s.lot.place : s.place)}" target="_blank" rel="noopener">길찾기</a>`);
         acts.push(`<button class="tl__act" type="button" data-fix="${s.uid}">고치기</button>`);
 
@@ -1427,8 +1646,9 @@
             <ul class="tl__parts">${detail.join('')}</ul>
           </details>
           <div class="tl__box${row.late ? ' tl__box--late' : ''}">
-            <p class="tl__name">${task ? `${task.icon} ` : ''}${esc(s.place.name)}${task ? ` <small>${esc(task.label)}</small>` : ` <small>${esc(kind.label)}</small>`}</p>
-            <p class="tl__time">${t(row.begin)} ~ ${t(row.finish)} · ${fmtMin(es.stay)}</p>
+            <p class="tl__name">${esc(s.place.name)} <small>${this.whatIcon(s)} ${esc(this.whatLabel(s))}${this.parentOf(s) ? ' · 간 김에' : ''}</small></p>
+            <p class="tl__time">${t(row.begin)} 도착 ~ ${t(row.finish)} 끝</p>
+            <button class="tl__stay${s.staySet ? '' : ' tl__stay--guess'}" type="button" data-stay-fix="${s.uid}"><span>${s.staySet ? `여기서 <b>${fmtMin(es.stay)}</b> 머물러요` : `여기서 <b>보통 ${fmtMin(es.stay)}</b> 머무는 걸로 계산했어요`}</span><em>바꾸기</em></button>
             ${s.lot ? `<p class="tl__lot">🅿 ${esc(s.lot.place.name)}${s.lot.pub ? ' (공영)' : ''}에 세우고 걸어서 ${s.lot.walk}분</p>` : ''}
             ${badges.length ? `<p class="tl__badges">${badges.join('')}</p>` : ''}
             <div class="tl__acts">${acts.join('')}</div>
@@ -1444,7 +1664,7 @@
       }
 
       const why = real.length > 1 && opt.reasons.length ? `<p class="why-line">${esc(opt.reasons[0])}</p>` : '';
-      const more = `<div class="more-row"><p class="more-row__label">${this.isToday() ? '갑자기 들를 곳이 생겼나요?' : '더 넣을 일정이 있나요?'}</p><div class="more-row__btns"><button class="btn-line" type="button" data-act="more-place">📍 갈 곳 더</button><button class="btn-line" type="button" data-act="more-task">✅ 할 일 더</button></div></div>`;
+      const more = `<div class="more-row"><p class="more-row__label">${this.isToday() ? '다니는 중에 볼일이 더 생겼나요?' : '볼일이 더 있나요?'}</p>${this.isToday() ? '<p class="more-row__sub">넣으면 지난 볼일은 빼고, 남은 것만 지금부터 다시 계산해요</p>' : ''}<div class="more-row__btns"><button class="btn-line" type="button" data-act="more-place">＋ 볼일 더 넣기</button><button class="btn-line" type="button" data-act="more-task">🔎 무엇이 필요해요?</button></div></div>`;
       const road = Store.MODES.some((m) => Learn.roadFactor(m) !== 1);
       const note = `<p class="result-note">이동 시간은 아직 직선거리로 어림한 값이에요(실제 길찾기는 준비 중). 각 줄을 누르면 주차·엘리베이터·접수 시간이 하나씩 보여요.${input.weekend ? ' 주말 혼잡을 반영했어요.' : ''}${road ? ' 길 시간은 내 답을 반영했어요.' : ''}</p>`;
 
@@ -1507,7 +1727,7 @@
             icon: '🍚',
             text: `${name}시간이 끼어 있어요. ${name}은 어떻게 할까요?`,
             actions: [
-              { label: '근처 식당 찾기', run: () => this.findNear('FD6', this.placeAt(sim, input, at), 'meal', { prefAt: this.hhmm(at), stay: w.stay }, '근처 식당') },
+              { label: '근처 식당 보기', run: () => this.openAround('FD6', '🍚 근처 식당', { prefAt: this.hhmm(at), stay: w.stay }, this.anchorsAt(sim, input, at), 'meal') },
               { label: '시간만 비우기', run: () => this.addBlock(id, name, this.hhmm(at), w.stay) },
               { label: '괜찮아요', run: dismiss(id) },
             ],
@@ -1528,8 +1748,8 @@
             icon: '☕',
             text: `${short(prev.place.name)} 끝나고 ${fmtMin(free)}쯤 비어요.`,
             actions: [
-              { label: '근처 카페 찾기', run: () => this.findNear('CE7', prev.place, 'cafe', { prefAt: this.hhmm(real[p - 1].finish + 5), stay: Math.max(15, Math.min(60, Math.floor((free - 15) / 5) * 5)) }, '근처 카페') },
-              { label: '할 일 넣기', run: () => this.startAddTask() },
+              { label: '근처 카페 보기', run: () => this.openAround('CE7', '☕ 근처 카페', { prefAt: this.hhmm(real[p - 1].finish + 5), stay: Math.max(15, Math.min(60, Math.floor((free - 15) / 5) * 5)) }, [{ place: prev.place, label: short(prev.place.name) }, { place: stops[r.i].place, label: short(stops[r.i].place.name) }].filter((a, i, arr) => i === 0 || Engine.distM(a.place, arr[0].place) >= 300), 'cafe') },
+              { label: '다른 것 찾기', run: () => this.startNeed(prev.uid) },
               { label: '괜찮아요', run: dismiss('gap') },
             ],
           });
@@ -1550,7 +1770,7 @@
             icon: '🅿',
             text: `${short(es.place.name)}: 전용 주차장이 없을 수 있어요. 근처 주차장을 찾아볼까요?`,
             actions: [
-              { label: '주차장 찾기', run: () => this.openLots(es.uid) },
+              { label: '근처 주차장 보기', run: () => this.openLots(es.uid) },
               { label: '괜찮아요', run: dismiss('lot') },
             ],
           });
@@ -1605,7 +1825,7 @@
     },
 
     /** 근처 식당·카페 찾기 → 고르면 그 시간쯤으로 넣고 다시 계산 */
-    async findNear(cat, near, mode, plan, title) {
+    async findNear(cat, near, mode, plan, title, replace) {
       this.nearPlan = plan;
       this.pickMode = mode;
       $('place-sheet-title').textContent = title;
@@ -1614,7 +1834,7 @@
       $('place-quick').hidden = true;
       $('place-status').textContent = '찾는 중…';
       $('place-results').innerHTML = '';
-      this.openSheet($('place-sheet'));
+      this.openSheet($('place-sheet'), { replace: !!replace });
       const miss = `<li class="results__hint">${title}을 못 찾았어요. 이름으로 찾아 주세요</li>`;
       try {
         const list = await Places.nearby(cat, near, 1500);
@@ -1628,14 +1848,14 @@
     },
 
     // ---- 근처 주차장 (공영 / 민영) ---------------------------------------------
-    async openLots(uid) {
+    async openLots(uid, { replace = false } = {}) {
       const s = this.plan.stops.find((x) => x.uid === uid);
       if (!s) return;
       this.lotUid = uid;
       $('lot-title').textContent = '근처 주차장';
       $('lot-desc').innerHTML = `<b>${esc(s.place.name)}</b>에서 가까운 순이에요. 고르면 <b>주차장에서 걸어가는 시간</b>까지 넣어 다시 계산해요.`;
       $('lot-list').innerHTML = '<li class="results__hint">찾는 중…</li>';
-      this.openSheet($('lot-sheet'));
+      this.openSheet($('lot-sheet'), { replace });
       track('lot_open', {});
       let list = [];
       let failed = false;
@@ -1671,15 +1891,16 @@
         if (fx) {
           const stop = this.plan.stops.find((x) => x.uid === fx.dataset.fix);
           if (!stop) return;
-          if (stop.block) return this.editWhen(stop.uid);
-          this.fixFromResult = true;
-          this.openStopSheet(stop, { precise: true });
-          return;
+          return this.openWhen({ uid: stop.uid });
+        }
+        const sf = e.target.closest('[data-stay-fix]');
+        if (sf) {
+          return this.openWhen({ uid: sf.dataset.stayFix });
         }
         const lt = e.target.closest('[data-lots]');
         if (lt) return this.openLots(lt.dataset.lots);
-        const cd = e.target.closest('[data-cands]');
-        if (cd) return this.openCands(cd.dataset.cands);
+        const nr = e.target.closest('[data-near]');
+        if (nr) return this.startNeed(nr.dataset.near);
         const sg = e.target.closest('[data-card]');
         if (sg) {
           const [i, j] = sg.dataset.card.split('|').map(Number);
@@ -1698,7 +1919,7 @@
           const s = this.plan.stops.find((x) => x.uid === act.dataset.uid);
           const { input, result } = this.result;
           this.swapBlock = s ? s.uid : null;
-          this.findNear('FD6', this.placeAt(result.options[0].sim, input, Number(act.dataset.at)), 'meal', { prefAt: s && s.prefAt, stay: s ? s.stay : 50 }, '근처 식당');
+          this.openAround('FD6', '🍚 근처 식당', { prefAt: s && s.prefAt, stay: s ? s.stay : 50 }, this.anchorsAt(result.options[0].sim, input, Number(act.dataset.at)), 'meal');
         }
       });
       $('btn-alarm').addEventListener('click', () => this.openAlarm());
@@ -1722,7 +1943,7 @@
             .catch(() => {});
         }
       }
-      if (isTask) this.startAddTask();
+      if (isTask) this.startNeed(null);
       else this.startAddPlace();
     },
 
@@ -2097,21 +2318,27 @@
         setTimeout(() => this.showPlan({ keepScroll: true }), 250);
         return;
       }
-      if (mode === 'taskpick') {
-        const s = this.plan.stops.find((x) => x.uid === this.candUid);
-        this.closeSheet($('place-sheet'));
-        if (s) setTimeout(() => this.setTaskPlace(s, clean), 250);
-        return;
-      }
+
       if (place.id !== 'current') {
         Store.pushRecent(this.places, clean);
         this.savePlaces();
       }
 
       if (mode === 'stop' && !this.draft) {
-        // 새로 갈 곳: 고르면 바로 "몇 시까지 가요?"
-        this.hideSheetNow($('place-sheet'));
-        this.openWhen({ place: clean }, { replace: true });
+        // 볼일 넣기 화면의 "② 어디서 해요?"에서 고른 장소
+        if (this.whenCtx && !$('when-sheet').hidden) {
+          const c = this.whenCtx;
+          c.place = clean;
+          if (!c.kindPicked) c.kind = this.kindFor(clean);
+          $('when-error').hidden = true;
+          this.closeSheet($('place-sheet'));
+          this.renderCardForm();
+        } else {
+          this.hideSheetNow($('place-sheet'));
+          this.openWhen({ place: clean, kind: null }, { replace: true });
+          this.whenCtx.kind = this.kindFor(clean);
+          this.renderCardForm();
+        }
         return;
       }
       if (mode === 'stop') {
@@ -2508,6 +2735,10 @@
         d[this.apptKey()] = v;
       }
 
+      if (this.editingUid) {
+        const o0 = this.plan.stops.find((s) => s.uid === this.editingUid);
+        if (o0 && o0.stay !== d.stay) d.staySet = true;
+      }
       if (this.editingUid && d.task) {
         // 할 일의 장소를 직접 바꿨으면 그 뒤로는 자동으로 바꾸지 않음
         const o = this.plan.stops.find((s) => s.uid === this.editingUid);
@@ -2597,7 +2828,7 @@
     // 시트 공통 — 안드로이드 "뒤로" 버튼이 시트를 닫도록 방문 기록을 함께 관리
     // =================================================================
     wireSheets() {
-      ['place-sheet', 'stop-sheet', 'end-sheet', 'time-sheet', 'result-sheet', 'date-sheet', 'me-sheet', 'feedback-sheet', 'trip-sheet', 'when-sheet', 'task-sheet', 'lot-sheet', 'cand-sheet', 'alarm-sheet'].forEach((id) => {
+      ['place-sheet', 'stop-sheet', 'end-sheet', 'time-sheet', 'result-sheet', 'date-sheet', 'me-sheet', 'feedback-sheet', 'trip-sheet', 'when-sheet', 'task-sheet', 'lot-sheet', 'cand-sheet', 'alarm-sheet', 'pos-sheet'].forEach((id) => {
         $(id).addEventListener('click', (e) => {
           if (e.target.closest('[data-close]')) this.closeSheet($(id));
         });

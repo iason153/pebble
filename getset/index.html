@@ -62,22 +62,20 @@
 
   <h2 id="day-q" class="day-q">오늘 뭐 있어요?</h2>
 
-  <div class="add-row">
-    <button id="btn-add-place" class="add-big" type="button">
-      <span class="add-big__ico" aria-hidden="true">📍</span>
-      <b class="add-big__title">갈 곳 넣기</b>
-      <small class="add-big__desc">병원·약속·학원<br>정해진 곳</small>
+  <div class="add-col">
+    <button id="btn-add-place" class="add-main" type="button">
+      <span class="add-main__plus" aria-hidden="true">+</span>
+      <span class="add-main__text"><b>볼일 넣기</b><small>어디서 · 뭘 하는지 · 몇 시까지</small></span>
     </button>
-    <button id="btn-add-task" class="add-big" type="button">
-      <span class="add-big__ico" aria-hidden="true">✅</span>
-      <b class="add-big__title">할 일 넣기</b>
-      <small class="add-big__desc">약국·주유·현금<br>어디든 되는 일</small>
+    <button id="btn-add-task" class="add-need" type="button">
+      <span class="add-need__ico" aria-hidden="true">🔎</span>
+      <span class="add-need__text"><b>무엇이 필요해요?</b><small>약국·주유·현금… 주변에서 찾아 추천해 드려요</small></span>
     </button>
   </div>
 
   <section class="stops" aria-label="넣은 일정">
     <ul id="stop-list" class="stop-list"></ul>
-    <p id="stops-empty" class="empty-note">하나만 넣어 보세요.<br><b>몇 시에 나가야 하는지</b> 바로 알려 줘요.<br><small>주차·엘리베이터·접수 시간까지 계산해요</small></p>
+    <p id="stops-empty" class="empty-note">볼일을 하나만 넣어 보세요.<br><b>몇 시에 나가야 하는지</b> 바로 알려 줘요.<br><small>주차·엘리베이터·접수 시간까지 계산해요</small></p>
     <button id="trip-line" class="trip-line" type="button" aria-label="출발지·이동 수단 바꾸기">
       <span id="trip-line-text" class="trip-line__text"></span>
       <span class="trip-line__edit">바꾸기</span>
@@ -414,48 +412,66 @@
   </div>
 </div>
 
-<!-- 몇 시까지 가요? -->
-<div id="when-sheet" class="sheet" hidden>
+<!-- 볼일 넣기 / 고치기 — 한 화면에서 위에서 아래로 -->
+<div id="when-sheet" class="sheet sheet--tall" hidden>
   <div class="sheet__backdrop" data-close></div>
   <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="when-title">
     <div class="sheet__grip" aria-hidden="true"></div>
     <div class="sheet__top">
-      <h2 id="when-title" class="sheet__title">몇 시까지 가요?</h2>
+      <h2 id="when-title" class="sheet__title">볼일 넣기</h2>
       <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <p id="when-place" class="when-place"></p>
     <div class="sheet__scroll">
-      <div class="tf" id="when-tf" role="group" aria-label="도착 시각">
-        <div class="seg tf__ap" role="radiogroup" aria-label="오전 오후">
-          <button class="seg__btn" type="button" role="radio" data-ap="am">오전</button>
-          <button class="seg__btn" type="button" role="radio" data-ap="pm">오후</button>
-        </div>
-        <div class="tf__nums">
-          <input class="tf__h" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="시" placeholder="2">
-          <span class="tf__unit">시</span>
-          <input class="tf__m" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="분" placeholder="00">
-          <span class="tf__unit">분</span>
-        </div>
+      <p id="when-place" class="when-place" hidden></p>
+      <div id="sec-what" class="q">
+        <p class="q__label"><span class="q__num">1</span>뭐 해요?</p>
+        <div id="what-chips" class="what-chips" role="radiogroup" aria-label="뭐 해요"></div>
       </div>
-      <p id="when-help" class="field__note">이 시각에 맞춰 도착하도록 나갈 시간을 알려 줘요.</p>
+      <div id="sec-where" class="q">
+        <p class="q__label"><span class="q__num">2</span>어디서 해요?</p>
+        <button id="btn-where" class="where-btn" type="button"></button>
+      </div>
+      <div id="sec-time" class="q">
+        <p class="q__label"><span class="q__num">3</span><span id="time-q">몇 시까지 가요?</span></p>
+        <div class="tf" id="when-tf" role="group" aria-label="도착 시각">
+          <div class="seg tf__ap" role="radiogroup" aria-label="오전 오후">
+            <button class="seg__btn" type="button" role="radio" data-ap="am">오전</button>
+            <button class="seg__btn" type="button" role="radio" data-ap="pm">오후</button>
+          </div>
+          <div class="tf__nums">
+            <input class="tf__h" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="시" placeholder="2">
+            <span class="tf__unit">시</span>
+            <input class="tf__m" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="분" placeholder="00">
+            <span class="tf__unit">분</span>
+          </div>
+        </div>
+        <button id="btn-anytime" class="any-btn" type="button" aria-pressed="false">정해진 시간 없어요 (아무 때나)</button>
+        <p id="when-help" class="field__note">이 시각에 맞춰 도착하도록 나갈 시간을 알려 줘요.</p>
+      </div>
+      <div id="sec-stay" class="q">
+        <p class="q__label"><span id="stay-num" class="q__num">4</span><span id="stay-q">거기서 얼마나 걸려요?</span></p>
+        <div id="when-stay" class="stay-chips" role="radiogroup" aria-label="머무는 시간"></div>
+        <p class="field__note">다음 볼일로 나가는 시간과 집에 오는 시간이 이걸로 정해져요.</p>
+      </div>
+      <button id="btn-when-more" class="text-btn text-btn--center" type="button" hidden>더 정확하게: 가는 방법 · 주차장 종류 · 영업시간</button>
     </div>
     <p id="when-error" class="form-error" role="alert" hidden></p>
-    <div class="sheet__actions sheet__actions--col">
-      <button id="btn-when-ok" class="sheet__btn sheet__btn--primary" type="button">이 시간까지 갈게요</button>
-      <button id="btn-when-any" class="sheet__btn" type="button">아무 때나 괜찮아요</button>
+    <div class="sheet__actions">
+      <button id="btn-when-ok" class="sheet__btn sheet__btn--primary" type="button">볼일 넣기</button>
     </div>
   </div>
 </div>
+
 <!-- 할 일 넣기 -->
 <div id="task-sheet" class="sheet" hidden>
   <div class="sheet__backdrop" data-close></div>
   <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="task-title">
     <div class="sheet__grip" aria-hidden="true"></div>
     <div class="sheet__top">
-      <h2 id="task-title" class="sheet__title">어떤 일이에요?</h2>
+      <h2 id="task-title" class="sheet__title">무엇이 필요해요?</h2>
       <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <p class="sheet__desc">고르기만 하세요. <b>가는 길에 가장 덜 돌아가는 곳</b>을 찾아 넣어 드려요.</p>
+    <p id="task-desc" class="sheet__desc"></p>
     <div id="task-grid" class="task-grid"></div>
   </div>
 </div>
@@ -482,11 +498,28 @@
       <h2 id="cand-title" class="sheet__title">다른 곳으로</h2>
       <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <p class="sheet__desc">위에 있을수록 덜 돌아가요.</p>
+    <p id="cand-desc" class="sheet__desc"></p>
     <ul id="cand-list" class="lot-list sheet__scroll"></ul>
     <div class="sheet__actions"><button id="btn-cand-search" class="sheet__btn" type="button">이름으로 직접 찾기</button></div>
   </div>
 </div>
+<!-- 간 김에: 가기 전에 / 끝나고 -->
+<div id="pos-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="pos-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top">
+      <h2 id="pos-title" class="sheet__title">언제 들를까요?</h2>
+      <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <p id="pos-desc" class="sheet__desc"></p>
+    <div class="options">
+      <button id="btn-pos-before" class="option" type="button" data-pos="before"><b></b><small>먼저 들렀다가 가요</small></button>
+      <button id="btn-pos-after" class="option" type="button" data-pos="after"><b></b><small>볼일 보고 나와서 들러요</small></button>
+    </div>
+  </div>
+</div>
+
 <!-- 알림 받기 -->
 <div id="alarm-sheet" class="sheet sheet--tall" hidden>
   <div class="sheet__backdrop" data-close></div>

@@ -86,6 +86,9 @@ window.GetsetStore = (function () {
       mode: MODES.includes(s.mode) ? s.mode : null, // null = 그날 기본 이동수단
       // auto = 장소 종류의 보통 주차장. 관리 페이지에서 새 주차장 종류를 만들 수 있으므로 모양만 검사
       ignoreHours: !!s.ignoreHours, // 이 곳은 영업시간 상관없음
+      staySet: !!s.staySet, // 머무는 시간을 사용자가 직접 정했는지 (아니면 보통 값)
+      near: !block && typeof s.near === 'string' && s.near ? s.near : null, // 간 김에 들르는 곳: 붙어 있는 볼일의 uid
+      nearPos: s.nearPos === 'before' ? 'before' : 'after', // 그 볼일 가기 전에 / 끝나고
       block, // 'lunch' | 'dinner' | 'free' — 시간만 비우기
       task: !block && typeof s.task === 'string' && /^[a-z]{1,12}$/.test(s.task) ? s.task : null, // 할 일(약국·주유 등): 장소는 동선에 맞춰 자동으로
       pinned: !!s.pinned, // 할 일인데 사용자가 장소를 직접 고름 → 자동으로 안 바꿈

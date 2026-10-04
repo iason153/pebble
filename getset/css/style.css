@@ -1792,3 +1792,91 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .item__stay { margin-left: auto; }
 .sug__actions .btn-soft, .sug__actions .btn-line { min-height: 44px; }
 .cal__cell { min-height: 42px; }
+
+/* 머무는 시간을 확실하게 */
+.stay-q { margin-top: 18px; }
+.stay-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.stay-chip { min-height: 48px; padding: 2px 4px; border: 1.5px solid var(--line-strong); border-radius: 12px; background: #fff; font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
+.stay-chip small { font-weight: 600; font-size: 0.8rem; color: var(--muted); margin-left: 4px; }
+.stay-chip[aria-checked="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+.stay-chip[aria-checked="true"] small { color: #d9e6dd; }
+.stay-chip--auto { grid-column: 1 / -1; }
+.item__staylabel { margin-right: 4px; font-size: 0.68rem; line-height: 1.2; font-weight: 700; color: var(--muted); text-align: right; white-space: nowrap; }
+.tl__stay { width: 100%; min-height: 44px; margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px 6px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--green-soft); color: var(--green-deep); font-size: 0.88rem; text-align: left; line-height: 1.4; }
+.tl__stay--guess { border: 1.5px dashed var(--brass); background: #FFFBF2; }
+.tl__stay em { flex-shrink: 0; font-style: normal; font-weight: 800; text-decoration: underline; white-space: nowrap; }
+.go__stay { margin: 4px 0 0; font-size: 0.84rem; color: #e4ede7; }
+.go__stay b { color: #fff; }
+@media (max-width: 359px) { .stay-chip { font-size: 0.8rem; } .item__staylabel { display: none; } }
+
+/* ══ v1.3 (2026-10-04) — 볼일 카드 중심: 볼일 넣기 하나 + 무엇이 필요해요? + 이 근처에서 찾기 ══ */
+.add-col { display: flex; flex-direction: column; gap: 8px; }
+.add-main {
+  width: 100%; min-height: 84px;
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 18px;
+  border: none; border-radius: 20px;
+  background: var(--green-deep); color: #fff;
+  box-shadow: 0 8px 20px rgba(21, 54, 40, 0.22);
+  text-align: left;
+}
+.add-main:active { transform: scale(0.985); }
+.add-main__plus { flex-shrink: 0; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--brass-hi); color: var(--green-deep); font-size: 2rem; font-weight: 700; line-height: 1; }
+.add-main__text, .add-need__text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.add-main__text b { font-size: 1.3rem; font-weight: 800; white-space: nowrap; }
+.add-main__text small { font-size: 0.84rem; color: #d9e6dd; }
+.add-need { width: 100%; min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border: 1.5px solid var(--line-strong); border-radius: 16px; background: var(--surface); color: var(--green-deep); text-align: left; }
+.add-need:active { background: var(--green-soft); }
+.add-need__ico { flex-shrink: 0; width: 40px; text-align: center; font-size: 1.4rem; }
+.add-need__text b { font-size: 1.02rem; font-weight: 800; }
+.add-need__text small { font-size: 0.78rem; line-height: 1.4; color: var(--muted); }
+
+/* 볼일 넣기: 번호 붙은 질문 */
+.q { margin-bottom: 20px; }
+.q__label { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; font-size: 1.02rem; font-weight: 800; color: var(--green-deep); }
+.q__num { flex-shrink: 0; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--green); color: #fff; font-size: 0.85rem; font-weight: 800; }
+.what-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.what { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1.5px solid var(--line-strong); border-radius: 12px; background: #fff; font-size: 0.92rem; font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; }
+.what span { flex-shrink: 0; font-size: 1.15rem; }
+.what[aria-checked="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+.where-btn { width: 100%; min-height: 60px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border: 2px dashed var(--green); border-radius: 14px; background: var(--green-soft); color: var(--green-deep); text-align: left; }
+.where-btn.is-set { border-style: solid; background: #fff; }
+.where-btn__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.where-btn__text b { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.where-btn__text small { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.where-btn em { flex-shrink: 0; font-style: normal; font-size: 0.84rem; font-weight: 800; text-decoration: underline; }
+.any-btn { width: 100%; min-height: 48px; margin-top: 8px; border: 1.5px solid var(--line-strong); border-radius: 12px; background: #fff; font-size: 0.92rem; font-weight: 700; white-space: nowrap; }
+.any-btn[aria-pressed="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+.tf.is-off { opacity: 0.4; }
+
+/* 볼일 카드: 이 근처에서 찾기 + 간 김에 들를 곳 */
+.item__near { width: 100%; min-height: 48px; margin-top: 8px; display: flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1.5px dashed var(--brass); border-radius: 12px; background: #FFFBF2; color: var(--green-deep); text-align: left; }
+.item__near:active { background: #F6ECD6; }
+.item__near b { font-size: 0.9rem; white-space: nowrap; }
+.item__near small { min-width: 0; font-size: 0.76rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kid { display: flex; align-items: center; gap: 4px; margin: 6px 0; padding: 4px 2px 4px 10px; border-left: 3px solid var(--brass); border-radius: 0 10px 10px 0; background: #FBF7EE; }
+.kid__name { flex: 1; min-width: 0; min-height: 48px; display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 0; border: none; background: none; text-align: left; }
+.kid__name small { font-size: 0.72rem; font-weight: 700; color: #8a6a35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kid__name b { font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item__stay--sm .item__btn { width: 40px; height: 44px; }
+.item__stay--sm .item__min { min-width: 40px; font-size: 0.82rem; }
+.kid .item__del { width: 40px; }
+.task b small { display: block; font-size: 0.74rem; font-weight: 600; color: var(--muted); }
+.task--lot { border-color: var(--green); background: var(--green-soft); }
+.lot--best { border-color: var(--green); }
+.tl__act--near { border-style: dashed; border-color: var(--brass); background: #FFFBF2; }
+.more-row__sub { margin: -4px 0 10px; font-size: 0.78rem; line-height: 1.45; text-align: center; color: var(--muted); }
+#btn-when-more { display: block; margin-top: -6px; text-decoration: underline; }
+@media (max-width: 359px) {
+  .add-main__text b { font-size: 1.15rem; }
+  .what { font-size: 0.84rem; padding: 4px 6px; gap: 5px; }
+  .kid { flex-wrap: wrap; }
+  .kid__name { flex-basis: 100%; }
+  .kid .item__stay { margin-left: auto; }
+  .item__near small { display: none; }
+}
+.more-row__btns { grid-template-columns: 1fr; }
+.stay-chips { grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); }
+.stay-chip--auto { white-space: normal; line-height: 1.3; padding: 6px 8px; }
+#btn-when-more { white-space: normal; max-width: 100%; height: auto; padding: 8px 4px; line-height: 1.4; }
+.btn-line--sm { min-height: 44px; }

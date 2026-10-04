@@ -492,7 +492,8 @@
     "carCityMpm": 350,
     "carMidMpm": 500,
     "carFarMpm": 800,
-    "nearWalkM": 150
+    "nearWalkM": 150,
+    "chainWalkM": 400
   },
   "pref": {
     "tolerance": 10,

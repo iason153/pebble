@@ -155,15 +155,17 @@
         continue;
       }
 
-      let mode = s.mode || dayMode;
+      const planned = s.mode || dayMode; // 원래 가려던 방법 (가까워서 걷게 되더라도 차는 근처에 있음)
+      let mode = planned;
       // 차로 다니는 날이라도 바로 근처(직선 nearWalk m 안)는 차를 두고 걸어간다
-      if (mode === 'car' && ctx.nearWalk && distM(prev, s.place) < ctx.nearWalk) mode = 'walk';
+      const nw = s.prevUid != null && p > 0 && stops[order[p - 1]].uid === s.prevUid ? Math.max(ctx.nearWalk, ctx.chainWalk) : ctx.nearWalk;
+      if (mode === 'car' && nw && distM(prev, s.place) < nw) mode = 'walk';
       const outAt = t; // 직전 장소(또는 출발지)에서 걸어 나오기 시작하는 시각
       let preOH = 0;
       let preParts = [];
       if (pending) {
-        // 차로 왔다가 차로 떠날 때만 주차장 시간(엘리베이터·출차)이 붙음. 걸어서 왔으면 차가 여기 없음
-        const leaveMode = pending.mode === 'car' && mode === 'car' ? 'car' : mode === 'car' ? 'walk' : mode;
+        // 차로 다니던 중에 차로 떠날 때만 주차장 시간(엘리베이터·출차)이 붙음. 걸어서 다니는 날이면 차가 여기 없음
+        const leaveMode = mode === 'car' ? (pending.mode === 'car' && usedCar ? 'car' : 'walk') : mode;
         const lOH = overheadFn(pending.s, leaveMode, 'leave', t);
         pending.row.leaveOH = lOH.total;
         pending.row.leaveParts = lOH.parts;
@@ -206,7 +208,7 @@
       rows.push(row);
       t = finish;
       prev = s.place;
-      pending = { row, s, mode };
+      pending = { row, s, mode: planned };
     }
 
     const doneAt = rows.length ? rows[rows.length - 1].finish : startMin;
@@ -215,7 +217,7 @@
     if (end.type !== 'none' && pending) {
       const target = end.type === 'return' ? start : end.place;
       const outAt = t;
-      const leaveMode = pending.mode === 'car' && dayMode === 'car' ? 'car' : dayMode === 'car' ? 'walk' : dayMode;
+      const leaveMode = dayMode === 'car' ? (pending.mode === 'car' && usedCar ? 'car' : 'walk') : dayMode;
       const lOH = overheadFn(pending.s, leaveMode, 'leave', t);
       pending.row.leaveOH = lOH.total;
       pending.row.leaveParts = lOH.parts;
@@ -248,6 +250,40 @@
   // ---------------------------------------------------------------------
   // 순서 찾기
   // ---------------------------------------------------------------------
+  /**
+   * 붙어 다니는 볼일(간 김에 들르는 곳): prevUid가 있으면 그 볼일 "바로 다음"에 와야 한다
+   * @returns {{prev:number[], next:number[]}} 각 볼일의 바로 앞·바로 뒤 번호(-1 = 없음)
+   */
+  function chainOf(stops) {
+    const byUid = new Map();
+    stops.forEach((s, i) => s.uid != null && byUid.set(s.uid, i));
+    const prev = stops.map((s) => (s.prevUid != null && byUid.has(s.prevUid) ? byUid.get(s.prevUid) : -1));
+    const next = stops.map(() => -1);
+    prev.forEach((p, i) => {
+      if (p >= 0 && next[p] < 0) next[p] = i;
+      else if (p >= 0) prev[i] = -1; // 같은 볼일 뒤에 둘이 붙겠다고 하면 하나만 인정
+    });
+    return { prev, next };
+  }
+
+  /** 아무 순서나 받아서, 붙어 다니는 볼일끼리 한 줄로 모은 순서로 고친다 */
+  function normalize(stops, order) {
+    const ch = chainOf(stops);
+    if (!ch.prev.some((p) => p >= 0)) return order;
+    const out = [];
+    const done = new Set();
+    for (const i of order) {
+      if (done.has(i)) continue;
+      let h = i;
+      while (ch.prev[h] >= 0) h = ch.prev[h];
+      for (let k = h; k >= 0; k = ch.next[k]) {
+        out.push(k);
+        done.add(k);
+      }
+    }
+    return out;
+  }
+
   function groupOf(s) {
     return s.order === 'first' ? 0 : s.order === 'last' ? 2 : 1;
   }
@@ -258,6 +294,10 @@
       const gi = groupOf(stops[i]);
       if (gi < g) return false;
       g = gi;
+    }
+    const ch = chainOf(stops);
+    for (let p = 0; p < order.length; p++) {
+      if (ch.prev[order[p]] >= 0 && (p === 0 || order[p - 1] !== ch.prev[order[p]])) return false;
     }
     return true;
   }
@@ -282,6 +322,7 @@
     let bestOrder = null;
     const isTravel = metric === 'travel';
     const startOHmin = ctx.startOH ? ctx.startOH.total : 0;
+    const chain = chainOf(stops);
 
     // 두 지점 사이 이동은 순서와 상관없이 같으므로 미리 계산
     const trMemo = new Map();
@@ -298,7 +339,7 @@
         let travel = travelSum;
         if (endTarget && prevIdx >= 0) {
           const last = stops[prevIdx];
-          const lm = prevMode === 'car' && dayMode === 'car' ? 'car' : dayMode === 'car' ? 'walk' : dayMode;
+          const lm = dayMode === 'car' ? (prevMode === 'car' && usedCar ? 'car' : 'walk') : dayMode;
           t += overheadFn(last, lm, 'leave', tFinish).total;
           const leg = tr(prevIdx, -1, dayMode);
           t += leg.min;
@@ -313,6 +354,9 @@
       }
       for (let j = 0; j < n; j++) {
         if (used[j]) continue;
+        const lastPlaced = order.length ? order[order.length - 1] : -1;
+        if (chain.prev[j] >= 0 && chain.prev[j] !== lastPlaced) continue; // 붙어 다니는 볼일은 짝 바로 뒤에만
+        if (lastPlaced >= 0 && chain.next[lastPlaced] >= 0 && chain.next[lastPlaced] !== j) continue;
         const g = groups[j];
         if (g < curGroup) continue;
         if (g > curGroup && remainInGroup[curGroup] > 0) continue; // 앞 그룹이 남아 있음
@@ -336,11 +380,12 @@
           continue;
         }
         let mode = modes[j];
-        if (mode === 'car' && ctx.nearWalk && tr(prevIdx, j, 'car').dist < ctx.nearWalk) mode = 'walk';
+        const nw = chain.prev[j] >= 0 ? Math.max(ctx.nearWalk, ctx.chainWalk) : ctx.nearWalk;
+        if (mode === 'car' && nw && tr(prevIdx, j, 'car').dist < nw) mode = 'walk';
         let t = tFinish;
         if (startOHmin && mode === 'car' && !usedCar) t += startOHmin;
         if (prevIdx >= 0) {
-          const lm = prevMode === 'car' && mode === 'car' ? 'car' : mode === 'car' ? 'walk' : mode;
+          const lm = mode === 'car' ? (prevMode === 'car' && usedCar ? 'car' : 'walk') : mode;
           t += overheadFn(stops[prevIdx], lm, 'leave', tFinish).total;
         }
         const leg = tr(prevIdx, j, mode);
@@ -360,7 +405,7 @@
         used[j] = true;
         remainInGroup[g]--;
         order.push(j);
-        rec(j, finish, L, S, T, g, F, mode, usedCar || mode === 'car');
+        rec(j, finish, L, S, T, g, F, modes[j], usedCar || mode === 'car');
         order.pop();
         remainInGroup[g]++;
         used[j] = false;
@@ -375,6 +420,7 @@
     const n = ctx.stops.length;
     const costKey = metric === 'travel' ? 'costShort' : 'costFast';
     const cost = (o) => (validOrder(ctx.stops, o) ? simulate(ctx, o)[costKey] : Infinity);
+    const norm = (o) => normalize(ctx.stops, o);
 
     const seeds = [];
     // ① 그룹별로 가까운 곳 먼저
@@ -421,7 +467,7 @@
     let best = null;
     let bestCost = Infinity;
     for (const s0 of seeds) {
-      let cur = s0.slice();
+      let cur = norm(s0.slice());
       let curCost = cost(cur);
       let improved = true;
       let guard = 0;
@@ -434,9 +480,10 @@
             const o = cur.slice();
             const [x] = o.splice(a, 1);
             o.splice(b, 0, x);
-            const c = cost(o);
+            const o2 = norm(o);
+            const c = cost(o2);
             if (c < curCost - 1e-9) {
-              cur = o;
+              cur = o2;
               curCost = c;
               improved = true;
             }
@@ -445,7 +492,7 @@
         // 구간 뒤집기 (2-opt)
         for (let a = 0; a < n - 1 && !improved; a++) {
           for (let b = a + 1; b < n && !improved; b++) {
-            const o = cur.slice(0, a).concat(cur.slice(a, b + 1).reverse(), cur.slice(b + 1));
+            const o = norm(cur.slice(0, a).concat(cur.slice(a, b + 1).reverse(), cur.slice(b + 1)));
             const c = cost(o);
             if (c < curCost - 1e-9) {
               cur = o;
@@ -615,6 +662,7 @@
       prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
       prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
       startOH: input.startOH || null,
+      chainWalk: input.travelParams && Number(input.travelParams.chainWalkM) > 0 ? Number(input.travelParams.chainWalkM) : 0,
       nearWalk: input.travelParams && Number(input.travelParams.nearWalkM) > 0 ? Number(input.travelParams.nearWalkM) : 0,
     };
 
@@ -680,6 +728,7 @@
       prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
       prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
       startOH: input.startOH || null,
+      chainWalk: input.travelParams && Number(input.travelParams.chainWalkM) > 0 ? Number(input.travelParams.chainWalkM) : 0,
       nearWalk: input.travelParams && Number(input.travelParams.nearWalkM) > 0 ? Number(input.travelParams.nearWalkM) : 0,
     };
   }
@@ -697,6 +746,7 @@
       prefTol: input.pref && Number.isFinite(input.pref.tolerance) ? input.pref.tolerance : 10,
       prefWeight: input.pref && Number.isFinite(input.pref.weight) ? input.pref.weight : 3,
       startOH: input.startOH || null,
+      chainWalk: input.travelParams && Number(input.travelParams.chainWalkM) > 0 ? Number(input.travelParams.chainWalkM) : 0,
       nearWalk: input.travelParams && Number(input.travelParams.nearWalkM) > 0 ? Number(input.travelParams.nearWalkM) : 0,
     };
     const sim = simulate(ctx, order);
