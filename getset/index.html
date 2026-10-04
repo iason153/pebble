@@ -69,7 +69,7 @@
     </button>
     <button id="btn-add-task" class="add-need" type="button">
       <span class="add-need__ico" aria-hidden="true">🔎</span>
-      <span class="add-need__text"><b>무엇이 필요해요?</b><small>약국·주유·현금… 주변에서 찾아 추천해 드려요</small></span>
+      <span class="add-need__text"><b>무엇이 필요해요?</b><small>약국·은행·편의점… 지금 내 주변에서 찾아 드려요</small></span>
     </button>
   </div>
 
@@ -463,7 +463,7 @@
 </div>
 
 <!-- 할 일 넣기 -->
-<div id="task-sheet" class="sheet" hidden>
+<div id="task-sheet" class="sheet sheet--tall" hidden>
   <div class="sheet__backdrop" data-close></div>
   <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="task-title">
     <div class="sheet__grip" aria-hidden="true"></div>
@@ -472,7 +472,14 @@
       <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <p id="task-desc" class="sheet__desc"></p>
-    <div id="task-grid" class="task-grid"></div>
+    <div class="sheet__scroll">
+      <form id="need-form" class="search need-form" role="search" autocomplete="off" novalidate>
+        <svg class="search__icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="need-input" type="search" enterkeyhint="search" placeholder="직접 입력 (예: 꽃집, 철물점, 안경점)" aria-label="찾고 싶은 것 직접 입력">
+        <button class="need-form__go" type="submit">찾기</button>
+      </form>
+      <div id="task-grid" class="task-grid"></div>
+    </div>
   </div>
 </div>
 <!-- 근처 주차장 -->
