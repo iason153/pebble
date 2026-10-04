@@ -595,7 +595,7 @@
           : `<div class="kid">
           <button class="kid__name" type="button" data-uid="${k.uid}" aria-label="${esc(k.place.name)} 고치기"><small>${k.nearPos === 'before' ? '가기 전에' : '끝나고'} · ${esc(this.whatLabel(k))}</small><b>${this.whatIcon(k)} ${esc(k.place.name)}</b></button>
           ${stepper(k, true)}
-          <button class="item__del" type="button" data-del="${k.uid}" aria-label="${esc(k.place.name)} 빼기">${ICON.x}</button>
+          <button class="item__del" type="button" data-del="${k.uid}" aria-label="${esc(k.place.name)} 빼기">${ICON.x}<span>빼기</span></button>
         </div>`;
       $('stop-list').innerHTML = stops
         .filter((s) => !this.parentOf(s))
@@ -614,7 +614,7 @@
                 <span class="item__title">${esc(this.stopTitle(s))}</span>
                 <span class="item__sub">${ico} ${esc(sub)}</span>
               </button>
-              <button class="item__del" type="button" data-del="${s.uid}" aria-label="${esc(this.stopTitle(s))} 빼기">${ICON.x}</button>
+              <button class="item__del" type="button" data-del="${s.uid}" aria-label="${esc(this.stopTitle(s))} 빼기">${ICON.x}<span>빼기</span></button>
             </div>
             ${closed}
             ${this.kidsOf(s.uid, 'before').map(kid).join('')}
@@ -748,6 +748,13 @@
         this.whenStay = b.dataset.stay === 'auto' ? null : Number(b.dataset.stay);
         this.renderCardForm();
       });
+      $('btn-when-del').addEventListener('click', () => {
+        const uid = this.whenCtx && this.whenCtx.uid;
+        if (!uid) return;
+        this.whenCtx = null;
+        this.closeSheet($('when-sheet'));
+        setTimeout(() => this.removeStop(uid), 250);
+      });
       $('btn-when-more').addEventListener('click', () => {
         const s = this.whenCtx && this.plan.stops.find((x) => x.uid === this.whenCtx.uid);
         if (!s) return;
@@ -828,6 +835,7 @@
         list.map((m) => `<button class="stay-chip" type="button" role="radio" aria-checked="${this.whenStay === m}" data-stay="${m}">${fmtMin(m)}</button>`).join('') +
         (c.isBlock ? '' : `<button class="stay-chip stay-chip--auto" type="button" role="radio" aria-checked="${this.whenStay == null}" data-stay="auto">잘 모르겠어요 <small>보통 ${fmtMin(c.usual)}으로 계산</small></button>`);
       $('btn-when-more').hidden = !c.uid || c.isBlock;
+      $('btn-when-del').hidden = !c.uid;
     },
 
     editWhen(uid) {
@@ -906,7 +914,13 @@
       });
       $('cand-list').addEventListener('click', (e) => {
         const b = e.target.closest('[data-cand]');
-        if (b && this.listCtx) this.listCtx.onPick(this.listCtx.rows[Number(b.dataset.cand)]);
+        if (b && this.listCtx && this.listCtx.onPick) this.listCtx.onPick(this.listCtx.rows[Number(b.dataset.cand)]);
+      });
+      $('cand-anchors').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-anchor]');
+        if (!b || !this.nearCtx || this.nearCtx.key === b.dataset.anchor) return;
+        this.nearCtx.key = b.dataset.anchor;
+        this.loadNear();
       });
       $('btn-cand-search').addEventListener('click', () => this.listCtx && this.listCtx.onSearch && this.listCtx.onSearch());
       $('pos-sheet').addEventListener('click', (e) => {
@@ -952,7 +966,11 @@
       }
       this.needParent = p ? p.uid : null;
       $('task-title').textContent = p ? `${short(p.place.name)} 근처에서 찾기` : '무엇이 필요해요?';
-      $('task-desc').innerHTML = p ? `<b>${esc(short(p.place.name))}</b> 근처를 찾아요. 간 김에 들를 곳을 고르세요.` : '<b>지금 내가 있는 곳 주변</b>에서 찾아 가까운 순으로 보여 드려요.<br><small>볼일 근처에서 찾으려면 볼일 카드의 [이 근처에서 찾기]를 눌러요</small>';
+      $('task-desc').innerHTML = p
+        ? `<b>${esc(short(p.place.name))}</b> 근처를 찾아요. 간 김에 들를 곳을 고르세요.`
+        : this.isToday()
+        ? '<b>지금 내가 있는 곳 주변</b>에서 찾아 가까운 순으로 보여 드려요.<br><small>다음 화면에서 집·볼일 근처로 바꿀 수 있어요</small>'
+        : `<b>${esc(this.dayName())}</b> 볼일로 넣을 거라 <b>집 주변</b>부터 찾아요.<br><small>다음 화면에서 지금 있는 곳·볼일 근처로 바꿀 수 있어요</small>`;
       $('need-input').value = '';
       const car = p && (p.mode || this.plan.mode) === 'car' && !['home', 'gas'].includes(p.kind);
       $('task-grid').innerHTML =
@@ -1011,8 +1029,10 @@
     },
 
     /** 추천 순 리스트 시트 (맨 위가 추천) */
-    showList({ title, desc, rows, emptyText, onPick, onSearch, replace }) {
+    showList({ title, desc, rows, emptyText, onPick, onSearch, replace, chips }) {
       this.listCtx = { rows, onPick, onSearch };
+      $('cand-anchors').hidden = !chips;
+      $('cand-anchors').innerHTML = chips || '';
       $('cand-title').textContent = title;
       $('cand-desc').innerHTML = desc;
       $('btn-cand-search').hidden = !onSearch;
@@ -1030,43 +1050,84 @@
     },
 
     /**
+     * 근처 리스트 열기
      * @param {string|object} task  정해 둔 종류의 id, 또는 직접 입력한 낱말 {label, icon, kw}
-     * 볼일 카드에서 열었으면 그 볼일 근처, 첫 화면에서 열었으면 "지금 내가 있는 곳" 주변
+     * 볼일 카드에서 열었으면 그 볼일 근처. 첫 화면에서 열었으면 "어디 근처에서 찾을지"를 위에서 고른다
+     * (오늘은 지금 있는 곳, 다른 날은 집이 먼저 골라져 있음)
      */
-    async openNearList(task) {
+    openNearList(task) {
       const t = typeof task === 'string' ? Tasks.get(task) : task;
       if (!t) return;
       const parent = this.needParent ? this.plan.stops.find((s) => s.uid === this.needParent) : null;
       this.hideSheetNow($('task-sheet'));
+      this.nearCtx = { t, main: !parent, key: parent ? parent.uid : this.isToday() ? 'here' : 'home', seq: 0 };
+      $('cand-list').innerHTML = '';
+      if ($('cand-sheet').hidden) this.openSheet($('cand-sheet'), { replace: true });
+      return this.loadNear();
+    },
+
+    /** 첫 화면에서 찾을 때 고를 수 있는 기준: 지금 있는 곳 · 집(출발지) · 넣어 둔 볼일들 */
+    nearOptions() {
+      const out = [{ key: 'here', label: '📍 지금 있는 곳' }];
+      const st = this.plan.start;
+      if (st) out.push({ key: 'home', label: this.isHome(st) ? '🏠 집' : short(st.name) });
+      const done = new Set(this.plan.done || []);
+      this.plan.stops.forEach((s) => {
+        if (!s.block && !done.has(s.uid) && !this.parentOf(s)) out.push({ key: s.uid, label: short(s.place.name) });
+      });
+      return out;
+    },
+
+    async loadNear() {
+      const c = this.nearCtx;
+      if (!c) return;
+      const t = c.t;
+      const seq = ++c.seq;
       const title = `${t.icon} ${t.label}`;
-      let anchors;
-      let desc;
-      if (parent) {
-        anchors = [{ place: parent.place, label: short(parent.place.name), uid: parent.uid }];
-        desc = `<b>${esc(short(parent.place.name))}</b>에서 가까운 순이에요. 고르면 그 볼일에 붙여 계산해요.`;
-      } else {
-        this.showList({ title, desc: '지금 있는 곳을 확인하고 있어요…', rows: null, replace: true });
+      const chips = () =>
+        c.main
+          ? `<span class="anchor-chips__q">어디 근처에서 찾을까요?</span>` + this.nearOptions().map((o) => `<button class="anchor-chip" type="button" role="radio" aria-checked="${o.key === c.key}" data-anchor="${o.key}">${esc(o.label)}</button>`).join('')
+          : '';
+      let note = '';
+      let anchor = null;
+      let parent = null;
+      if (c.key === 'here') {
+        this.showList({ title, chips: chips(), desc: '지금 있는 곳을 확인하고 있어요…', rows: null });
         const here = await this.withTimeout(Places.current().catch(() => null), 7000);
+        if (seq !== c.seq) return;
         if (here) {
           this.here = { place: Store.cleanPlace(here), at: Date.now() };
-          anchors = [{ place: this.here.place, label: '지금 있는 곳', uid: null }];
-          desc = '<b>지금 있는 곳</b>에서 가까운 순이에요. 고르면 볼일로 넣어 나갈 시간을 계산해요.';
+          anchor = { place: this.here.place, label: '지금 있는 곳', uid: null };
         } else {
-          const st = this.plan.start;
-          anchors = [{ place: st, label: this.isHome(st) ? '집' : short(st.name), uid: null }];
-          desc = `지금 위치를 알 수 없어서 <b>${this.isHome(st) ? '집' : esc(short(st.name))}</b> 근처로 찾았어요. <small>(휴대폰 위치 권한을 켜면 지금 있는 곳 주변을 찾아요)</small>`;
+          c.key = 'home';
+          note = '지금 위치를 알 수 없어요. <small>(휴대폰 위치 권한을 켜면 지금 있는 곳 주변을 찾아요)</small><br>';
         }
       }
+      if (!anchor && c.key === 'home') {
+        const st = this.plan.start;
+        anchor = { place: st, label: this.isHome(st) ? '집' : short(st.name), uid: null };
+      }
+      if (!anchor) {
+        parent = this.plan.stops.find((s) => s.uid === c.key) || null;
+        if (!parent) return;
+        anchor = { place: parent.place, label: short(parent.place.name), uid: parent.uid };
+      }
+      const day = this.dayName();
+      const desc = parent
+        ? `<b>${esc(anchor.label)}</b>에서 가까운 순이에요. 고르면 그 볼일에 붙여 계산해요.`
+        : `${note}<b>${esc(anchor.label)}</b>에서 가까운 순이에요. 고르면 <b>${esc(day)}</b> 볼일로 넣어요.`;
       const kindOf = (place) => (t.kind && Kinds.get(t.kind).id === t.kind ? t.kind : this.kindFor(place));
-      const onSearch = () => {
-        this.closeSheet($('cand-sheet'));
-        setTimeout(() => {
-          this.openWhen({ kind: t.kind && Kinds.get(t.kind).id === t.kind ? t.kind : null });
-          this.openPlaceSheet('stop');
-          $('place-input').value = t.label;
-          $('place-input').dispatchEvent(new Event('input'));
-        }, 300);
-      };
+      const onSearch = parent
+        ? null
+        : () => {
+            this.closeSheet($('cand-sheet'));
+            setTimeout(() => {
+              this.openWhen({ kind: t.kind && Kinds.get(t.kind).id === t.kind ? t.kind : null });
+              this.openPlaceSheet('stop');
+              $('place-input').value = t.label;
+              $('place-input').dispatchEvent(new Event('input'));
+            }, 300);
+          };
       const onPick = (r) => {
         const kind = kindOf(r.place);
         const stay = t.stay || this.usualStay(r.place, kind, null);
@@ -1080,6 +1141,7 @@
           this.openSheet($('pos-sheet'), { replace: true });
           return;
         }
+        if (this.tooMany()) return;
         const extra = { task: t.id || undefined, kind, stay };
         if (t.id === 'meal') {
           const now = this.isToday() ? this.nowMin() : 0;
@@ -1088,20 +1150,21 @@
         }
         this.closeSheet($('cand-sheet'));
         const stop = this.addStop(r.place, extra);
-        if (stop) this.showToast(`${stop.place.name} 넣었어요 · ${fmtMin(stop.stay)} 걸리는 걸로 계산해요`, { duration: 3200 });
-        track('need_add', { task: t.id || 'custom' });
+        if (stop) this.showToast(`${stop.place.name}: ${day} 볼일로 넣었어요 · ${fmtMin(stop.stay)} 걸리는 걸로 계산해요`, { duration: 3500 });
+        track('need_add', { task: t.id || 'custom', anchor: c.key === 'here' ? 'here' : 'home' });
         setTimeout(() => this.replanIfOpen(), 250);
       };
-      this.showList({ title, desc, rows: null, onPick, onSearch: parent ? null : onSearch, replace: !!parent });
+      this.showList({ title, chips: chips(), desc, rows: null, onPick, onSearch });
       let rows = [];
       let failed = false;
       try {
-        rows = (await this.withTimeout(this.nearRows(t, anchors, parent ? 800 : 2000), 8000)) || [];
-        if (!rows.length && parent) rows = (await this.withTimeout(this.nearRows(t, anchors, 2000), 8000)) || [];
+        rows = (await this.withTimeout(this.nearRows(t, [anchor], parent ? 800 : 2000), 8000)) || [];
+        if (!rows.length && parent) rows = (await this.withTimeout(this.nearRows(t, [anchor], 2000), 8000)) || [];
       } catch (_) {
         failed = true;
       }
-      this.showList({ title, desc, rows, emptyText: failed ? '검색을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : `근처에서 ${t.label} 장소를 못 찾았어요.${parent ? '' : '<br>아래에서 이름으로 직접 찾아 주세요.'}`, onPick, onSearch: parent ? null : onSearch });
+      if (seq !== c.seq) return;
+      this.showList({ title, chips: chips(), desc, rows, emptyText: failed ? '검색을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : `${esc(anchor.label)} 근처에서 ${esc(t.label)} 장소를 못 찾았어요.${parent ? '' : '<br>위에서 다른 곳을 고르거나, 아래에서 이름으로 직접 찾아 주세요.'}`, onPick, onSearch });
     },
 
     /** 식사·빈 시간: 그때 있을 볼일 장소들 근처를 리스트로 */

@@ -1886,3 +1886,14 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .need-form input { min-width: 0; }
 .need-form__go { flex-shrink: 0; min-height: 44px; padding: 0 14px; margin-right: 4px; border: none; border-radius: 10px; background: var(--green); color: #fff; font-weight: 800; white-space: nowrap; }
 #task-sheet .task-grid { padding-bottom: 12px; }
+
+/* 빼기 버튼을 또렷하게 */
+.item__del { width: auto; height: auto; min-height: 44px; padding: 0 10px; gap: 4px; border: 1.5px solid #E2B7AE; border-radius: 10px; background: #fff; color: var(--danger); font-size: 0.82rem; font-weight: 800; white-space: nowrap; }
+.item__del span { line-height: 1; }
+.kid .item__del { width: auto; padding: 0 8px; }
+/* 어디 근처에서 찾을까요? */
+.anchor-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 10px; }
+.anchor-chips__q { flex-basis: 100%; font-size: 0.88rem; font-weight: 800; color: var(--green-deep); }
+.anchor-chip { min-height: 44px; max-width: 100%; padding: 0 14px; border: 1.5px solid var(--line-strong); border-radius: 999px; background: #fff; font-size: 0.88rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anchor-chip[aria-checked="true"] { border-color: var(--green); background: var(--green); color: #fff; }
+@media (max-width: 359px) { .kid .item__del span { display: none; } }

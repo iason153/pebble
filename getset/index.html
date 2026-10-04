@@ -457,6 +457,7 @@
     </div>
     <p id="when-error" class="form-error" role="alert" hidden></p>
     <div class="sheet__actions">
+      <button id="btn-when-del" class="sheet__btn sheet__btn--danger" type="button" hidden>이 볼일 빼기</button>
       <button id="btn-when-ok" class="sheet__btn sheet__btn--primary" type="button">볼일 넣기</button>
     </div>
   </div>
@@ -505,6 +506,7 @@
       <h2 id="cand-title" class="sheet__title">다른 곳으로</h2>
       <button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
+    <div id="cand-anchors" class="anchor-chips" role="radiogroup" aria-label="어디 근처에서 찾을까요" hidden></div>
     <p id="cand-desc" class="sheet__desc"></p>
     <ul id="cand-list" class="lot-list sheet__scroll"></ul>
     <div class="sheet__actions"><button id="btn-cand-search" class="sheet__btn" type="button">이름으로 직접 찾기</button></div>
