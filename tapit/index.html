@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tapit — 탭 한 번으로 링크 복사</title>
+<meta name="description" content="자주 보내는 링크를 모아 두고 한 번 눌러 복사하는 링크 메모장. 카페·카카오톡 등 어디에 몇 번 공유했는지도 기록합니다. 로그인 없이 무료.">
+<!-- 공개 전 테스트 기간: 검색엔진에 노출하지 않음. 정식 공개 때 이 줄을 지우고 sitemap에 추가 -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="canonical" href="https://pebbleitgo.com/tapit/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Tapit — 탭 한 번으로 링크 복사">
+<meta property="og:description" content="자주 보내는 링크를 모아 두고 한 번 눌러 복사하는 링크 메모장">
+<meta property="og:url" content="https://pebbleitgo.com/tapit/">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#F4F5F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121316" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tapit">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%}
+:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+
+/* 배치: 메모장. 흰 노트가 조용히 쌓이고, 복사한 순간에만 형광펜이 지나간다 */
+:root{
+  --bg:#F4F5F7; --surface:#FFFFFF; --ink:#17181C; --muted:#70747F; --faint:#A4A8B3; --line:#E6E8EC;
+  --hl:#FFE066; --hl-ink:#17181C; --chip:#F1F2F5; --danger:#C7392B; --veil:rgba(20,21,24,.4);
+  --kakao:#FEE500; --kakao-ink:#191600; --shadow:0 1px 2px rgba(23,24,28,.04),0 4px 14px rgba(23,24,28,.04);
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121316; --surface:#1C1E23; --ink:#ECEDEF; --muted:#9A9EAA; --faint:#6C707C; --line:#2C2F36;
+    --hl:#F5CF47; --hl-ink:#17181C; --chip:#282B32; --danger:#FF8474; --veil:rgba(0,0,0,.6);
+    --kakao:#FEE500; --kakao-ink:#191600; --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121316; --surface:#1C1E23; --ink:#ECEDEF; --muted:#9A9EAA; --faint:#6C707C; --line:#2C2F36;
+  --hl:#F5CF47; --hl-ink:#17181C; --chip:#282B32; --danger:#FF8474; --veil:rgba(0,0,0,.6);
+  --kakao:#FEE500; --kakao-ink:#191600; --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;letter-spacing:-.01em;word-break:keep-all;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+svg{display:block;flex:none}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:16px;padding-block:14px 110px;display:flex;flex-direction:column;gap:16px}
+
+/* 상단 */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.logo{margin:0;font-size:24px;font-weight:700;letter-spacing:-.6px;line-height:1.2}
+.logo span{background:linear-gradient(transparent 58%,var(--hl) 58%);padding:0 2px}
+.top-acts{display:flex;align-items:center;gap:6px}
+.top-acts{gap:2px}
+.tlink{height:36px;padding:0 9px;border-radius:999px;font-size:14px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:5px}
+.tlink:active{background:var(--chip)}
+.inst{margin-left:6px}
+/* 사용법 */
+.gstep{display:flex;flex-direction:column;gap:8px}
+.gstep h3{margin:0;font-size:16px;font-weight:600;color:var(--ink);display:flex;gap:8px;align-items:center}
+.gstep h3 i{font-style:normal;flex:none;width:24px;height:24px;border-radius:50%;background:var(--hl);color:var(--hl-ink);font-size:13px;font-weight:700;display:grid;place-items:center}
+.gstep p{font-size:14.5px;color:var(--muted)}
+.pic{background:var(--bg);border-radius:14px;padding:16px 14px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.pic .line{display:flex;gap:6px;align-items:center}
+.m-in{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-in.t{font-family:var(--f-body);font-size:14px;color:var(--ink)}
+.m-btn{flex:none;position:relative;background:var(--ink);color:var(--bg);border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px}
+.m-btn.o{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.m-chip{flex:none;position:relative;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13.5px;font-weight:500}
+.m-chip b{color:var(--muted);margin-left:4px}
+.m-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.m-card strong{font-size:15px}
+.tap::after{content:"";position:absolute;right:-9px;bottom:-11px;width:26px;height:26px;border-radius:50%;background:var(--hl);opacity:.9;border:2px solid var(--surface)}
+.m-chip.tap{margin-right:10px}
+.m-chip.tap::after{right:-14px;bottom:-15px}
+.m-say{align-self:flex-start;background:var(--hl);color:var(--hl-ink);border-radius:12px 12px 12px 2px;padding:7px 11px;font-size:13.5px;font-weight:500}
+.icon{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}
+.icon:active{background:var(--chip)}
+.inst{height:36px;padding:0 14px;border-radius:999px;background:var(--ink);color:var(--bg);font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px}
+.inapp{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 10px 10px 14px;font-size:14px}
+.inapp span{flex:1;min-width:0}
+.hero{margin:6px 0 0;font-size:22px;font-weight:700;letter-spacing:-.5px;line-height:1.35;text-wrap:balance}
+.hero small{display:block;font-size:14.5px;font-weight:400;color:var(--muted);letter-spacing:-.01em;margin-top:2px}
+
+.add{display:flex;align-items:center;max-width:620px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:5px;box-shadow:var(--shadow)}
+.add:focus-within{border-color:var(--ink)}
+.add input{flex:1;min-width:0;height:46px;border:0;background:none;padding:0 12px;font-size:16px;outline:0}
+.add input::placeholder{color:var(--faint)}
+.add button{flex:none;height:46px;padding:0 20px;border-radius:12px;background:var(--ink);color:var(--bg);font-weight:600}
+.add button:active{opacity:.85}
+.err{margin:0;color:var(--danger);font-size:14px}
+
+.fitrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tab{flex:none;border-radius:999px;padding:6px 14px;font-size:14px;font-weight:500;color:var(--muted)}
+.tab[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.tab.more,.ch.more{background:none;border:1px solid var(--line);color:var(--muted)}
+
+.nudge{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:6px 6px 6px 14px;font-size:14px;background:var(--surface);max-width:620px}
+.nudge button.go{flex:1;min-width:0;text-align:left;padding:6px 0}
+.nudge b{font-weight:600}
+.nudge em{font-style:normal;color:var(--muted)}
+.demo{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.demo button{text-decoration:underline;text-underline-offset:3px;padding:4px 0;color:var(--muted)}
+
+/* 카드 */
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px;align-items:start}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:18px;min-width:0;display:flex;flex-direction:column;box-shadow:var(--shadow);padding:14px 14px 14px 16px;gap:12px}
+.head{display:flex;align-items:flex-start;gap:4px}
+.txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;text-align:left;padding:2px 0}
+.cat{font-size:12px;color:var(--faint);font-weight:500}
+.name{font-size:17px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.name span{background:linear-gradient(var(--hl),var(--hl)) no-repeat 0 88%/0% 42%;transition:background-size .35s}
+.note.copied .name span{background-size:100% 42%}
+.url{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
+.tools{display:flex;flex:none;margin:-4px -6px 0 0}
+.tools a,.tools button{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--faint)}
+.tools a:active,.tools button:active{background:var(--chip);color:var(--ink)}
+.acts{display:flex;gap:8px}
+.act{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:15px;font-weight:600;border:1px solid var(--line);transition:background .2s,border-color .2s}
+.act:active{background:var(--chip)}
+.act.copy{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.act.copy:active{opacity:.85}
+.note.copied .act.copy{background:var(--hl);border-color:var(--hl);color:var(--hl-ink)}
+.act[aria-expanded="true"]{background:var(--chip);border-color:var(--chip)}
+.act i{font-style:normal;font-size:13px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.spread{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+.spread h3{margin:0;font-size:13px;font-weight:400;color:var(--muted)}
+.ch{flex:none;background:var(--chip);border-radius:999px;padding:7px 13px;font-size:14.5px;font-weight:500;display:flex;gap:6px;align-items:center;transition:background .2s}
+.ch:active{opacity:.7}
+.ch b{font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.ch.hit{background:var(--hl);color:var(--hl-ink)}
+.ch.hit b{color:var(--hl-ink)}
+.meta{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.meta button{color:var(--ink);font-weight:500;font-size:13px;padding:2px 0;display:flex;align-items:center;gap:2px}
+
+.empty{border:1px dashed var(--line);border-radius:18px;padding:32px 18px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
+
+/* 시트 */
+.veil{position:fixed;inset:0;background:var(--veil);z-index:6;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:520px;max-height:88%;overflow-y:auto;border-radius:22px 22px 0 0;padding:22px 18px calc(22px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.sheet h2{margin:0;font-size:19px;letter-spacing:-.4px}
+.sheet h3{margin:6px 0 0;font-size:13px;font-weight:600;color:var(--muted)}
+.sheet p{margin:0;font-size:14px;color:var(--muted)}
+.fld{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted)}
+.fld input,.fld select{height:46px;border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:0 12px;font-size:16px;color:var(--ink);width:100%;min-width:0}
+.ro{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);overflow-wrap:anywhere;letter-spacing:0}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opt{background:var(--chip);border-radius:999px;padding:6px 12px;font-size:14px;color:var(--muted)}
+.opt[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.pick{background:var(--chip);border-radius:999px;padding:8px 14px;font-size:14.5px}
+.pick[aria-pressed="true"]{background:var(--hl);color:var(--hl-ink);font-weight:600}
+.row{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.end{display:flex;gap:8px;margin-left:auto}
+.btn{border:1px solid var(--line);border-radius:12px;padding:11px 18px;font-weight:600;font-size:15px;background:var(--surface);display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.dark{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.kakao{background:var(--kakao);color:var(--kakao-ink);border-color:var(--kakao)}
+.btn.full{width:100%;height:50px}
+.btn.del{color:var(--danger)}
+.btn.soft{color:var(--muted)}
+details{border-top:1px solid var(--line);padding-top:12px}
+summary{font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-size:18px;font-weight:400}
+details[open] summary::after{content:"–"}
+details .in{display:flex;flex-direction:column;gap:12px;padding-top:12px}
+.steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;counter-reset:s}
+.steps li{counter-increment:s;display:flex;gap:10px;font-size:15px}
+.steps li::before{content:counter(s);flex:none;width:22px;height:22px;border-radius:50%;background:var(--chip);font-size:12px;font-weight:600;display:grid;place-items:center;margin-top:1px}
+.steps b{font-weight:600;background:var(--chip);border-radius:6px;padding:1px 6px}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:right;padding:8px 4px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-size:12.5px;font-weight:500;color:var(--muted)}
+th:first-child,td:first-child{text-align:left}
+td.v{font-weight:600}
+@media (min-width:720px){.veil{align-items:center}.sheet{border-radius:22px}.hero{font-size:26px}}
+
+.toast{position:fixed;left:16px;right:16px;bottom:calc(18px + env(safe-area-inset-bottom,0px));margin:0 auto;max-width:440px;background:var(--ink);color:var(--bg);border-radius:14px;padding:11px 12px 11px 16px;display:flex;align-items:center;gap:12px;font-size:15px;font-weight:500;z-index:8}
+.toast .msg{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.toast small{font-family:var(--f-mono);font-weight:400;font-size:11px;opacity:.7;overflow-wrap:anywhere;line-height:1.35;letter-spacing:0}
+.toast button{flex:none;color:var(--hl);font-weight:600;padding:6px 8px}
+.fallback{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-family:var(--f-mono);font-size:13px;background:var(--surface);color:var(--ink)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="logo">Tap<span>it</span></h1>
+    <div class="top-acts">
+      <button class="tlink" type="button" id="btnGuide">사용법</button>
+      <button class="tlink" type="button" id="btnShare"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7l7.4-4.3M8.3 13.3l7.4 4.3"/></svg>공유</button>
+      <button class="inst" type="button" id="btnInstall"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg>앱 설치</button>
+    </div>
+  </header>
+  <div class="inapp" id="inapp" hidden><span><b id="inappName">카카오톡</b> 안에서는 설치할 수 없습니다.</span><button class="btn dark" type="button" id="inappOpen" style="padding:8px 12px;font-size:14px">크롬으로 열기</button></div>
+
+  <p class="hero">탭 한 번으로 링크 복사<small>자주 쓰는 링크를 모아 두고, 공유한 채널까지 기록합니다.</small></p>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="addUrl" type="text" inputmode="url" placeholder="관리할 링크를 붙여넣으세요" aria-label="관리할 링크">
+    <button type="submit">추가</button>
+  </form>
+  <p class="err" id="addErr" hidden></p>
+
+  <nav class="fitrow" id="cats" aria-label="카테고리"></nav>
+  <div class="nudge" id="nudge" hidden><button class="go" type="button" id="nudgeGo"><b>공유한 링크, 몇 명이 방문했을까요?</b> <em>Google Analytics 연동</em></button><button class="icon" type="button" id="nudgeX" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="demo" id="demo" hidden><span>샘플 링크가 표시되어 있습니다.</span><button type="button" id="clearDemo">샘플 삭제 후 시작</button></div>
+
+  <main class="list" id="list"></main>
+</div>
+
+<!-- 링크 추가 / 편집 -->
+<div class="veil" id="linkVeil" hidden>
+  <form class="sheet" id="linkForm" role="dialog" aria-modal="true" aria-labelledby="lkT" autocomplete="off">
+    <h2 id="lkT">링크 추가</h2>
+    <p id="lkHelp">이 링크의 정보를 입력하세요. 이름만 입력해도 저장됩니다.</p>
+    <span class="ro" id="lkUrl"></span>
+    <label class="fld">이름<input id="lkName" placeholder="예: 헬로 스윙 게임 페이지"></label>
+    <label class="fld">카테고리<select id="lkCat"></select></label>
+    <label class="fld" id="lkNewWrap" hidden>새 카테고리 이름<input id="lkNew" placeholder="예: 이벤트, 블로그"></label>
+    <details id="lkAdv">
+      <summary>고급 설정</summary>
+      <div class="in">
+        <p>채널로 공유할 때 붙는 캠페인 이름입니다. 비워 두면 자동으로 만들어집니다.</p>
+        <label class="fld">캠페인 이름 (영문)<input id="lkCamp" autocapitalize="off"></label>
+        <div class="fld">유형<div class="opts" id="lkKinds"></div></div>
+        <span class="ro" id="lkPrev"></span>
+      </div>
+    </details>
+    <p class="err" id="lkErr" hidden></p>
+    <div class="row"><button class="btn del" type="button" id="lkDel" hidden>삭제</button><div class="end"><button class="btn" type="button" data-close>취소</button><button class="btn dark" type="submit">저장</button></div></div>
+  </form>
+</div>
+
+<!-- 채널 관리 -->
+<div class="veil" id="chVeil" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="chT">
+    <div class="row"><h2 id="chT">채널 관리</h2><button class="btn dark" type="button" data-close>완료</button></div>
+    <p>사용할 채널을 선택하세요. 선택한 채널만 카드에 표시됩니다.</p>
+    <div class="opts" id="picks"></div>
+    <h3>직접 추가</h3>
+    <label class="fld">채널 이름<input id="cName" placeholder="예: 맘카페, 지역 밴드"></label>
+    <label class="fld">영문 표기 (Google Analytics에 표시되는 이름)<input id="cSrc" placeholder="예: momcafe" autocapitalize="off"></label>
+    <details><summary>고급 설정</summary><div class="in"><div class="fld">채널 유형 (utm_medium)<div class="opts" id="cKinds"></div></div></div></details>
+    <p class="err" id="cErr" hidden></p>
+    <button class="btn" type="button" id="cAdd">채널 추가</button>
+  </div>
+</div>
+
+<!-- 사용법 -->
+<div class="veil" id="guideVeil" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="gdT">
+    <div class="row"><h2 id="gdT">사용법</h2><button class="btn" type="button" data-close>닫기</button></div>
+    <p>Tapit은 링크 전용 메모장입니다. 자주 보내는 링크를 넣어 두면, 다음부터는 찾지 않고 한 번 눌러서 복사합니다.</p>
+
+    <section class="gstep"><h3><i>1</i>링크를 붙여넣고 추가를 누릅니다</h3>
+      <div class="pic"><div class="line"><span class="m-in">https://daebugame.com/games/hello-swing/</span><span class="m-btn tap">추가</span></div></div>
+      <p>보관하고 싶은 주소를 복사해서 맨 위 칸에 붙여넣으세요.</p></section>
+
+    <section class="gstep"><h3><i>2</i>알아보기 쉬운 이름을 붙입니다</h3>
+      <div class="pic"><span class="m-in t">헬로 스윙 게임</span><div class="line" style="justify-content:flex-end"><span class="m-btn tap">저장</span></div></div>
+      <p>긴 주소 대신 이름으로 찾을 수 있습니다. 링크가 많아지면 카테고리로 나눠 두세요.</p></section>
+
+    <section class="gstep"><h3><i>3</i>필요할 때 복사를 누릅니다</h3>
+      <div class="pic"><div class="m-card"><strong>헬로 스윙 게임</strong><div class="line"><span class="m-btn tap" style="flex:1;text-align:center">복사</span><span class="m-btn o" style="flex:1;text-align:center">채널 공유</span></div></div><span class="m-say">복사 끝. 카톡이나 문자에 붙여넣기만 하면 됩니다.</span></div>
+      <p>여기까지만 알아도 충분합니다.</p></section>
+
+    <section class="gstep"><h3><i>4</i>어디에 올렸는지 기록하고 싶다면</h3>
+      <div class="pic"><div class="m-card"><strong>헬로 스윙 게임</strong><div class="line" style="flex-wrap:wrap"><span class="m-chip tap">네이버 카페<b>3</b></span><span class="m-chip">카카오톡<b>2</b></span><span class="m-chip">밴드<b>1</b></span></div></div><span class="m-say">카페에 3번, 카카오톡에 2번 올렸습니다.</span></div>
+      <p>채널 공유를 누르고, 링크를 올릴 곳(카페, 카카오톡 등)을 고르세요. 그곳 전용 링크가 복사되고 올린 횟수가 숫자로 남습니다. 평소처럼 붙여넣기만 하면 됩니다.</p></section>
+
+    <details><summary>자주 묻는 질문</summary><div class="in">
+      <p><b style="color:var(--ink)">채널 전용 링크는 뭐가 다른가요?</b><br>같은 페이지로 가지만, 어디에서 눌렀는지 알 수 있는 표시가 뒤에 붙습니다. Google Analytics를 쓰는 분은 채널별 방문 수를 확인할 수 있습니다.</p>
+      <p><b style="color:var(--ink)">잘못 눌렀어요.</b><br>복사 직후 아래에 뜨는 실행 취소를 누르면 횟수에서 빠집니다.</p>
+      <p><b style="color:var(--ink)">원하는 채널이 없어요.</b><br>채널 줄 끝의 + 를 누르고 채널 관리에서 추가하세요.</p>
+    </div></details>
+  </div>
+</div>
+
+<!-- Tapit 공유 -->
+<div class="veil" id="shareVeil" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shT">
+    <h2 id="shT">Tapit 공유</h2>
+    <p>링크를 자주 공유하는 분께 Tapit을 알려 주세요.</p>
+    <button class="btn kakao full" type="button" data-share="kakao"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.5c-5 0-9 3.1-9 7 0 2.5 1.7 4.7 4.2 5.9l-.9 3.4c-.1.3.2.5.5.4l4-2.6c.4 0 .8.1 1.2.1 5 0 9-3.1 9-7s-4-7.2-9-7.2z"/></svg>카카오톡으로 공유</button>
+    <button class="btn full" type="button" data-share="native">다른 앱으로 공유</button>
+    <button class="btn full" type="button" data-share="copy">링크 복사</button>
+    <button class="btn soft full" type="button" data-close style="border:0">닫기</button>
+  </div>
+</div>
+
+<!-- 앱 설치 -->
+<div class="veil" id="instVeil" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="inT">
+    <h2 id="inT"></h2>
+    <p id="inDesc"></p>
+    <ol class="steps" id="inSteps"></ol>
+    <span class="ro" id="inUrl" hidden>pebbleitgo.com/tapit</span>
+    <button class="btn dark full" type="button" id="inPrimary"></button>
+    <button class="btn soft full" type="button" data-close style="border:0">닫기</button>
+  </div>
+</div>
+
+<!-- Google Analytics 연동 -->
+<div class="veil" id="gaVeil" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="gaT">
+    <h2 id="gaT">Google Analytics 연동</h2>
+    <p>연동하면 공유 횟수 옆에 채널별 실제 방문 수가 표시됩니다. 어느 채널이 효과적인지 한눈에 비교할 수 있습니다.</p>
+    <table aria-label="연동 후 화면 예시"><thead><tr><th>채널 (예시)</th><th>공유</th><th>방문</th></tr></thead>
+    <tbody><tr><td>네이버 카페</td><td>3회</td><td class="v">42</td></tr><tr><td>카카오톡</td><td>2회</td><td class="v">17</td></tr><tr><td>밴드</td><td>1회</td><td class="v">5</td></tr></tbody></table>
+    <p>연동 전에 공유한 링크의 방문 기록도 함께 표시됩니다. 링크의 사이트에 Google Analytics가 설치되어 있어야 합니다.</p>
+    <button class="btn dark full" type="button" id="gaGo">Google 계정으로 연동 · 준비 중</button>
+    <button class="btn soft full" type="button" data-close style="border:0">닫기</button>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+/* Pebble 공용 통계 (GA4). 링크 주소·이름 등 사용자가 넣은 내용은 보내지 않는다. 모든 이벤트에 tool=tapit */
+(function(){
+  var id='G-4Q8F4E2J61', TOOL='tapit';
+  var appMode=((window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true)?'pwa':'browser';
+  window.dataLayer=window.dataLayer||[];
+  function gtag(){window.dataLayer.push(arguments)}
+  var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+id;document.head.appendChild(s);
+  gtag('js',new Date());gtag('set','user_properties',{app_mode:appMode});gtag('config',id,{tool:TOOL,app_mode:appMode});
+  window.pebbleTrack=function(n,p){try{var o={tool:TOOL,app_mode:appMode};for(var k in (p||{}))o[k]=p[k];gtag('event',n,o)}catch(e){}};
+})();
+</script>
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" async></script>
+<script>
+(function(){
+var KEY='tapit:v1', APP_URL='https://pebbleitgo.com/tapit/', KAKAO_KEY='a80d2ef426799af21b478795292dd6f8';
+function track(n,p){try{if(window.pebbleTrack)window.pebbleTrack(n,p)}catch(e){}}
+var PRESETS=[
+ ['cafe','네이버 카페','community'],['band','밴드','community'],['kakaotalk','카카오톡','messenger'],['instagram','인스타그램','social'],
+ ['daangn','당근','community'],['youtube','유튜브','social'],['naverblog','네이버 블로그','blog'],['facebook','페이스북','social'],
+ ['threads','스레드','social'],['x','X','social'],['tiktok','틱톡','social'],['openchat','오픈채팅','messenger'],
+ ['telegram','텔레그램','messenger'],['discord','디스코드','community'],['sms','문자','sms'],['email','이메일','email'],['qr','QR · 인쇄물','print']
+].map(function(a){return {id:a[0],name:a[1],medium:a[2]}});
+var MEDIUMS=[['community','커뮤니티'],['social','SNS'],['messenger','메신저'],['blog','블로그'],['print','인쇄물'],['referral','기타']];
+var KINDS=[['','없음'],['launch','출시'],['update','업데이트'],['event','이벤트'],['notice','공지'],['result','결과']];
+var IC={
+ copy:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/></svg>',
+ send:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4 10.5 13.5M20 4l-6 16-3.5-6.5L4 10z"/></svg>',
+ open:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M11 6H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-4"/></svg>',
+ edit:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>',
+ del:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/></svg>',
+ arrow:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'
+};
+var now=Date.now(), D=86400000;
+function defaults(){return PRESETS.slice(0,6).map(function(c){return {id:c.id,name:c.name,medium:c.medium}})}
+function sample(){return {demo:true,channels:defaults(),links:[
+ {id:'s1',name:'헬로 스윙',url:'https://daebugame.com/games/hello-swing/',group:'오락실',open:true,camp:'swing',kind:'launch',log:[['cafe',now-7*D],['cafe',now-6*D],['kakaotalk',now-6*D],['band',now-5*D],['cafe',now-2*D],['kakaotalk',now-1*D]]},
+ {id:'s2',name:'오락실 메인',url:'https://daebugame.com/',group:'오락실',open:false,camp:'',kind:'',log:[['cafe',now-3*D]]},
+ {id:'s3',name:'Lineup',url:'https://pebbleitgo.com/lineup/',group:'Pebble',open:false,camp:'',kind:'',log:[['cafe',now-16*D]]},
+ {id:'s4',name:'헬로대부도',url:'https://daebutalk.com/',group:'대부도',open:false,camp:'',kind:'',log:[]},
+ {id:'s5',name:'대부도타임 물때',url:'https://daebuseatime.com/',group:'대부도',open:false,camp:'',kind:'',log:[]}
+]};}
+var S; try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!Array.isArray(S.links))S={links:[],channels:defaults()};
+if(!Array.isArray(S.channels))S.channels=defaults();
+/* 이전 시안에서 저장된 데이터를 새 구조로 맞춤 */
+S.channels.forEach(function(c){PRESETS.forEach(function(p){if(p.id===c.id)c.name=p.name})});
+S.links.forEach(function(l){
+  if(l.open===undefined)l.open=!!l.track;
+  if(l.camp===undefined){l.camp=l.track?(l.target||''):'';if(!l.track)l.kind=''}
+  if(!l.log)l.log=[];
+});
+var filter='전체', catsOpen=false, chOpen={}, lastHit=null, toastTimer=null, cMedium='community', draft=null;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function $(id){return document.getElementById(id)}
+function mmdd(t){var d=new Date(t);return ('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)}
+function day(t){var d=new Date(t);return (d.getMonth()+1)+'.'+d.getDate()}
+function slug(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')}
+function autoBase(url){try{var u=new URL(url),seg=u.pathname.split('/').filter(Boolean).pop()||'';return slug(seg)||slug(u.hostname.replace(/^www\./,'').split('.')[0])||'link'}catch(e){return 'link'}}
+function campaign(l){return [slug(l.camp)||autoBase(l.url),l.kind].filter(Boolean).join('_')+'_'+mmdd(Date.now())}
+function tagged(l,ch){try{var u=new URL(l.url);u.searchParams.set('utm_source',ch.id);u.searchParams.set('utm_medium',ch.medium);u.searchParams.set('utm_campaign',campaign(l));return u.toString()}catch(e){return l.url}}
+function find(id){for(var i=0;i<S.links.length;i++)if(S.links[i].id===id)return S.links[i]}
+function chan(id){for(var i=0;i<S.channels.length;i++)if(S.channels[i].id===id)return S.channels[i]}
+function catsOf(){var g=[];S.links.forEach(function(l){if(l.group&&g.indexOf(l.group)<0)g.push(l.group)});return g}
+
+function render(){
+  var gs=catsOf(); if(filter!=='전체'&&gs.indexOf(filter)<0)filter='전체';
+  $('cats').innerHTML=['전체'].concat(gs).map(function(g){return '<button class="tab fit" type="button" data-g="'+esc(g)+'" aria-pressed="'+(g===filter)+'">'+esc(g)+'</button>'}).join('')+'<button class="tab more" type="button" data-more="1"></button>';
+  $('cats').hidden=gs.length<1;
+  $('demo').hidden=!S.demo;
+  var total=0;S.links.forEach(function(l){total+=l.log.length});
+  $('nudge').hidden=total<3||!!S.gaHide;
+  var ls=S.links.filter(function(l){return filter==='전체'||l.group===filter});
+  $('list').innerHTML=ls.length?ls.map(card).join(''):'<div class="empty"><b>저장된 링크가 없습니다</b>위 입력란에 링크를 붙여넣고 추가를 누르세요.<br><button class="btn" type="button" id="emptyGuide" style="margin:14px auto 0">사용법 보기</button></div>';
+  fitAll();
+}
+function card(l){
+  var counts={},last=0; l.log.forEach(function(e){counts[e[0]]=(counts[e[0]]||0)+1;if(e[1]>last)last=e[1]});
+  var h='<article class="note" data-id="'+l.id+'"><div class="head">';
+  h+='<button class="txt" type="button" data-act="copy">'+(l.group&&filter==='전체'?'<span class="cat">'+esc(l.group)+'</span>':'')+'<span class="name"><span>'+esc(l.name)+'</span></span><span class="url">'+esc(l.url.replace(/^https?:\/\//,''))+'</span></button>';
+  h+='<div class="tools"><a href="'+esc(l.url)+'" target="_blank" rel="noopener" aria-label="열기" title="열기">'+IC.open+'</a><button type="button" data-act="edit" aria-label="편집" title="편집">'+IC.edit+'</button><button type="button" data-act="del" aria-label="삭제" title="삭제">'+IC.del+'</button></div></div>';
+  h+='<div class="acts"><button class="act copy" type="button" data-act="copy">'+IC.copy+'<span class="cpl">복사</span></button><button class="act" type="button" data-act="toggle" aria-expanded="'+!!l.open+'">'+IC.send+'채널 공유'+(l.log.length?'<i>'+l.log.length+'</i>':'')+'</button></div>';
+  if(l.open){
+    var chs=S.channels.map(function(c,i){return {c:c,i:i,n:counts[c.id]||0}}).sort(function(a,b){return b.n-a.n||a.i-b.i});
+    h+='<section class="spread"><h3>채널을 선택하면 전용 링크가 복사됩니다</h3><div class="fitrow chs" data-open="'+(chOpen[l.id]?1:0)+'">';
+    chs.forEach(function(x){h+='<button class="ch fit'+(lastHit===l.id+x.c.id?' hit':'')+'" type="button" data-act="ch" data-ch="'+esc(x.c.id)+'">'+esc(x.c.name)+(x.n?'<b>'+x.n+'</b>':'')+'</button>'});
+    if(chOpen[l.id])h+='<button class="ch more" type="button" data-act="manage">채널 관리</button>';
+    h+='<button class="ch more" type="button" data-act="more" data-more="1"></button></div>';
+    h+='<div class="meta"><span>'+(l.log.length?'공유 '+l.log.length+'회 · 최근 '+day(last):'아직 공유 기록이 없습니다')+'</span>'+(l.log.length?'<button type="button" data-act="ga">방문 수 보기'+IC.arrow+'</button>':'')+'</div></section>';
+  }
+  return h+'</article>';
+}
+/* 한 줄에 들어가는 만큼만 보이고 나머지는 +N */
+function fit(row,open,alwaysMore){
+  var items=[].slice.call(row.querySelectorAll('.fit')), more=row.querySelector('[data-more]'); if(!more)return;
+  items.forEach(function(x){x.hidden=false}); more.hidden=false;
+  if(open){more.textContent='접기';return}
+  if(!items.length){more.hidden=true;return}
+  var top=items[0].offsetTop, hid=0; more.textContent='+';
+  for(var i=items.length-1;i>0;i--){
+    if(more.offsetTop<top+12&&items[i].offsetTop<top+12)break;
+    items[i].hidden=true;hid++;more.textContent='+'+hid;
+  }
+  if(!hid){if(alwaysMore)more.textContent='+';else more.hidden=true}
+}
+function fitAll(){
+  if(!$('cats').hidden)fit($('cats'),catsOpen,false);
+  [].forEach.call(document.querySelectorAll('.chs'),function(r){fit(r,r.dataset.open==='1',true)});
+}
+window.addEventListener('resize',fitAll);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitAll);
+
+function copy(text,done){
+  function fb(){toast('<span class="msg">길게 눌러 복사하세요<input class="fallback" id="fb" readonly value="'+esc(text)+'"></span>',8000);var f=$('fb');if(f){f.focus();f.select()}}
+  try{navigator.clipboard.writeText(text).then(done,fb)}catch(e){fb()}
+}
+function toast(html,ms){var t=$('toast');t.innerHTML=html;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.hidden=true},ms||2200)}
+function later(){toast('<span class="msg">시안에서는 미리보기만 제공됩니다. 배포 버전에서 동작합니다</span>',3200)}
+function show(id){$(id).hidden=false}
+function hide(id){$(id).hidden=true}
+[].forEach.call(document.querySelectorAll('.veil'),function(v){v.addEventListener('click',function(e){if(e.target===v||e.target.closest('[data-close]')){v.hidden=true;if(v.id==='chVeil')render()}})});
+
+$('list').addEventListener('click',function(e){
+  var b=e.target.closest('[data-act]'); if(!b)return;
+  var el=b.closest('.note'), l=find(el.dataset.id), act=b.dataset.act; if(!l)return;
+  if(act==='copy'){
+    copy(l.url,function(){el.classList.add('copied');var p=el.querySelector('.cpl');p.textContent='복사됨';toast('<span class="msg">링크가 복사되었습니다</span>');track('link_copy');setTimeout(function(){el.classList.remove('copied');p.textContent='복사'},1500)});
+    return;
+  }
+  if(act==='ch'){
+    var c=chan(b.dataset.ch); if(!c)return; var link=tagged(l,c);
+    copy(link,function(){
+      l.log.push([c.id,Date.now(),c.medium,campaign(l)]);track('channel_copy',{channel:c.id});lastHit=l.id+c.id;save();render();
+      toast('<span class="msg">'+esc(c.name)+' 링크 복사됨<small>'+esc(link)+'</small></span><button type="button" id="undo">실행 취소</button>',6000);
+      $('undo').onclick=function(){l.log.pop();lastHit=null;save();render();toast('<span class="msg">기록에서 제외했습니다</span>')};
+      setTimeout(function(){if(lastHit===l.id+c.id){lastHit=null;render()}},1500);
+    });
+    return;
+  }
+  if(act==='toggle'){l.open=!l.open;save();render();return}
+  if(act==='more'){chOpen[l.id]=!chOpen[l.id];render();return}
+  if(act==='manage'){renderCh();show('chVeil');return}
+  if(act==='ga'){show('gaVeil');track('ga_sheet_open',{from:'card'});return}
+  if(act==='edit'){openLink({id:l.id,url:l.url,name:l.name,group:l.group||'',camp:l.camp||'',kind:l.kind||''});return}
+  if(act==='del'){removeLink(l)}
+});
+function removeLink(l){
+  var i=S.links.indexOf(l); if(i<0)return; S.links.splice(i,1);save();render();
+  toast('<span class="msg">삭제되었습니다</span><button type="button" id="undoDel">실행 취소</button>',6000);
+  $('undoDel').onclick=function(){S.links.splice(i,0,l);save();render();$('toast').hidden=true};
+}
+$('cats').addEventListener('click',function(e){
+  var b=e.target.closest('button'); if(!b)return;
+  if(b.dataset.more){catsOpen=!catsOpen}else{filter=b.dataset.g}
+  render();
+});
+$('clearDemo').addEventListener('click',function(){S={links:[],channels:S.channels};filter='전체';save();render()});
+$('nudgeGo').addEventListener('click',function(){show('gaVeil');track('ga_sheet_open',{from:'nudge'})});
+$('nudgeX').addEventListener('click',function(){S.gaHide=true;save();render()});
+$('gaGo').addEventListener('click',function(){track('ga_connect_click');toast('<span class="msg">준비 중입니다. Google 로그인과 함께 제공됩니다</span>',3000)});
+
+/* 링크 추가 · 편집 */
+function openLink(d){
+  draft=d; var isNew=!d.id;
+  $('lkT').textContent=isNew?'링크 추가':'링크 편집';
+  $('lkHelp').hidden=!isNew;
+  $('lkUrl').textContent=d.url;
+  $('lkName').value=d.name;
+  var h='<option value="">카테고리 없음</option>';
+  catsOf().forEach(function(g){h+='<option value="'+esc(g)+'"'+(g===d.group?' selected':'')+'>'+esc(g)+'</option>'});
+  $('lkCat').innerHTML=h+'<option value="__new">+ 새 카테고리</option>';
+  $('lkNew').value='';hide('lkNewWrap');hide('lkErr');
+  $('lkCamp').value=d.camp;$('lkCamp').placeholder='자동: '+autoBase(d.url);
+  $('lkAdv').open=!!(d.camp||d.kind);
+  $('lkDel').hidden=isNew;
+  syncLink();show('linkVeil');
+  if(isNew){$('lkName').focus();$('lkName').select()}
+}
+function syncLink(){
+  $('lkKinds').innerHTML=KINDS.map(function(k){return '<button class="opt" type="button" data-k="'+k[0]+'" aria-pressed="'+(draft.kind===k[0])+'">'+k[1]+'</button>'}).join('');
+  $('lkPrev').textContent='utm_campaign='+campaign({url:draft.url,camp:$('lkCamp').value,kind:draft.kind});
+}
+$('lkKinds').addEventListener('click',function(e){var b=e.target.closest('[data-k]');if(b){draft.kind=b.dataset.k;syncLink()}});
+$('lkCamp').addEventListener('input',syncLink);
+$('lkCat').addEventListener('change',function(){var n=$('lkCat').value==='__new';$('lkNewWrap').hidden=!n;if(n)$('lkNew').focus()});
+$('lkDel').addEventListener('click',function(){var l=find(draft.id);hide('linkVeil');if(l)removeLink(l)});
+$('linkForm').addEventListener('submit',function(e){
+  e.preventDefault();
+  var name=$('lkName').value.trim(), cat=$('lkCat').value, err=$('lkErr');
+  if(!name){err.textContent='이름을 입력하세요.';err.hidden=false;$('lkName').focus();return}
+  if(cat==='__new'){cat=$('lkNew').value.trim();if(!cat){err.textContent='새 카테고리 이름을 입력하세요.';err.hidden=false;$('lkNew').focus();return}}
+  var l=draft.id?find(draft.id):null, isNew=!l;
+  if(isNew){l={id:'l'+Date.now(),url:draft.url,log:[],open:false};S.links.unshift(l)}
+  l.name=name;l.group=cat;l.camp=slug($('lkCamp').value);l.kind=draft.kind;
+  if(isNew&&filter!=='전체'&&cat!==filter)filter='전체';
+  save();hide('linkVeil');render();
+  if(isNew){track('link_add',{count:S.links.length});$('addUrl').value='';toast('<span class="msg">링크가 추가되었습니다</span>')}
+});
+
+/* 채널 관리 */
+var allCh=[];
+function renderCh(){
+  allCh=PRESETS.slice(); S.channels.forEach(function(c){if(!allCh.some(function(p){return p.id===c.id}))allCh.push(c)});
+  $('picks').innerHTML=allCh.map(function(c){return '<button class="pick" type="button" data-p="'+esc(c.id)+'" aria-pressed="'+!!chan(c.id)+'">'+esc(c.name)+'</button>'}).join('');
+  $('cKinds').innerHTML=MEDIUMS.map(function(m){return '<button class="opt" type="button" data-m="'+m[0]+'" aria-pressed="'+(cMedium===m[0])+'">'+m[1]+'</button>'}).join('');
+}
+$('picks').addEventListener('click',function(e){
+  var b=e.target.closest('[data-p]'); if(!b)return; var id=b.dataset.p;
+  if(chan(id)){S.channels=S.channels.filter(function(c){return c.id!==id})}
+  else{var c=allCh.filter(function(x){return x.id===id})[0];if(c)S.channels.push({id:c.id,name:c.name,medium:c.medium})}
+  save();b.setAttribute('aria-pressed',!!chan(id));
+});
+$('cKinds').addEventListener('click',function(e){var b=e.target.closest('[data-m]');if(b){cMedium=b.dataset.m;renderCh()}});
+$('cName').addEventListener('input',function(){if(!$('cSrc').dataset.touched){var s=slug($('cName').value);if(s)$('cSrc').value=s}});
+$('cSrc').addEventListener('input',function(){$('cSrc').dataset.touched='1'});
+$('cAdd').addEventListener('click',function(){
+  var name=$('cName').value.trim(), src=slug($('cSrc').value), err=$('cErr');
+  if(!name||!src){err.textContent=!name?'채널 이름을 입력하세요.':'영문 표기를 영문 소문자로 입력하세요. 예: momcafe';err.hidden=false;return}
+  if(chan(src)){err.textContent='같은 영문 표기를 쓰는 채널이 있습니다: '+chan(src).name;err.hidden=false;return}
+  err.hidden=true;S.channels.push({id:src,name:name,medium:cMedium});save();
+  $('cName').value='';$('cSrc').value='';delete $('cSrc').dataset.touched;renderCh();toast('<span class="msg">'+esc(name)+' 채널이 추가되었습니다</span>');
+});
+
+/* Tapit 공유 (Getset share.js 흐름 + 카카오톡 공유) */
+var SHARE_TITLE='Tapit — 탭 한 번으로 링크 복사', SHARE_TEXT='자주 보내는 링크를 모아 두고 한 번 눌러 복사하는 무료 링크 메모장입니다.';
+function shareUrl(c){return APP_URL+'?utm_source=share&utm_medium=referral&utm_campaign=app_share&utm_content='+c}
+function copyApp(c){copy(SHARE_TEXT+'\n'+shareUrl(c),function(){toast('<span class="msg">소개 문구와 링크가 복사되었습니다</span>',3000)})}
+if(!navigator.share){var nb=document.querySelector('[data-share="native"]');if(nb)nb.hidden=true}
+$('btnShare').addEventListener('click',function(){show('shareVeil');track('share_sheet_open')});
+function openGuide(){track('guide_open');show('guideVeil');$('guideVeil').querySelector('.sheet').scrollTop=0}
+$('btnGuide').addEventListener('click',openGuide);
+$('list').addEventListener('click',function(e){if(e.target.closest('#emptyGuide'))openGuide()});
+$('shareVeil').addEventListener('click',function(e){
+  var b=e.target.closest('[data-share]'); if(!b)return; var m=b.dataset.share; hide('shareVeil');
+  if(m==='kakao'){
+    try{
+      if(!window.Kakao)throw 0;
+      if(!Kakao.isInitialized())Kakao.init(KAKAO_KEY);
+      var u=shareUrl('kakao');
+      Kakao.Share.sendDefault({objectType:'text',text:SHARE_TITLE+'\n'+SHARE_TEXT,link:{mobileWebUrl:u,webUrl:u},buttonTitle:'Tapit 열기'});
+      track('app_share',{method:'kakao'});
+    }catch(x){copyApp('kakao');track('app_share',{method:'kakao_fallback'})}
+    return;
+  }
+  if(m==='native'&&navigator.share){
+    navigator.share({title:SHARE_TITLE,text:SHARE_TEXT,url:shareUrl('native')}).then(function(){track('app_share',{method:'native'})},function(err){if(!err||err.name!=='AbortError')copyApp('native')});
+    return;
+  }
+  copyApp('copy');track('app_share',{method:'copy'});
+});
+
+/* 앱 설치 (Getset install.js 흐름) */
+var IN_APPS=[['kakao','카카오톡',/KAKAOTALK/i],['naver','네이버 앱',/NAVER\(inapp|NAVER\//i],['band','밴드',/BAND\//i],['instagram','인스타그램',/Instagram/i],['facebook','페이스북',/FBAN|FBAV|FB_IAB/i],['line','라인',/\bLine\//i],['daum','다음 앱',/DaumApps/i]];
+function detect(){
+  var ua=navigator.userAgent||'';
+  var ios=/iP(hone|od|ad)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1), android=/Android/i.test(ua), inApp=null;
+  IN_APPS.forEach(function(a){if(!inApp&&a[2].test(ua))inApp={id:a[0],name:a[1]}});
+  var br='other';
+  if(/SamsungBrowser/i.test(ua))br='samsung';else if(/CriOS/i.test(ua))br='chrome-ios';else if(/Edg/i.test(ua))br='edge';else if(/Chrome/i.test(ua))br='chrome';else if(ios&&/Safari/i.test(ua))br='safari';
+  var standalone=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+  return {ios:ios,android:android,inApp:inApp,browser:br,standalone:standalone};
+}
+var env=detect(), installPrompt=null, instAction=null;
+function extUrl(){
+  if(!env.inApp)return null;
+  var url=APP_URL+'?pwa=install';
+  if(env.inApp.id==='kakao')return 'kakaotalk://web/openExternal?url='+encodeURIComponent(url);
+  if(env.android)return 'intent://pebbleitgo.com/tapit/?pwa=install#Intent;scheme=https;package=com.android.chrome;end';
+  return null;
+}
+function copyAddr(){copy(APP_URL,function(){toast('<span class="msg">주소가 복사되었습니다</span>')})}
+function renderInst(){
+  var t,d,s=[],p='',u=false; instAction=null;
+  if(env.inApp){
+    var tg=env.ios?'사파리':'크롬', ext=extUrl();
+    t=tg+'에서 열어 주세요'; d=env.inApp.name+' 안에서는 앱을 설치할 수 없습니다. '+tg+'로 연 뒤 다시 앱 설치를 누르세요.';
+    if(ext){s=['아래 <b>'+tg+'로 열기</b>를 누릅니다.',tg+'에서 Tapit이 열리면 <b>앱 설치</b>를 누릅니다.'];p=tg+'로 열기';instAction=function(){track('inapp_open_click',{app:env.inApp.id});location.href=ext}}
+    else{s=env.ios?['화면의 <b>···</b> 또는 <b>공유</b> 버튼을 누릅니다.','<b>Safari로 열기</b>를 누릅니다.','사파리에서 열리면 <b>앱 설치</b>를 누릅니다.']:['오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.','<b>다른 브라우저로 열기</b>를 누릅니다.','크롬에서 열리면 <b>앱 설치</b>를 누릅니다.'];p='주소 복사';u=true;instAction=copyAddr}
+  }else if(installPrompt){
+    t='홈 화면에 Tapit 설치';d='설치하면 홈 화면 아이콘으로 바로 열 수 있습니다.';s=['아래 <b>지금 설치</b>를 누릅니다.','표시되는 창에서 <b>설치</b>를 누릅니다.'];p='지금 설치';
+    instAction=function(){var ip=installPrompt;if(!ip)return;ip.prompt();ip.userChoice.then(function(c){track('install_click',{outcome:c&&c.outcome})},function(){});installPrompt=null;hide('instVeil')};
+  }else if(env.ios){
+    t='홈 화면에 추가';
+    if(env.browser==='safari'){d='사파리에서 세 번이면 됩니다.';s=['화면 아래 <b>공유</b> 버튼을 누릅니다.','목록에서 <b>홈 화면에 추가</b>를 누릅니다.','오른쪽 위 <b>추가</b>를 누릅니다.']}
+    else{d='브라우저의 공유 버튼에서 추가할 수 있습니다.';s=['주소창 옆 <b>공유</b> 버튼을 누릅니다.','<b>홈 화면에 추가</b>를 누릅니다.','<b>추가</b>를 누릅니다.']}
+  }else if(env.android&&env.browser==='samsung'){
+    t='홈 화면에 추가';d='삼성 인터넷에서 추가하는 방법입니다.';s=['화면 아래 <b>≡</b> 메뉴를 누릅니다.','<b>현재 페이지 추가</b>를 누릅니다.','<b>홈 화면</b>을 선택하고 <b>추가</b>를 누릅니다.'];
+  }else if(env.android){
+    t='홈 화면에 Tapit 설치';d='크롬 메뉴에서 설치할 수 있습니다. 이미 설치했다면 홈 화면의 Tapit 아이콘으로 열어 주세요.';s=['오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.','<b>홈 화면에 추가</b> 또는 <b>앱 설치</b>를 누릅니다.','<b>설치</b>를 누릅니다.'];
+  }else{
+    t='휴대폰에 설치하세요';d='휴대폰 크롬(아이폰은 사파리)에서 아래 주소를 열고 앱 설치를 누르세요. PC 크롬은 주소창 오른쪽의 설치 아이콘으로 설치할 수 있습니다.';p='주소 복사';u=true;instAction=copyAddr;
+  }
+  $('inT').textContent=t;$('inDesc').textContent=d;
+  $('inSteps').innerHTML=s.map(function(x){return '<li><span>'+x+'</span></li>'}).join('');$('inSteps').hidden=!s.length;
+  $('inUrl').hidden=!u;$('inPrimary').textContent=p;$('inPrimary').hidden=!p;
+}
+function openInst(){renderInst();show('instVeil');track('install_sheet_open',{in_app:env.inApp?env.inApp.id:'none',can_prompt:!!installPrompt})}
+if(env.standalone){$('btnInstall').hidden=true}
+$('btnInstall').addEventListener('click',openInst);
+$('inPrimary').addEventListener('click',function(){if(instAction)instAction()});
+window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();installPrompt=e;if(!$('instVeil').hidden)renderInst()});
+window.addEventListener('appinstalled',function(){$('btnInstall').hidden=true;hide('instVeil');track('app_installed');toast('<span class="msg">설치되었습니다. 홈 화면의 Tapit 아이콘으로 열어 보세요</span>',5000)});
+if(env.inApp&&!env.standalone){
+  var tg0=env.ios?'사파리':'크롬';
+  $('inappName').textContent=env.inApp.name;$('inappOpen').textContent=extUrl()?tg0+'로 열기':'여는 방법';show('inapp');track('inapp_detected',{app:env.inApp.id});
+}
+$('inappOpen').addEventListener('click',function(){var x=extUrl();if(x){track('inapp_open_click',{app:env.inApp.id});location.href=x}else openInst()});
+
+$('addForm').addEventListener('submit',function(e){
+  e.preventDefault();
+  var raw=$('addUrl').value.trim(), err=$('addErr'), u;
+  if(!raw){err.textContent='링크를 먼저 붙여넣으세요.';err.hidden=false;return}
+  if(!/^https?:\/\//i.test(raw))raw='https://'+raw;
+  try{u=new URL(raw);if(u.hostname.indexOf('.')<0)throw 0}catch(x){err.textContent='올바른 링크가 아닙니다. 주소를 다시 확인하세요.';err.hidden=false;return}
+  err.hidden=true;
+  for(var i=0;i<S.links.length;i++)if(S.links[i].url===u.toString()){toast('<span class="msg">이미 등록된 링크입니다: '+esc(S.links[i].name)+'</span>',3000);return}
+  var host=u.hostname.replace(/^www\./,''), seg=u.pathname.split('/').filter(Boolean).pop()||'', nm=host;
+  try{if(seg)nm=host+' · '+decodeURIComponent(seg)}catch(x){}
+  openLink({id:null,url:u.toString(),name:nm,group:filter==='전체'?'':filter,camp:'',kind:''});
+});
+render();
+var Q=new URLSearchParams(location.search);
+if(Q.get('pwa')==='install'&&!env.standalone){setTimeout(openInst,700)}
+var shared=(Q.get('url')||'')+' '+(Q.get('text')||''), mm=shared.match(/https?:\/\/\S+/);
+if(mm){$('addUrl').value=mm[0];$('addForm').dispatchEvent(new Event('submit',{cancelable:true}));track('share_target_in')}
+if(Q.get('pwa')||Q.get('url')||Q.get('text')){try{history.replaceState(null,'',location.pathname)}catch(e){}}
+if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('service-worker.js').catch(function(){})})}
+})();
+</script>
+</body>
+</html>
