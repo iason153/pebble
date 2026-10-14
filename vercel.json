@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/billbox/send", "schedule": "0 * * * *" }
+  ]
+}

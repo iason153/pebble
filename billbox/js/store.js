@@ -1,0 +1,206 @@
+'use strict';
+
+/**
+ * Billbox 저장소 — localStorage만. 로그인 없음. 폰을 바꾸면 사라진다(첫 화면·설정에서 안내).
+ *
+ * item = {
+ *   id, name, kindId, amount(원, 숫자|null), due('YYYY-MM-DD'),
+ *   repeat('monthly'|'bimonthly'|'quarterly'|'half'|'yearly'|'none'), months([6,12] 같은 고정 달|null),
+ *   estimated(true면 고지서 없이 예상한 마감), tag('독촉'|'압류예고'|''), note,
+ *   source('photo'|'manual'), createdAt, updatedAt,
+ *   history:[{due, amount, paidAt}]   // 냈어요 기록(최근 24개)
+ * }
+ * settings = { remindHour, remindDays:[3,0], push:'off'|'on', deviceKey, introSeen, photoTipSeen }
+ */
+window.BillboxStore = (function () {
+  const KEY = 'billbox:v1';
+  const SKEY = 'billbox:settings';
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function save(items) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(items));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+  function settings() {
+    const def = { remindHour: (window.BILLBOX_CONFIG || {}).REMIND_HOUR_DEFAULT || 9, remindDays: [3, 0], push: 'off', deviceKey: '', introSeen: false, photoTipSeen: false };
+    try {
+      const raw = localStorage.getItem(SKEY);
+      return Object.assign(def, raw ? JSON.parse(raw) : {});
+    } catch (_) {
+      return def;
+    }
+  }
+  function saveSettings(patch) {
+    const s = Object.assign(settings(), patch);
+    try {
+      localStorage.setItem(SKEY, JSON.stringify(s));
+    } catch (_) {}
+    return s;
+  }
+
+  function uid() {
+    return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  // ---------- 날짜 도우미 (전부 '그 지역 날짜' 기준, 시간대 꼬임 방지) ----------
+  const p2 = (n) => String(n).padStart(2, '0');
+  function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  }
+  function parse(s) {
+    const [y, m, d] = String(s).split('-').map(Number);
+    return { y, m, d };
+  }
+  function fmt(y, m, d) {
+    return `${y}-${p2(m)}-${p2(d)}`;
+  }
+  function daysInMonth(y, m) {
+    return new Date(y, m, 0).getDate();
+  }
+  /** due - today (일). 음수면 지남 */
+  function daysLeft(due) {
+    const a = parse(due);
+    const b = parse(todayStr());
+    const ms = Date.UTC(a.y, a.m - 1, a.d) - Date.UTC(b.y, b.m - 1, b.d);
+    return Math.round(ms / 86400000);
+  }
+  /** 달 더하기, 일은 유지(없는 날이면 그 달 마지막 날) */
+  function addMonths(due, n, anchorDay) {
+    const { y, m } = parse(due);
+    const d = anchorDay || parse(due).d;
+    const total = y * 12 + (m - 1) + n;
+    const ny = Math.floor(total / 12);
+    const nm = (total % 12) + 1;
+    return fmt(ny, nm, Math.min(d, daysInMonth(ny, nm)));
+  }
+  /** 고정 달 목록([6,12])에서 due 다음 차례 */
+  function nextInMonths(due, months, anchorDay) {
+    const { y, m } = parse(due);
+    const d = anchorDay || parse(due).d;
+    const sorted = [...months].sort((a, b) => a - b);
+    for (const mm of sorted) if (mm > m) return fmt(y, mm, Math.min(d, daysInMonth(y, mm)));
+    const mm = sorted[0];
+    return fmt(y + 1, mm, Math.min(d, daysInMonth(y + 1, mm)));
+  }
+  function nextDue(item) {
+    if (!item.repeat || item.repeat === 'none') return null;
+    // day: 고지서에 적힌 원래 '일'. 1/31 → 2/28 → 3/31 처럼 날짜가 밀리지 않게 기준일을 기억한다
+    const day = item.day || parse(item.due).d;
+    if (item.months && item.months.length) return nextInMonths(item.due, item.months, day);
+    const r = window.BillboxKinds.repeatById(item.repeat);
+    return r.months ? addMonths(item.due, r.months, day) : null;
+  }
+
+  // ---------- 항목 조작 ----------
+  function add(data) {
+    const items = load();
+    const now = new Date().toISOString();
+    const item = Object.assign(
+      { id: uid(), name: '', kindId: 'etc', amount: null, due: todayStr(), repeat: 'none', months: null, estimated: false, tag: '', note: '', source: 'manual', history: [] },
+      data,
+      { createdAt: now, updatedAt: now }
+    );
+    item.day = parse(item.due).d;
+    items.push(item);
+    save(items);
+    return item;
+  }
+  function update(id, patch) {
+    const items = load();
+    const i = items.findIndex((x) => x.id === id);
+    if (i < 0) return null;
+    items[i] = Object.assign({}, items[i], patch, { updatedAt: new Date().toISOString() });
+    if (patch.due && patch.estimated === false) items[i].day = parse(patch.due).d; // 사용자가 직접 고친 날짜가 새 기준
+    save(items);
+    return items[i];
+  }
+  function remove(id) {
+    save(load().filter((x) => x.id !== id));
+  }
+  function get(id) {
+    return load().find((x) => x.id === id) || null;
+  }
+
+  /** [냈어요] — 기록에 넣고, 반복이면 다음 마감으로 넘김(예상 표시). 한 번만이면 '낸 것'으로 보관 */
+  function markPaid(id) {
+    const it = get(id);
+    if (!it) return null;
+    const hist = [{ due: it.due, amount: it.amount, paidAt: new Date().toISOString() }, ...(it.history || [])].slice(0, 24);
+    const next = nextDue(it);
+    if (next) return update(id, { history: hist, due: next, estimated: true, tag: '', paidAt: null });
+    return update(id, { history: hist, paidAt: new Date().toISOString() });
+  }
+  /** 실수로 눌렀을 때 되돌리기 */
+  function undoPaid(id) {
+    const it = get(id);
+    if (!it || !it.history || !it.history.length) return null;
+    const [last, ...rest] = it.history;
+    return update(id, { history: rest, due: last.due, amount: last.amount, estimated: false, paidAt: null });
+  }
+
+  /** 같은 종류의 반복 항목이 있고 마감이 ±45일 안이면 "같은 것"으로 본다(고지서를 다시 찍었을 때 중복 방지) */
+  function findSimilar(kindId, due) {
+    if (!kindId || kindId === 'etc') return null;
+    const a = parse(due);
+    return (
+      load().find((x) => {
+        if (x.kindId !== kindId || x.paidAt) return false;
+        const b = parse(x.due);
+        const diff = Math.abs(Date.UTC(a.y, a.m - 1, a.d) - Date.UTC(b.y, b.m - 1, b.d)) / 86400000;
+        return diff <= 45;
+      }) || null
+    );
+  }
+
+  /** 홈 화면용 묶음 */
+  function groups() {
+    const items = load().filter((x) => !x.paidAt);
+    items.sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0));
+    const overdue = [];
+    const week = [];
+    const later = [];
+    for (const it of items) {
+      const n = daysLeft(it.due);
+      if (n < 0) overdue.push(it);
+      else if (n <= 7) week.push(it);
+      else later.push(it);
+    }
+    const done = load()
+      .filter((x) => x.paidAt)
+      .sort((a, b) => (a.paidAt < b.paidAt ? 1 : -1));
+    return { overdue, week, later, done };
+  }
+
+  function exportJson() {
+    return JSON.stringify({ app: 'billbox', version: 1, exportedAt: new Date().toISOString(), items: load(), settings: settings() }, null, 2);
+  }
+  function importJson(text) {
+    const obj = JSON.parse(text);
+    if (!obj || obj.app !== 'billbox' || !Array.isArray(obj.items)) throw new Error('빌박스 백업 파일이 아니에요');
+    const cur = load();
+    const ids = new Set(cur.map((x) => x.id));
+    let n = 0;
+    for (const it of obj.items) {
+      if (!it || !it.id || ids.has(it.id)) continue;
+      cur.push(it);
+      n++;
+    }
+    save(cur);
+    return n;
+  }
+
+  return { load, save, settings, saveSettings, add, update, remove, get, markPaid, undoPaid, findSimilar, groups, nextDue, daysLeft, todayStr, addMonths, exportJson, importJson, uid };
+})();

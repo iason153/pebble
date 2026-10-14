@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Billbox — 고지서 찍으면 마감 알림</title>
+<meta name="description" content="고지서를 찍기만 하면 무엇을·얼마·언제까지 읽어서 마감 전에 알려 드려요. 구독·자동이체·대출 상환도 직접 등록. 사진은 폰 밖으로 안 나가요. 로그인 없이 무료.">
+<meta name="theme-color" content="#1F4D3A">
+<link rel="canonical" href="https://pebbleitgo.com/billbox/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pebble">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="Billbox — 고지서 찍으면 마감 알림">
+<meta property="og:description" content="독촉장 안 받게 해 주는 마감 알리미. 찍기만 하면 끝.">
+<meta property="og:url" content="https://pebbleitgo.com/billbox/">
+<meta property="og:image" content="https://pebbleitgo.com/billbox/icons/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Billbox">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="css/style.css">
+<script src="js/config.js"></script>
+<script src="js/analytics.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">본문으로</a>
+<div id="sr-status" class="sr-only" role="status" aria-live="polite"></div>
+
+<!-- 앱 안 브라우저 안내 -->
+<div id="inapp-banner" class="inapp" hidden>
+  <p><b id="inapp-name">카카오톡</b> 안에서는 사진 찍기와 알림이 잘 안 될 수 있어요. <span id="inapp-target">크롬</span>으로 여는 게 좋아요.</p>
+  <div class="inapp__btns">
+    <button type="button" id="btn-inapp-open" class="btn btn--sm btn--brass">크롬으로 열기</button>
+    <button type="button" id="btn-inapp-close" class="btn btn--sm btn--ghost" aria-label="닫기">닫기</button>
+  </div>
+</div>
+
+<header class="top">
+  <h1 class="logo"><span class="logo__box">Bill</span><span class="logo__tag">box</span></h1>
+  <div class="top__btns">
+    <button type="button" id="btn-install" class="btn btn--sm btn--ghost" hidden>설치</button>
+    <button type="button" id="btn-settings" class="btn btn--sm btn--ghost" aria-label="설정">⚙ 설정</button>
+  </div>
+</header>
+
+<main id="main" class="main">
+  <!-- 요약 스티커 -->
+  <section class="summary" id="summary" aria-live="polite">
+    <div class="summary__big"><span id="sum-count">0</span><small>건</small></div>
+    <div class="summary__txt">
+      <p class="summary__title" id="sum-title">이번 주에 낼 것</p>
+      <p class="summary__sub" id="sum-sub">아직 등록한 게 없어요</p>
+    </div>
+  </section>
+
+  <!-- 첫 안내 -->
+  <section class="intro card card--tilt" id="intro" hidden>
+    <h2>고지서, 찍기만 하세요</h2>
+    <ol class="intro__steps">
+      <li><b>📷 찍기</b> 종이 고지서도, 카톡 고지서 캡처도</li>
+      <li><b>👀 확인</b> 무엇을·얼마·언제까지, 읽은 걸 한 번 확인</li>
+      <li><b>🔔 알림</b> 마감 3일 전·당일에 톡 — 독촉장 안 받게</li>
+    </ol>
+    <p class="intro__note">사진은 폰 밖으로 나가지 않아요. 저장도 이 폰에만 돼요 — <b>폰을 바꾸면 사라지니</b> 설정의 <b>백업</b>을 써 주세요.</p>
+    <button type="button" class="btn btn--block" id="btn-intro-ok">알겠어요</button>
+  </section>
+
+  <section class="list" id="list"></section>
+</main>
+
+<!-- 아래 고정 버튼 -->
+<nav class="dock" aria-label="추가">
+  <button type="button" id="btn-scan" class="btn btn--big btn--brass">📷 고지서 찍기</button>
+  <button type="button" id="btn-manual" class="btn btn--big">✏️ 직접 입력</button>
+</nav>
+
+<!-- ===== 찍기 시트 ===== -->
+<div id="scan-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="scan-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="scan-title">고지서 찍기</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet__scroll">
+      <div id="scan-pick">
+        <div class="tips card">
+          <p class="tips__lead">이렇게 찍으면 더 잘 읽어요. <b>대충 찍어도 최선을 다해 읽어요.</b></p>
+          <ul class="tips__row">
+            <li><span class="tips__pic">📄</span>바닥에 펴고</li>
+            <li><span class="tips__pic">☀️</span>그림자 없이</li>
+            <li><span class="tips__pic">🔍</span>금액·기한이 보이게</li>
+          </ul>
+          <details class="tips__more"><summary>더 보기</summary>
+            <ul>
+              <li>고지서 전체가 아니라 <b>금액과 납부기한이 있는 부분</b>만 크게 찍어도 돼요.</li>
+              <li>카톡·앱 고지서는 <b>화면 캡처</b>를 앨범에서 고르면 돼요.</li>
+              <li>읽는 데 10~20초쯤 걸려요. 처음 한 번은 한글 사전을 내려받아 더 걸려요.</li>
+              <li>잘못 읽으면 다음 화면에서 바로 고칠 수 있어요. 못 읽어도 직접 입력하면 돼요.</li>
+            </ul>
+          </details>
+        </div>
+        <label class="btn btn--big btn--brass btn--block file-btn">📷 카메라로 찍기<input type="file" id="file-camera" accept="image/*" capture="environment"></label>
+        <label class="btn btn--big btn--block file-btn">🖼️ 앨범·캡처에서 고르기<input type="file" id="file-album" accept="image/*"></label>
+        <p class="muted small">사진은 읽은 뒤 바로 버려요. 어디에도 저장하지 않아요.</p>
+      </div>
+      <div id="scan-progress" hidden>
+        <div class="progress card card--tilt">
+          <div class="progress__stamp" aria-hidden="true">👀</div>
+          <p class="progress__msg" id="progress-msg">읽기 도구를 준비하고 있어요</p>
+          <div class="progress__bar"><div class="progress__fill" id="progress-fill"></div></div>
+          <p class="muted small">폰 안에서만 읽어요. 사진은 안 나가요.</p>
+        </div>
+        <button type="button" class="btn btn--block btn--ghost" id="btn-scan-cancel">그만두고 직접 입력</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 확인·입력 시트 ===== -->
+<div id="edit-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="edit-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="edit-title">확인해 주세요</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet__scroll">
+      <p class="edit__lead" id="edit-lead" hidden></p>
+      <div class="notice card" id="edit-similar" hidden>
+        <p>같은 종류가 이미 있어요: <b id="similar-name"></b> (<span id="similar-due"></span>)</p>
+        <div class="notice__btns">
+          <button type="button" class="btn btn--sm btn--brass" id="btn-similar-update">그걸 이 고지서로 바꾸기</button>
+          <button type="button" class="btn btn--sm" id="btn-similar-new">따로 추가</button>
+        </div>
+      </div>
+      <form id="edit-form" novalidate>
+        <input type="hidden" id="f-id">
+        <fieldset class="field">
+          <legend>무엇을</legend>
+          <div class="kind-picked" id="f-kind-picked" hidden><span class="chip is-on" id="f-kind-picked-chip"></span><button type="button" class="btn btn--sm" id="btn-kind-change">다른 종류</button></div>
+          <div class="chips" id="f-kinds" role="radiogroup"></div>
+          <label class="field__label" for="f-name">이름 <span class="muted">(알림에 보여요)</span></label>
+          <input type="text" id="f-name" maxlength="30" placeholder="예: 도시가스, 넷플릭스, 차 할부">
+        </fieldset>
+        <fieldset class="field" id="field-amount">
+          <legend>얼마 <span class="flag" id="flag-amount" hidden>확인!</span></legend>
+          <div class="amount-wrap">
+            <input type="text" id="f-amount" inputmode="numeric" placeholder="0" aria-label="금액(원)">
+            <span class="amount-unit">원</span>
+          </div>
+          <div class="alts" id="alt-amounts"></div>
+        </fieldset>
+        <fieldset class="field" id="field-due">
+          <legend>언제까지 <span class="flag" id="flag-due" hidden>확인!</span></legend>
+          <input type="date" id="f-due" aria-label="납부기한">
+          <div class="alts" id="alt-dues"></div>
+          <div class="chips chips--sm" id="f-quickdue">
+            <button type="button" class="chip" data-days="0">오늘</button>
+            <button type="button" class="chip" data-days="3">3일 뒤</button>
+            <button type="button" class="chip" data-days="7">1주 뒤</button>
+            <button type="button" class="chip" data-days="30">한 달 뒤</button>
+          </div>
+        </fieldset>
+        <fieldset class="field">
+          <legend>얼마나 자주</legend>
+          <div class="chips" id="f-repeat" role="radiogroup"></div>
+          <div id="f-months-wrap" hidden>
+            <p class="field__label">오는 달</p>
+            <div class="chips chips--sm" id="f-months"></div>
+          </div>
+          <p class="muted small" id="repeat-hint"></p>
+        </fieldset>
+        <fieldset class="field">
+          <legend>메모 <span class="muted">(선택)</span></legend>
+          <input type="text" id="f-note" maxlength="60" placeholder="예: 가상계좌 농협, 독촉장 옴">
+        </fieldset>
+        <button type="submit" class="btn btn--big btn--brass btn--block" id="btn-save">저장하고 알림 받기</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 상세 시트 ===== -->
+<div id="detail-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="detail-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="detail-title">상세</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet__scroll" id="detail-body"></div>
+  </div>
+</div>
+
+<!-- ===== 설정 시트 ===== -->
+<div id="settings-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="settings-title">설정</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet__scroll">
+      <section class="card">
+        <h3>🔔 푸시 알림</h3>
+        <p class="muted small" id="push-desc">마감 3일 전·당일 아침에 이 폰으로 알림이 와요. 서버에는 <b>이름과 마감일만</b> 올라가고 금액은 폰에만 있어요.</p>
+        <div class="row">
+          <button type="button" class="btn btn--brass" id="btn-push-on">알림 켜기</button>
+          <button type="button" class="btn" id="btn-push-off" hidden>알림 끄기</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="btn-push-test" hidden>시험 알림</button>
+        </div>
+        <p class="small" id="push-ios" hidden>아이폰은 먼저 <b>홈 화면에 추가</b>한 뒤, 그 아이콘으로 열어서 켜야 해요. (아이폰은 아직 확인 못 했어요)</p>
+        <label class="field__label" for="s-hour">알림 시각</label>
+        <select id="s-hour"></select>
+        <p class="field__label">언제 알릴까요</p>
+        <div class="chips chips--sm" id="s-days">
+          <button type="button" class="chip" data-day="7">7일 전</button>
+          <button type="button" class="chip" data-day="3">3일 전</button>
+          <button type="button" class="chip" data-day="1">1일 전</button>
+          <button type="button" class="chip" data-day="0">당일</button>
+        </div>
+        <p class="muted small">마감을 넘기면 다음 날 한 번 더 알려요. 캘린더 알림(.ics)은 상세 화면에서 따로 받을 수 있어요.</p>
+      </section>
+      <section class="card">
+        <h3>💾 백업</h3>
+        <p class="muted small"><b>폰을 바꾸거나 브라우저 데이터를 지우면 목록이 사라져요.</b> 파일로 받아 두면 다시 불러올 수 있어요.</p>
+        <div class="row">
+          <button type="button" class="btn" id="btn-export">파일로 받기</button>
+          <label class="btn file-btn">파일 불러오기<input type="file" id="file-import" accept="application/json,.json"></label>
+        </div>
+      </section>
+      <section class="card">
+        <h3>ℹ️ Billbox</h3>
+        <p class="muted small">Pebble의 세 번째 도구. 고지서를 찍으면 폰 안에서 글자를 읽어(Tesseract.js) 마감을 챙겨요. 사진·금액은 어디에도 보내지 않아요. 통계는 종류·개수만 봐요.</p>
+        <p class="muted small">버전 <span id="about-ver"></span> · <a href="/">Pebble 홈</a></p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 설치 시트 (install.js) ===== -->
+<div id="install-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="install-sheet-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="install-sheet-title">홈 화면에 설치하기</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet__scroll">
+      <p id="install-sheet-desc" class="muted"></p>
+      <div id="install-sheet-body"></div>
+      <button type="button" id="btn-install-primary" class="btn btn--big btn--brass btn--block" hidden>지금 설치하기</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden><span id="toast-msg"></span><button type="button" id="toast-action" class="toast__act" hidden></button></div>
+
+<script src="js/kinds.js"></script>
+<script src="js/store.js"></script>
+<script src="js/extract.js"></script>
+<script src="js/ocr.js"></script>
+<script src="js/push.js"></script>
+<script src="js/install.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

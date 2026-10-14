@@ -1,0 +1,9 @@
+{
+  "name": "pebble",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pebble — 작은 도구들 (정적 사이트 + Billbox 푸시 서버 함수)",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

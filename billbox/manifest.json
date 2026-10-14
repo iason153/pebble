@@ -1,0 +1,20 @@
+{
+  "name": "Billbox — 고지서 찍으면 마감 알림",
+  "short_name": "Billbox",
+  "description": "고지서를 찍기만 하면 무엇을·얼마·언제까지 읽어서 마감 전에 알려 주는 도구",
+  "id": "/billbox/",
+  "start_url": "/billbox/?source=pwa",
+  "scope": "/billbox/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F1E8",
+  "theme_color": "#1F4D3A",
+  "lang": "ko-KR",
+  "dir": "ltr",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
