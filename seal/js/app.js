@@ -221,7 +221,12 @@
   // 고른 파일을 즉시 메모리로 복사. 안드로이드는 몇 초 뒤 다시 읽으면 접근이 끊길 수 있어(갤러리 파일 두 번 읽기 실패) 한 번만 읽고 복사본을 쓴다.
   async function snapshotFile(file) {
     try { const buf = await file.arrayBuffer(); return new File([buf], file.name || 'photo', { type: file.type || 'image/jpeg', lastModified: file.lastModified || Date.now() }); }
-    catch (_) { return file; }
+    catch (err) {
+      // 안드로이드 크롬: 크롬이 내려받은 파일을 갤러리로 고르면 권한 문제로 읽기가 거부될 수 있다
+      App.showToast('파일을 읽지 못했어요. 고르기 창에서 갤러리 대신 "내 파일"(파일 앱)을 골라 Download 폴더에서 선택해 보세요.', { duration: 6000 });
+      track('file_unreadable', { kind: (err && err.name) || 'unknown' });
+      return null;
+    }
   }
   // 사진 열기: createImageBitmap(방향 자동 보정·큰 사진에 강함) → 안 되면 <img>. HEIF 등 못 읽는 형식은 이유를 알려 준다.
   async function loadImage(file, maxSide) {
@@ -317,7 +322,7 @@
     init() {
       this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
       $('btn-start-protect').addEventListener('click', () => { track('protect_pick_open'); $('file-protect').click(); });
-      $('file-protect').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) this.start(await snapshotFile(f)); });
+      $('file-protect').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const s = await snapshotFile(f); if (s) this.start(s); });
       $('btn-back-protect').addEventListener('click', () => this.leave());
       $('btn-restart').addEventListener('click', () => { track('protect_restart'); $('file-protect').click(); });
 
@@ -596,12 +601,12 @@
       $('btn-start-verify').addEventListener('click', () => { show('view-verify'); this.reset(); track('verify_open'); });
       $('btn-pick-verify').addEventListener('click', () => $('file-verify').click());
       $('btn-verify-again').addEventListener('click', () => $('file-verify').click());
-      $('file-verify').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; $('verify-result').hidden = true; $('verify-intro').hidden = true; $('verify-run').hidden = false; $('verify-status').textContent = '사진을 읽는 중…'; this.run(await snapshotFile(f)); });
+      $('file-verify').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; $('verify-result').hidden = true; $('verify-intro').hidden = true; $('verify-run').hidden = false; $('verify-status').textContent = '사진을 읽는 중…'; const s = await snapshotFile(f); if (s) this.run(s); else this.reset(); });
       $('btn-back-verify').addEventListener('click', () => show('view-home'));
       $('btn-make-card').addEventListener('click', () => this.makeCard());
       $('btn-pick-ledger').addEventListener('click', () => this.openPicker());
       $('btn-pick-gallery').addEventListener('click', () => $('file-mine').click());
-      $('file-mine').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) this.takeMine(await snapshotFile(f)); });
+      $('file-mine').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const s = await snapshotFile(f); if (s) this.takeMine(s); });
       $('btn-card-save').addEventListener('click', async () => { if (this.cardBlob) { await saveBlob(this.cardBlob, `seal-card-${stamp()}.jpg`); track('card_save'); App.showToast('신고 카드를 저장했어요.'); } });
       $('btn-card-share').addEventListener('click', async () => { if (!this.cardBlob) return; const r = await shareBlob(this.cardBlob, `seal-card-${stamp()}.jpg`, 'Seal 확인 결과'); track('card_share', { outcome: r }); if (r === 'unsupported') { await saveBlob(this.cardBlob, `seal-card-${stamp()}.jpg`); App.showToast('이 브라우저는 공유가 안 돼서 저장했어요.'); } });
     },
