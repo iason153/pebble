@@ -461,14 +461,16 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
   box-shadow: 0 0 0 2px rgba(43, 38, 40, 0.5);
 }
 .stage__box::after { content: "가리기"; position: absolute; left: 0; top: -22px; padding: 1px 6px; border-radius: 6px; background: var(--gold-hi); color: var(--rose-deep); font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
+.stage__box--face { border-radius: 40%; border-color: #fff; background: rgba(255, 255, 255, 0.12); }
+.stage__box--face::after { content: "얼굴 가리기"; background: #fff; }
 .stage__hint { position: absolute; left: 10px; right: 10px; bottom: 10px; margin: 0; padding: 8px 12px; border-radius: 10px; background: rgba(43, 38, 40, 0.78); color: #fff; font-size: 0.8rem; line-height: 1.4; text-align: center; backdrop-filter: blur(6px); }
 .stage__busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(43, 38, 40, 0.5); color: #fff; font-size: 0.9rem; font-weight: 700; }
 
 /* 사진 위 결과 띠 (글자 찾기 결과) */
-.stage__banner { position: absolute; left: 10px; right: 10px; top: 10px; display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 10px 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(8px); box-shadow: 0 6px 20px rgba(43, 38, 40, 0.18); }
-.stage__banner b { font-size: 0.92rem; color: var(--rose-deep); }
-.stage__banner small { grid-column: 1; font-size: 0.76rem; line-height: 1.4; color: var(--muted); }
-.stage__banner button { grid-column: 2; grid-row: 1 / 3; align-self: start; width: 32px; height: 32px; border: none; border-radius: 50%; background: var(--blush); color: var(--text); font-size: 0.9rem; }
+.result-strip { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; margin-top: -4px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1.5px solid var(--rose); box-shadow: var(--shadow); }
+.result-strip b { font-size: 0.92rem; color: var(--rose-deep); }
+.result-strip small { grid-column: 1; font-size: 0.76rem; line-height: 1.4; color: var(--muted); }
+.result-strip button { grid-column: 2; grid-row: 1 / 3; align-self: start; width: 32px; height: 32px; border: none; border-radius: 50%; background: var(--blush); color: var(--text); font-size: 0.9rem; }
 .opt__note { margin: -6px 0 2px; padding: 8px 12px; border-radius: 12px; background: var(--lilac); font-size: 0.8rem; line-height: 1.45; color: var(--text); }
 .tag-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1.5px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
 .tag-chip.is-on { border-color: var(--rose-deep); background: var(--blush); color: var(--rose-deep); }

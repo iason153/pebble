@@ -279,9 +279,9 @@
     return 'unsupported';
   }
 
-  // JPEG 안에 위치 정보(GPS)·촬영 정보가 들어 있는지만 본다 (값은 읽지 않고, 내보낼 때 어차피 지워짐)
+  // JPEG의 EXIF에서 위치 정보(GPS)가 있는지, 있으면 위도·경도를 읽는다(표시용. 내보낼 때는 지워짐). 촬영 정보 유무도.
   async function scanExif(file) {
-    const out = { gps: false, exif: false };
+    const out = { gps: false, exif: false, lat: null, lon: null };
     try {
       const buf = await file.slice(0, 256 * 1024).arrayBuffer(); const v = new DataView(buf);
       if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return out;
@@ -292,8 +292,20 @@
         if (marker === 0xE1 && v.getUint32(off + 4) === 0x45786966) { // "Exif"
           const t = off + 10, le = v.getUint16(t) === 0x4949;
           const u16 = (p) => v.getUint16(p, le), u32 = (p) => v.getUint32(p, le);
+          const rat = (p) => { const n = u32(p), d = u32(p + 4); return d ? n / d : 0; };
           const ifd0 = t + u32(t + 4); const n = u16(ifd0); out.exif = n > 0;
-          for (let i = 0; i < n; i++) { const tag = u16(ifd0 + 2 + i * 12); if (tag === 0x8825) out.gps = true; }
+          let gpsOff = 0;
+          for (let i = 0; i < n; i++) { const e = ifd0 + 2 + i * 12; if (u16(e) === 0x8825) gpsOff = t + u32(e + 8); }
+          if (gpsOff && gpsOff + 2 < v.byteLength) {
+            out.gps = true;
+            const g = {}; const gn = u16(gpsOff);
+            for (let i = 0; i < gn && gpsOff + 2 + i * 12 + 12 <= v.byteLength; i++) {
+              const e = gpsOff + 2 + i * 12, tag = u16(e), type = u16(e + 2), cnt = u32(e + 4);
+              if (type === 2 && cnt <= 4) g[tag] = String.fromCharCode(v.getUint8(e + 8));           // N/S/E/W
+              else if (type === 5 && cnt === 3) { const p = t + u32(e + 8); if (p + 24 <= v.byteLength) g[tag] = rat(p) + rat(p + 8) / 60 + rat(p + 16) / 3600; }
+            }
+            if (typeof g[2] === 'number' && typeof g[4] === 'number') { out.lat = (g[1] === 'S' ? -1 : 1) * g[2]; out.lon = (g[3] === 'W' ? -1 : 1) * g[4]; }
+          }
           break;
         }
         if (marker === 0xDA) break;
@@ -333,7 +345,8 @@
       $('btn-undo').addEventListener('click', () => this.doUndo());
       $('ocr-banner-close').addEventListener('click', () => this.banner(''));
       $('btn-ocr').addEventListener('click', () => this.runOcr());
-      $('btn-hide-all').addEventListener('click', () => { const n = this.boxes.length; this.boxes.slice().forEach((b) => this.hideBox(b)); track('ocr_hide_all', { count: n }); });
+      $('btn-face').addEventListener('click', () => this.runFace());
+      $('btn-hide-all').addEventListener('click', () => { const n = this.boxes.length; this.boxes.slice().forEach((b) => this.hideBox(b)); track('hide_all', { count: n }); });
 
       const st = $('stage');
       st.addEventListener('pointerdown', (e) => this.pDown(e));
@@ -346,6 +359,7 @@
       $('sw-stamp').addEventListener('click', (e) => this.toggle(e.currentTarget));
       $('sw-tag').addEventListener('click', (e) => { this.toggle(e.currentTarget); $('tag-opts').hidden = e.currentTarget.getAttribute('aria-checked') !== 'true'; if (!$('tag-opts').hidden) $('tag-text').focus(); });
       $('sw-resize').addEventListener('click', (e) => this.toggle(e.currentTarget));
+      $('sw-story').addEventListener('click', (e) => this.toggle(e.currentTarget));
       document.querySelectorAll('[data-tagpos]').forEach((b) => b.addEventListener('click', () => {
         document.querySelectorAll('[data-tagpos]').forEach((x) => x.classList.toggle('is-on', x === b)); this.tagPos = b.dataset.tagpos;
       }));
@@ -374,11 +388,15 @@
         this.src = c; this.exif = exif;
         this.canvas.width = c.width; this.canvas.height = c.height; this.ctx.drawImage(c, 0, 0);
         const chips = [];
-        chips.push(exif.gps ? '<span class="info-chip info-chip--warn">위치 정보 있음 → 내보낼 때 지워요</span>' : '<span class="info-chip info-chip--ok">위치 정보 없음</span>');
+        if (exif.gps) {
+          const pos = exif.lat !== null ? ` · ${exif.lat >= 0 ? '북위' : '남위'} ${Math.abs(exif.lat).toFixed(4)}, ${exif.lon >= 0 ? '동경' : '서경'} ${Math.abs(exif.lon).toFixed(4)}` : '';
+          chips.push(`<span class="info-chip info-chip--warn">촬영 위치가 들어 있어요${pos} → 내보낼 때 지워요</span>`);
+          this.hint('이 사진엔 찍은 장소 좌표가 들어 있어요. 집·회사·아이 학교 근처라면 특히 조심하세요. Seal이 지워 드려요.');
+        } else chips.push('<span class="info-chip info-chip--ok">위치 정보 없음</span>');
         if (exif.exif) chips.push('<span class="info-chip">촬영 정보(기종·시각) → 지워요</span>');
         chips.push(`<span class="info-chip">${c.width}×${c.height}</span>`);
         $('exif-chips').innerHTML = chips.join('');
-        this.hint('번호판·문패가 보이면 "손으로 가리기"를 켜고 문질러 주세요');
+        if (!exif.gps) this.hint('번호판·문패가 보이면 "손으로 가리기"를 켜고 문질러 주세요');
         track('protect_start', { gps: exif.gps, mp: Math.round(c.width * c.height / 1e5) / 10 });
       } catch (err) {
         App.showToast(err.message || '사진을 열 수 없어요', { duration: 3500 }); show('view-home');
@@ -482,17 +500,58 @@
           const t = (w.text || '').trim(), digits = (t.match(/\d/g) || []).length;
           return (digits >= 2 && t.length >= 3 && w.confidence > 35) || (t.length >= 4 && w.confidence > 70 && /[A-Za-z]/.test(t));
         });
-        this.boxes = words.map((w, i) => { const b = w.bbox, pad = 6 * k; return { id: i, x: b.x0 * k - pad, y: b.y0 * k - pad, w: (b.x1 - b.x0) * k + 2 * pad, h: (b.y1 - b.y0) * k + 2 * pad, text: w.text }; });
+        const keep = this.boxes.filter((b) => b.kind === 'face'), base0 = keep.length ? Math.max(...keep.map((b) => b.id)) + 1 : 0;
+        this.boxes = keep.concat(words.map((w, i) => { const b = w.bbox, pad = 6 * k; return { id: base0 + i, kind: 'text', x: b.x0 * k - pad, y: b.y0 * k - pad, w: (b.x1 - b.x0) * k + 2 * pad, h: (b.y1 - b.y0) * k + 2 * pad, text: w.text }; }));
         this.renderBoxes();
         const note = $('ocr-note'); note.hidden = true;
-        this.banner(this.boxes.length ? `글자 ${this.boxes.length}곳 찾음 · 네모를 눌러 가리기` : '번호판·전화번호 같은 글자를 찾지 못함',
-          this.boxes.length ? '작거나 비스듬한 글자, 한글은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '작거나 비스듬한 글자, 한글은 놓칠 수 있어요. 보이는 게 있으면 손으로 가려 주세요.');
+        const nText = this.boxes.filter((b) => b.kind === 'text').length;
+        this.banner(nText ? `글자 ${nText}곳 찾음 · 네모를 눌러 가리기` : '번호판·전화번호 같은 글자를 찾지 못함',
+          nText ? '작거나 비스듬한 글자, 한글은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '작거나 비스듬한 글자, 한글은 놓칠 수 있어요. 보이는 게 있으면 손으로 가려 주세요.');
         $('btn-hide-all').hidden = this.boxes.length === 0;
         track('ocr_done', { found: this.boxes.length });
       } catch (err) {
         App.showToast(err.message || '글자 찾기에 실패했어요', { duration: 4000 }); track('ocr_fail');
       }
       $('stage-busy').hidden = true; btn.disabled = false; this.ocrBusy = false;
+    },
+    // ── 얼굴 자동 찾기 (picojs, 눌렀을 때만 불러옴. 정면 위주, ±20°·±40° 회전 보강)
+    async runFace() {
+      if (this.faceBusy) return;
+      this.faceBusy = true; const btn = $('btn-face'); btn.disabled = true;
+      $('stage-busy').hidden = false; $('stage-busy').textContent = '얼굴 찾기 준비 중… (처음엔 240KB를 내려받아요)';
+      track('face_start');
+      try {
+        const base = new URL(cfg.FACE_BASE || 'vendor/pico/', location.href).toString();
+        if (!window.pico) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = base + 'pico.js'; s.onload = res; s.onerror = () => rej(new Error('얼굴 찾기 파일을 내려받지 못했어요. 인터넷 연결을 확인해 주세요.')); document.head.appendChild(s); });
+        if (!this.faceClassify) { const r = await fetch(base + 'facefinder'); if (!r.ok) throw new Error('얼굴 찾기 모델을 내려받지 못했어요.'); this.faceClassify = pico.unpack_cascade(new Int8Array(await r.arrayBuffer())); }
+        $('stage-busy').textContent = '얼굴을 찾는 중…';
+        await new Promise((r) => setTimeout(r, 30));
+        const W0 = this.canvas.width, H0 = this.canvas.height, s = Math.min(1, 1000 / Math.max(W0, H0)), w = Math.round(W0 * s), h = Math.round(H0 * s);
+        const found = [];
+        for (const ang of [0, -20, 20, -40, 40]) {
+          const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+          g.translate(w / 2, h / 2); g.rotate(ang * Math.PI / 180); g.drawImage(this.canvas, -w / 2, -h / 2, w, h);
+          const d = g.getImageData(0, 0, w, h).data, gray = new Uint8Array(w * h);
+          for (let i = 0; i < w * h; i++) gray[i] = (2 * d[i * 4] + 7 * d[i * 4 + 1] + d[i * 4 + 2]) / 10;
+          let dets = pico.run_cascade({ pixels: gray, nrows: h, ncols: w, ldim: w }, this.faceClassify, { shiftfactor: 0.1, minsize: Math.round(Math.min(w, h) * 0.06), maxsize: 1000, scalefactor: 1.1 });
+          dets = pico.cluster_detections(dets, 0.2).filter((x) => x[3] > 10);
+          const ca = Math.cos(ang * Math.PI / 180), sa = Math.sin(ang * Math.PI / 180);
+          for (const x of dets) { const cy = x[0] - h / 2, cx = x[1] - w / 2; found.push({ x: (cx * ca + cy * sa + w / 2) / s, y: (-cx * sa + cy * ca + h / 2) / s, r: x[2] / s, q: x[3] }); }
+        }
+        // 같은 얼굴 겹침 제거(가까운 것은 점수 높은 것만)
+        found.sort((p, q) => q.q - p.q); const faces = [];
+        for (const f of found) { if (!faces.some((o) => Math.hypot(o.x - f.x, o.y - f.y) < Math.max(o.r, f.r) * 0.6)) faces.push(f); }
+        const nextId = this.boxes.length ? Math.max(...this.boxes.map((b) => b.id)) + 1 : 0;
+        this.boxes = this.boxes.filter((b) => b.kind !== 'face').concat(faces.map((f, i) => { const r = f.r * 0.62; return { id: nextId + i, kind: 'face', x: f.x - r, y: f.y - r * 1.1, w: r * 2, h: r * 2.3 }; }));
+        this.renderBoxes();
+        this.banner(faces.length ? `얼굴 ${faces.length}곳 찾음 · 네모를 눌러 가리기` : '얼굴을 찾지 못함',
+          faces.length ? '옆얼굴·가려진 얼굴·작은 얼굴은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '정면 얼굴 위주로 찾아요. 옆얼굴·가려진 얼굴은 놓칠 수 있으니 보이는 게 있으면 손으로 가려 주세요.');
+        $('btn-hide-all').hidden = this.boxes.length === 0;
+        track('face_done', { found: faces.length });
+      } catch (err) {
+        App.showToast(err.message || '얼굴 찾기에 실패했어요', { duration: 4000 }); track('face_fail');
+      }
+      $('stage-busy').hidden = true; btn.disabled = false; this.faceBusy = false;
     },
     renderBoxes() {
       const layer = $('box-layer'); layer.innerHTML = '';
@@ -501,9 +560,9 @@
       const W = this.canvas.width, H = this.canvas.height, s = Math.min(r.width / W, r.height / H);
       const ox = r.left - st.left + (r.width - W * s) / 2, oy = r.top - st.top + (r.height - H * s) / 2;
       this.boxes.forEach((b) => {
-        const el = document.createElement('button'); el.type = 'button'; el.className = 'stage__box';
+        const el = document.createElement('button'); el.type = 'button'; el.className = 'stage__box' + (b.kind === 'face' ? ' stage__box--face' : '');
         el.style.left = `${ox + b.x * s}px`; el.style.top = `${oy + b.y * s}px`; el.style.width = `${b.w * s}px`; el.style.height = `${b.h * s}px`;
-        el.setAttribute('aria-label', `찾은 글자 가리기`);
+        el.setAttribute('aria-label', b.kind === 'face' ? '찾은 얼굴 가리기' : '찾은 글자 가리기');
         el.addEventListener('click', (e) => { e.stopPropagation(); this.hideBox(b); track('ocr_hide_one'); });
         layer.appendChild(el);
       });
@@ -519,13 +578,14 @@
     // ── 도장 찍고 내보내기
     async finish() {
       if (!this.src) return;
-      const useStamp = this.on('sw-stamp'), useTag = this.on('sw-tag'), useResize = this.on('sw-resize');
+      const useStamp = this.on('sw-stamp'), useTag = this.on('sw-tag'), useResize = this.on('sw-resize'), useStory = this.on('sw-story');
       const tagText = ($('tag-text').value || '').trim();
       if (useTag && !tagText) { $('tag-text').focus(); App.showToast('이름표에 넣을 글자를 적어 주세요'); return; }
       $('btn-do-stamp').disabled = true; $('stage-busy').hidden = false; $('stage-busy').textContent = '도장을 심는 중…';
       try {
         let out = this.canvas;
-        if (useResize && Math.max(out.width, out.height) > 2048) out = thumbOf(out, 2048);
+        if (useStory) out = this.toStory(out);
+        else if (useResize && Math.max(out.width, out.height) > 2048) out = thumbOf(out, 2048);
         else { const c = document.createElement('canvas'); c.width = out.width; c.height = out.height; c.getContext('2d').drawImage(out, 0, 0); out = c; }
         if (useTag) this.drawTag(out, tagText, this.tagPos);
         if (useStamp) {
@@ -539,7 +599,7 @@
           `<li>${this.exif && this.exif.gps ? '위치 정보를 지웠어요' : '위치·촬영 정보 없이 내보내요'}</li>`,
           `<li class="${useStamp ? '' : 'is-off'}">${useStamp ? '보이지 않는 도장을 심었어요' : '보이지 않는 도장은 끔'}</li>`,
           `<li class="${useTag ? '' : 'is-off'}">${useTag ? `이름표 "${escapeHtml(tagText)}"를 넣었어요` : '보이는 이름표는 끔'}</li>`,
-          `<li>${out.width}×${out.height} · ${Math.round(this.outBlob.size / 1024)}KB</li>`,
+          `<li>${useStory ? '스토리 규격(1080×1920)으로 맞췄어요 · ' : ''}${out.width}×${out.height} · ${Math.round(this.outBlob.size / 1024)}KB</li>`,
         ];
         if (useTag) Tags.remember(tagText);
         if (useStamp) {
@@ -556,11 +616,21 @@
         }
         $('done-list').innerHTML = items.join('');
         this.goStep(3);
-        track('protect_done', { stamp: useStamp, tag: useTag, tagpos: useTag ? this.tagPos : 'none', resize: useResize, masked: this.undo.length > 0 });
+        track('protect_done', { stamp: useStamp, tag: useTag, tagpos: useTag ? this.tagPos : 'none', resize: useResize, story: useStory, masked: this.undo.length > 0 });
       } catch (err) {
         App.showToast('처리에 실패했어요: ' + (err.message || err), { duration: 4000 }); track('protect_fail');
       }
       $('stage-busy').hidden = true; $('btn-do-stamp').disabled = false;
+    },
+    // 스토리 규격: 1080×1920 세로 캔버스, 배경은 사진을 크게 늘려 흐리게, 그 위에 사진을 꽉 차게(contain)
+    toStory(src) {
+      const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+      const cover = Math.max(W / src.width, H / src.height), cw = src.width * cover, ch = src.height * cover;
+      const small = thumbOf(src, 64); g.filter = 'blur(28px)'; g.drawImage(small, (W - cw) / 2 - 40, (H - ch) / 2 - 40, cw + 80, ch + 80); g.filter = 'none';
+      g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(0, 0, W, H);
+      const fitS = Math.min(W / src.width, H / src.height), fw = src.width * fitS, fh = src.height * fitS;
+      g.drawImage(src, (W - fw) / 2, (H - fh) / 2, fw, fh);
+      return c;
     },
     drawTag(c, text, pos) {
       const g = c.getContext('2d'), W = c.width, H = c.height, base = Math.min(W, H);
