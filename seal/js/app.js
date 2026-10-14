@@ -2,7 +2,7 @@
 
 /**
  * Seal — 앱 동작
- *  홈 → [사진 지키기: 점검(가리기) → 도장 → 내보내기] / [내 사진인지 확인: 찾기 → 신고 카드]
+ *  홈 → [사진 지키기: 점검(가리기) → 도장 → 저장·공유] / [내 사진인지 확인: 찾기 → 신고 카드]
  *  원칙: 사진·열쇠·장부는 이 기기 안에만. 서버 없음, 로그인 없음.
  *  무거운 계산(도장 심기·찾기)은 js/seal-worker.js에서 돌린다.
  */
@@ -15,7 +15,10 @@
   const TH_SURE = 9, TH_WEAK = 7.5;         // 판정 기준
   const MAX_EDIT = 4096;                    // 편집 때 긴 변 상한(폰 메모리)
   const MAX_FIND = 1400;                    // 찾기 때 긴 변 상한(속도)
-  const MATCH_TH = 0.55;                    // 장부 대조(참고) 닮은 정도 기준
+  const MATCH_TH = 0.62;                    // 장부 대조(참고) 닮은 정도 기준(실제 폰 사진 기준 상향)
+  const LEDGER_MAX = 500;                   // 장부 기록(날짜·축소본) 최대 수
+  const LEDGER_MB_DEFAULT = 150;            // 완전한 사진을 보관하는 용량 한도(MB) 기본값
+  const ledgerLimit = () => { try { const v = +localStorage.getItem('seal:ledgerMB'); return [50, 150, 400].includes(v) ? v : LEDGER_MB_DEFAULT; } catch (_) { return LEDGER_MB_DEFAULT; } };
 
   // =================================================================
   // 공통 UI: 시트 · 토스트
@@ -117,6 +120,38 @@
       const db = await this.open(); if (!db) return;
       await new Promise((res) => { const t = db.transaction('ledger', 'readwrite'); t.objectStore('ledger').clear(); t.oncomplete = res; t.onerror = res; });
     },
+    async put(entry) {
+      const db = await this.open(); if (!db) return;
+      await new Promise((res) => { const t = db.transaction('ledger', 'readwrite'); t.objectStore('ledger').put(entry); t.oncomplete = res; t.onerror = res; });
+    },
+    /** 기록은 LEDGER_MAX까지, 완전한 사진은 용량 한도(MB)까지만. 한도를 넘으면 오래된 사진의 큰 파일만 지우고 축소본·날짜는 남긴다. 반환: 큰 파일을 지운 수 */
+    async prune(maxCount, maxMB) {
+      const db = await this.open(); if (!db) return 0;
+      let all = await this.all(), dropped = 0;
+      if (all.length > maxCount) {
+        const drop = all.slice(0, all.length - maxCount).map((e) => e.id);
+        await new Promise((res) => { const t = db.transaction('ledger', 'readwrite'); drop.forEach((id) => t.objectStore('ledger').delete(id)); t.oncomplete = res; t.onerror = res; });
+        all = all.slice(all.length - maxCount);
+      }
+      let bytes = all.reduce((s, e) => s + ((e.photo && e.photo.size) || 0), 0);
+      const limit = maxMB * 1048576, shrink = [];
+      for (const e of all) { if (bytes <= limit) break; if (e.photo) { bytes -= e.photo.size; e.photo = null; e.photoDropped = true; shrink.push(e); dropped++; } }
+      if (shrink.length) await new Promise((res) => { const t = db.transaction('ledger', 'readwrite'); shrink.forEach((e) => t.objectStore('ledger').put(e)); t.oncomplete = res; t.onerror = res; });
+      return dropped;
+    },
+    async dropPhotos() { // 큰 사진만 비우기(기록 유지)
+      const db = await this.open(); if (!db) return;
+      const all = (await this.all()).filter((e) => e.photo); all.forEach((e) => { e.photo = null; e.photoDropped = true; });
+      await new Promise((res) => { const t = db.transaction('ledger', 'readwrite'); all.forEach((e) => t.objectStore('ledger').put(e)); t.oncomplete = res; t.onerror = res; });
+    },
+    async usage() { const all = await this.all(); return { count: all.length, photos: all.filter((e) => e.photo).length, bytes: all.reduce((s, e) => s + ((e.photo && e.photo.size) || 0), 0) }; },
+  };
+  // 장부의 보관 사진(blob)을 그림으로
+  function blobToImage(blob) { return new Promise((res) => { if (!blob) return res(null); const url = URL.createObjectURL(blob), i = new Image(); i.onload = () => { URL.revokeObjectURL(url); res(i); }; i.onerror = () => { URL.revokeObjectURL(url); res(null); }; i.src = url; }); }
+  // 이름표 즐겨찾기(최근 5개, 이 폰에만)
+  const Tags = {
+    list() { try { const v = JSON.parse(localStorage.getItem('seal:tags') || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } },
+    remember(t) { const l = [t].concat(this.list().filter((x) => x !== t)).slice(0, 5); try { localStorage.setItem('seal:tags', JSON.stringify(l)); } catch (_) {} },
   };
 
   // 장부 대조용 작은 회색 그림 (긴 변 L). 캡처 안에 내 사진이 축소·잘림 상태로 들어 있어도 찾도록 템플릿 매칭을 쓴다.
@@ -150,8 +185,8 @@
     // 1차: 거칠게 전부 훑어 후보 3장 → 2차: 촘촘하게
     const S1 = grayPlane(suspect, 64), S2 = grayPlane(suspect, 128);
     const cand = all.slice(-60).filter((e) => e.gray).map((e) => ({ e, c: matchScore(S1, { w: e.gw, h: e.gh, g: e.gray }, 64, 8) })).sort((a, b) => b.c - a.c).slice(0, 3);
-    let best = null;
-    cand.forEach(({ e }) => { const c = matchScore(S2, { w: e.gw, h: e.gh, g: e.gray }, 128, 24); if (!best || c > best.c) best = { c, e }; });
+    const fine = cand.map(({ e }) => ({ e, c: matchScore(S2, { w: e.gw, h: e.gh, g: e.gray }, 128, 24) })).sort((a, b) => b.c - a.c);
+    const best = fine[0] || null; if (best) best.margin = fine.length > 1 ? best.c - fine[1].c : 1;
     return best;
   }
 
@@ -286,6 +321,7 @@
         document.querySelectorAll('#brush-row [data-size]').forEach((x) => x.classList.toggle('is-on', x === b)); this.brushSize = b.dataset.size;
       }));
       $('btn-undo').addEventListener('click', () => this.doUndo());
+      $('ocr-banner-close').addEventListener('click', () => this.banner(''));
       $('btn-ocr').addEventListener('click', () => this.runOcr());
       $('btn-hide-all').addEventListener('click', () => { const n = this.boxes.length; this.boxes.slice().forEach((b) => this.hideBox(b)); track('ocr_hide_all', { count: n }); });
 
@@ -307,13 +343,22 @@
       $('btn-save').addEventListener('click', () => this.save());
       $('btn-share-photo').addEventListener('click', () => this.sharePhoto());
     },
-    toggle(btn) { btn.setAttribute('aria-checked', btn.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); },
+    toggle(btn) { btn.setAttribute('aria-checked', btn.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); if (btn.id === 'sw-stamp') this.renderStampNote(); },
+    renderStampNote() {
+      const on = this.on('sw-stamp'), n = $('stamp-note'); n.hidden = !on;
+      n.textContent = `열쇠 ${Key.code().slice(0, 4)}****로 사진 전체에 숨겨요. 눈에는 안 보이고, 잘라 가거나 캡처해도 남아요. 같은 열쇠로만 찾을 수 있으니 백업 코드를 적어 두세요.`;
+    },
+    renderTagPresets() {
+      const box = $('tag-presets'), list = Tags.list(); box.innerHTML = ''; box.hidden = list.length === 0;
+      list.forEach((t) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tag-chip' + ($('tag-text').value === t ? ' is-on' : ''); b.textContent = t;
+        b.addEventListener('click', () => { $('tag-text').value = t; box.querySelectorAll('.tag-chip').forEach((x) => x.classList.toggle('is-on', x === b)); track('tag_preset_pick'); }); box.appendChild(b); });
+    },
     on(id) { return $(id).getAttribute('aria-checked') === 'true'; },
 
     async start(file) {
       show('view-protect'); this.goStep(1);
       $('stage-busy').hidden = false; $('stage-busy').textContent = '사진을 여는 중…';
-      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
+      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); this.banner(''); $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
       try {
         const [c, exif] = await Promise.all([loadImage(file, MAX_EDIT), scanExif(file)]);
         this.src = c; this.exif = exif;
@@ -331,14 +376,15 @@
       $('stage-busy').hidden = true;
     },
     leave() { show('view-home'); this.src = null; this.out = null; this.outBlob = null; this.canvas.width = this.canvas.height = 1; },
+    banner(title, sub) { const b = $('ocr-banner'); $('ocr-banner-title').textContent = title; $('ocr-banner-sub').textContent = sub || ''; b.hidden = !title; },
     hint(text) { const h = $('stage-hint'); h.textContent = text || ''; h.hidden = !text; clearTimeout(this.hintTimer); if (text) this.hintTimer = setTimeout(() => { h.hidden = true; }, 3500); },
 
     goStep(n) {
       this.step = n;
       document.querySelectorAll('.step').forEach((s) => { const k = +s.dataset.step; s.classList.toggle('is-on', k === n); s.classList.toggle('is-done', k < n); });
       $('panel-check').hidden = n !== 1; $('panel-stamp').hidden = n !== 2; $('panel-export').hidden = n !== 3;
-      if (n !== 1) { this.setBrush(false); this.clearBoxes(); }
-      if (n === 2) track('protect_step_stamp');
+      if (n !== 1) { this.setBrush(false); this.clearBoxes(); this.banner(''); }
+      if (n === 2) { track('protect_step_stamp'); this.renderStampNote(); this.renderTagPresets(); }
       window.scrollTo({ top: 0 });
     },
 
@@ -428,10 +474,9 @@
         });
         this.boxes = words.map((w, i) => { const b = w.bbox, pad = 6 * k; return { id: i, x: b.x0 * k - pad, y: b.y0 * k - pad, w: (b.x1 - b.x0) * k + 2 * pad, h: (b.y1 - b.y0) * k + 2 * pad, text: w.text }; });
         this.renderBoxes();
-        const note = $('ocr-note'); note.hidden = false;
-        note.textContent = this.boxes.length
-          ? `숫자·영문이 들어간 글자 ${this.boxes.length}곳을 찾았어요. 네모를 누르면 가려져요. 작거나 비스듬한 글자, 한글은 놓칠 수 있으니 눈으로도 확인해 주세요.`
-          : '번호판·전화번호처럼 생긴 글자를 찾지 못했어요. 작거나 비스듬한 글자, 한글은 놓칠 수 있어요. 보이는 게 있으면 손으로 가려 주세요.';
+        const note = $('ocr-note'); note.hidden = true;
+        this.banner(this.boxes.length ? `글자 ${this.boxes.length}곳 찾음 · 네모를 눌러 가리기` : '번호판·전화번호 같은 글자를 찾지 못함',
+          this.boxes.length ? '작거나 비스듬한 글자, 한글은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '작거나 비스듬한 글자, 한글은 놓칠 수 있어요. 보이는 게 있으면 손으로 가려 주세요.');
         $('btn-hide-all').hidden = this.boxes.length === 0;
         track('ocr_done', { found: this.boxes.length });
       } catch (err) {
@@ -486,11 +531,17 @@
           `<li class="${useTag ? '' : 'is-off'}">${useTag ? `이름표 "${escapeHtml(tagText)}"를 넣었어요` : '보이는 이름표는 끔'}</li>`,
           `<li>${out.width}×${out.height} · ${Math.round(this.outBlob.size / 1024)}KB</li>`,
         ];
+        if (useTag) Tags.remember(tagText);
         if (useStamp) {
-          const th = thumbOf(out, 160);
+          const th = thumbOf(out, 320);
           const gp = grayPlane(out, 48);
-          await Ledger.add({ date: Date.now(), w: out.width, h: out.height, thumb: th.toDataURL('image/jpeg', 0.8), gw: gp.w, gh: gp.h, gray: gp.g, keyCode: Key.code() });
-          items.push('<li>도장 장부에 날짜와 작은 축소본을 남겼어요</li>');
+          const entry = { date: Date.now(), w: out.width, h: out.height, thumb: th.toDataURL('image/jpeg', 0.8), photo: this.outBlob, gw: gp.w, gh: gp.h, gray: gp.g, keyCode: Key.code(), tag: useTag ? { text: tagText, pos: this.tagPos } : null };
+          let note = '도장 장부에 사진과 날짜를 보관했어요 (이 폰에만)';
+          try { await Ledger.add(entry); }
+          catch (_) { entry.photo = null; entry.photoDropped = true; try { await Ledger.add(entry); } catch (_) {} note = '폰 저장 공간이 부족해 장부에는 축소본과 날짜만 남겼어요'; }
+          const dropped = await Ledger.prune(LEDGER_MAX, ledgerLimit());
+          if (dropped) note += ` · 한도(${ledgerLimit()}MB)를 넘어 오래된 사진 ${dropped}장은 축소본만 남겼어요`;
+          items.push(`<li>${note}</li>`);
         }
         $('done-list').innerHTML = items.join('');
         this.goStep(3);
@@ -543,6 +594,9 @@
       $('file-verify').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) this.run(f); });
       $('btn-back-verify').addEventListener('click', () => show('view-home'));
       $('btn-make-card').addEventListener('click', () => this.makeCard());
+      $('btn-pick-ledger').addEventListener('click', () => this.openPicker());
+      $('btn-pick-gallery').addEventListener('click', () => $('file-mine').click());
+      $('file-mine').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) this.takeMine(f); });
       $('btn-card-save').addEventListener('click', async () => { if (this.cardBlob) { await saveBlob(this.cardBlob, `seal-card-${stamp()}.jpg`); track('card_save'); App.showToast('신고 카드를 저장했어요.'); } });
       $('btn-card-share').addEventListener('click', async () => { if (!this.cardBlob) return; const r = await shareBlob(this.cardBlob, `seal-card-${stamp()}.jpg`, 'Seal 확인 결과'); track('card_share', { outcome: r }); if (r === 'unsupported') { await saveBlob(this.cardBlob, `seal-card-${stamp()}.jpg`); App.showToast('이 브라우저는 공유가 안 돼서 저장했어요.'); } });
     },
@@ -587,59 +641,115 @@
       this.matched = null; $('match').hidden = true;
       if (z >= TH_WEAK) {
         const best = await matchLedger(this.suspect); this.lastMatch = best;
-        if (best && best.c > MATCH_TH) {
-          this.matched = best.e; $('match').hidden = false; $('match-img').src = best.e.thumb;
-          $('match-sub').textContent = `${fmtDate(new Date(best.e.date))}에 도장을 찍은 사진과 비슷해요 (참고용)`;
-        }
+        if (best && best.c > MATCH_TH && best.margin > 0.04) this.setMatched(best.e, '비슷해 보여요 (자동, 참고용)');
       }
+      $('btn-pick-ledger').hidden = z < TH_WEAK; $('gallery-row').hidden = z < TH_WEAK || !!(this.matched && this.matched.photo); $('gallery-msg').hidden = true;
       $('btn-make-card').hidden = z < TH_WEAK;
       $('verify-run').hidden = true; $('verify-result').hidden = false; window.scrollTo({ top: 0 });
     },
 
+    // 장부에 큰 사진이 없을 때: 갤러리의 도장 찍은 사진을 넣으면 같은 열쇠 도장이 있는지 확인한 뒤 카드에 쓴다
+    async takeMine(file) {
+      $('gallery-msg').hidden = false; $('gallery-msg').textContent = '이 사진에 내 도장이 있는지 확인하는 중…';
+      try {
+        const c = await loadImage(file, MAX_FIND);
+        const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data, pl = SealCore.planesOf(d, c.width, c.height);
+        const r = await Worker_.run({ type: 'detect', planes: pl.map((p) => p.buffer), w: c.width, h: c.height, keys: [Key.value], opt: {} }, pl.map((p) => p.buffer), (p) => { $('gallery-msg').textContent = `이 사진에 내 도장이 있는지 확인하는 중… ${Math.round(p * 100)}%`; });
+        if (r.z[0] < TH_WEAK) { $('gallery-msg').textContent = `이 사진에서는 내 도장을 찾지 못했어요(점수 ${r.z[0].toFixed(1)}). Seal로 도장 찍어 저장한 사진을 골라 주세요.`; track('gallery_mine_reject'); return; }
+        const full = await loadImage(file, MAX_EDIT), blob = await toBlob(full, 0.9), th = thumbOf(full, 320);
+        const e = Object.assign({}, this.matched || {}, { photo: blob, thumb: th.toDataURL('image/jpeg', 0.8), fromGallery: true, galleryScore: r.z[0] });
+        if (!e.date) e.date = file.lastModified || Date.now();
+        if (e.id) { try { await Ledger.put(e); } catch (_) {} } // 장부 기록에 큰 사진을 다시 채워 넣음
+        this.setMatched(e, 'gallery'); $('gallery-msg').textContent = `내 도장 확인(점수 ${r.z[0].toFixed(1)}). 이 사진을 카드에 써요.`; track('gallery_mine_ok');
+      } catch (err) { $('gallery-msg').textContent = '사진을 열지 못했어요: ' + (err.message || err); }
+    },
+    setMatched(e, how) {
+      this.matched = e; $('match').hidden = !e; $('gallery-row').hidden = !!(e && e.photo);
+      if (!e) return;
+      $('match-img').src = e.thumb; $('match-title').textContent = how === 'manual' ? '내가 고른 사진' : how === 'gallery' ? '갤러리에서 가져온 내 사진' : '이 사진 같아요';
+      $('match-sub').textContent = `${fmtDate(new Date(e.date))}에 도장을 찍은 사진${how === 'manual' || how === 'gallery' ? '' : ' · ' + how}${e.photo ? '' : ' · 큰 사진은 장부에 없음(축소본만)'}`;
+      if (this.cardBlob) { $('card-wrap').hidden = true; this.cardBlob = null; }
+    },
+    async openPicker() {
+      const all = (await Ledger.all()).reverse(), grid = $('ledger-grid'); grid.innerHTML = '';
+      if (!all.length) { App.showToast('장부에 보관된 사진이 없어요. 이 폰에서 도장을 찍은 사진만 나와요.', { duration: 3500 }); return; }
+      all.forEach((e) => { const b = document.createElement('button'); b.type = 'button'; b.className = this.matched && this.matched.id === e.id ? 'is-on' : '';
+        b.innerHTML = `<div class="ledger-grid__img"><img alt=""></div><small>${fmtDate(new Date(e.date))}</small>`; b.querySelector('img').src = e.thumb;
+        b.addEventListener('click', () => { this.setMatched(e, 'manual'); App.closeSheet($('ledger-sheet')); track('ledger_pick_manual'); }); grid.appendChild(b); });
+      track('ledger_pick_open'); App.openSheet($('ledger-sheet'));
+    },
+
     // 신고 카드: 캡처 · 내 사진(장부) · 드러낸 도장 · 점수 · 날짜
     async makeCard() {
-      const { z, p, flipped } = this.result, c = $('card-canvas'), g = c.getContext('2d'), W = 1080, H = 1350;
-      const F = '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif';
+      const { z, p, flipped } = this.result, c = $('card-canvas'), g = c.getContext('2d'), W = 1080, H = 1920, M = 48, IW = W - 2 * M;
+      const F = '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif', ROSE = '#B04A62', INK = '#2B2628', MUTED = '#7D7175', TINT = '#FBE9E8';
+      const fit = (img, x, y, w, h) => { const s = Math.min(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s, dx = x + (w - dw) / 2, dy = y + (h - dh) / 2; g.drawImage(img, dx, dy, dw, dh); return { x: dx, y: dy, w: dw, h: dh, s }; };
+      const label = (t, x, y) => { g.fillStyle = INK; g.font = `800 30px ${F}`; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillText(t, x, y); };
+      const sub = (t, x, y, size = 24, color = MUTED) => { g.fillStyle = color; g.font = `500 ${size}px ${F}`; g.fillText(t, x, y); };
       g.fillStyle = '#FDF8F3'; g.fillRect(0, 0, W, H);
-      g.fillStyle = '#B04A62'; g.fillRect(0, 0, W, 150);
-      g.fillStyle = '#FFFFFF'; g.font = `800 44px ${F}`; g.textBaseline = 'middle'; g.fillText('Seal 확인 결과', 48, 62);
-      g.fillStyle = 'rgba(255,255,255,0.8)'; g.font = `500 26px ${F}`; g.fillText(`확인 시각 ${fmtDate(new Date())}  ·  열쇠 ${Key.code().slice(0, 4)}****`, 48, 110);
-      // 사진 두 장
-      const fit = (img, x, y, w, h) => { const s = Math.min(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s; g.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); };
-      const colW = 492, top = 220, boxH = 520;
-      g.fillStyle = '#2B2628'; g.font = `800 28px ${F}`; g.textBaseline = 'alphabetic';
-      g.fillText('의심 계정 캡처', 48, top - 18); g.fillText('내 사진 (도장 장부)', 48 + colW + 48, top - 18);
-      g.fillStyle = '#FBE9E8'; g.fillRect(48, top, colW, boxH); g.fillRect(48 + colW + 48, top, colW, boxH);
-      fit(this.suspect, 48, top, colW, boxH);
+      // 머리
+      g.fillStyle = ROSE; g.fillRect(0, 0, W, 170);
+      g.fillStyle = '#fff'; g.font = `800 50px ${F}`; g.textBaseline = 'middle'; g.fillText('Seal 확인 결과', M, 70);
+      g.fillStyle = 'rgba(255,255,255,0.85)'; g.font = `500 26px ${F}`; g.fillText(`확인 시각 ${fmtDate(new Date())}  ·  열쇠 ${Key.code().slice(0, 4)}****  ·  pebbleitgo.com/seal`, M, 124);
+      // 판정 띠
+      g.fillStyle = z >= TH_SURE ? ROSE : '#8A6A1F'; g.font = `800 46px ${F}`; g.textBaseline = 'alphabetic';
+      g.fillText(z >= TH_SURE ? `일치 점수 ${z.toFixed(1)} — 내 도장이 있음` : `일치 점수 ${z.toFixed(1)} — 도장이 약하게 보임`, M, 250);
+      sub(`점수 9 이상 확실 · 7.5~9 약함 · 도장 없는 사진 5,670회 대조에서 7.5 초과 0건${flipped ? ' · 좌우 반전 상태로 발견' : ''}`, M, 292, 22);
+      // 1행: 캡처 / 내 사진
+      const colW = (IW - 32) / 2, top = 360, boxH = 640;
+      label('① 의심 계정 캡처', M, top - 16); label('② 내 사진 (도장 장부)', M + colW + 32, top - 16);
+      g.fillStyle = TINT; g.fillRect(M, top, colW, boxH); g.fillRect(M + colW + 32, top, colW, boxH);
+      fit(this.suspect, M, top, colW, boxH);
+      let mine = null;
       if (this.matched) {
-        const im = await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = this.matched.thumb; });
-        if (im) fit(im, 48 + colW + 48, top, colW, boxH);
-        g.fillStyle = '#7D7175'; g.font = `500 24px ${F}`; g.fillText(`도장 찍은 날짜 ${fmtDate(new Date(this.matched.date))}`, 48 + colW + 48, top + boxH + 36);
+        mine = (this.matched.photo && await blobToImage(this.matched.photo)) || await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = this.matched.thumb; });
+        if (mine) {
+          const r = fit(mine, M + colW + 32, top, colW, boxH);
+          if (this.matched.tag) { // 이름표 위치를 색 테두리로 표시
+            const t = this.matched.tag, base = Math.min(mine.width, mine.height);
+            let bx, by, bw, bh;
+            if (t.pos === 'corner') { const fs = Math.max(14, Math.round(base * 0.032)); bw = Math.min(mine.width * 0.6, fs * (t.text.length * 0.75 + 2)); bh = fs * 1.8; bx = mine.width - fs * 0.9 - bw; by = mine.height - fs * 0.7 - bh; }
+            else { const fs = Math.max(20, Math.round(base * 0.075)); bw = Math.min(mine.width * 0.9, fs * (t.text.length * 0.75 + 1)); bh = fs * 2.2; bx = mine.width / 2 - bw / 2; by = mine.height / 2 - bh / 2; }
+            g.strokeStyle = '#E0345B'; g.lineWidth = 6; g.strokeRect(r.x + bx * r.s, r.y + by * r.s, bw * r.s, bh * r.s);
+            g.fillStyle = '#E0345B'; g.font = `800 22px ${F}`; g.fillText(`이름표 "${t.text}"`, r.x + bx * r.s, r.y + by * r.s - 8);
+          }
+        }
+        sub(`도장 찍은 날짜 ${fmtDate(new Date(this.matched.date))}${this.matched.fromGallery ? ` · 갤러리 사진, 도장 확인 점수 ${this.matched.galleryScore.toFixed(1)}` : this.matched.photo ? '' : ' · 축소본'}`, M + colW + 32, top + boxH + 34, 22, INK);
       } else {
-        g.fillStyle = '#7D7175'; g.font = `500 26px ${F}`; g.textAlign = 'center';
-        g.fillText('장부에 같은 사진이 없어요', 48 + colW + 48 + colW / 2, top + boxH / 2 - 10); g.fillText('(다른 폰에서 찍었거나 장부를 비움)', 48 + colW + 48 + colW / 2, top + boxH / 2 + 30); g.textAlign = 'left';
+        g.fillStyle = MUTED; g.font = `500 26px ${F}`; g.textAlign = 'center';
+        g.fillText('장부에 같은 사진이 없어요', M + colW + 32 + colW / 2, top + boxH / 2 - 12); g.fillText('(다른 폰에서 찍었거나 장부를 비움)', M + colW + 32 + colW / 2, top + boxH / 2 + 28); g.textAlign = 'left';
       }
-      // 드러낸 도장: 캡처 위에 찾은 크기로 열쇠 무늬를 진하게 겹침
-      const ry = top + boxH + 70, rh = 330;
-      g.fillStyle = '#2B2628'; g.font = `800 28px ${F}`; g.fillText('캡처 속 숨은 도장을 드러낸 모습', 48, ry - 18);
-      const rev = document.createElement('canvas'); rev.width = this.suspect.width; rev.height = this.suspect.height; const rg = rev.getContext('2d'); rg.drawImage(this.suspect, 0, 0);
+      // 2행: 드러낸 도장 (로즈색으로 진하게) + 열쇠 무늬 기준
+      const ry = top + boxH + 100, rh = 560, revW = IW - 272;
+      label('③ 캡처 속 숨은 도장을 드러낸 모습', M, ry - 16);
       const tsize = Math.max(16, Math.round(p)), tile = SealCore.tilePreview(Key.value, 64), tc = document.createElement('canvas'); tc.width = tc.height = 64;
       const tid = tc.getContext('2d').createImageData(64, 64);
-      for (let i = 0; i < 4096; i++) { const v = Math.max(0, Math.min(255, 128 + tile[i] * 70)); tid.data[i * 4] = v; tid.data[i * 4 + 1] = v; tid.data[i * 4 + 2] = v; tid.data[i * 4 + 3] = 255; }
+      for (let i = 0; i < 4096; i++) { const v = Math.max(0, Math.min(1, 0.5 + tile[i] * 0.45)); tid.data[i * 4] = 224; tid.data[i * 4 + 1] = 52; tid.data[i * 4 + 2] = 91; tid.data[i * 4 + 3] = Math.round(v * v * 235); }
       tc.getContext('2d').putImageData(tid, 0, 0);
-      rg.globalCompositeOperation = 'overlay'; rg.globalAlpha = 0.85;
+      const rev = document.createElement('canvas'); rev.width = this.suspect.width; rev.height = this.suspect.height; const rg = rev.getContext('2d'); rg.drawImage(this.suspect, 0, 0);
+      rg.globalAlpha = 0.35; rg.fillStyle = '#fff'; rg.fillRect(0, 0, rev.width, rev.height); rg.globalAlpha = 1;
       for (let y = 0; y < rev.height; y += tsize) for (let x = 0; x < rev.width; x += tsize) rg.drawImage(tc, x, y, tsize, tsize);
-      rg.globalCompositeOperation = 'source-over'; rg.globalAlpha = 1;
-      g.fillStyle = '#FBE9E8'; g.fillRect(48, ry, W - 96, rh); fit(rev, 48, ry, W - 96, rh);
-      // 점수·판정
-      const sy = ry + rh + 60;
-      g.fillStyle = z >= TH_SURE ? '#B04A62' : '#8A6A1F'; g.font = `800 40px ${F}`;
-      g.fillText(z >= TH_SURE ? `일치 점수 ${z.toFixed(1)} — 내 도장이 있음` : `일치 점수 ${z.toFixed(1)} — 도장이 약하게 보임`, 48, sy);
-      g.fillStyle = '#7D7175'; g.font = `500 24px ${F}`;
-      g.fillText(`점수 9 이상 확실 · 7.5~9 약함 · 도장 없는 사진 5,670회 대조에서 7.5 초과 0건${flipped ? ' · 좌우 반전 상태로 발견' : ''}`, 48, sy + 44);
-      g.fillText('이 카드는 신고할 때 붙이는 참고 자료이며 법적 증거가 아닙니다. pebbleitgo.com/seal', 48, sy + 84);
+      g.fillStyle = TINT; g.fillRect(M, ry, revW, rh); const rr = fit(rev, M, ry, revW, rh);
+      // 확대 한 칸 + 열쇠 무늬
+      const sx = M + revW + 32, sw = IW - revW - 32;
+      g.fillStyle = TINT; g.fillRect(sx, ry, sw, sw);
+      const cx = Math.floor(rev.width / 2 / tsize) * tsize, cy = Math.floor(rev.height / 2 / tsize) * tsize;
+      g.drawImage(rev, cx, cy, tsize * 2, tsize * 2, sx, ry, sw, sw); g.strokeStyle = ROSE; g.lineWidth = 3; g.strokeRect(sx, ry, sw, sw);
+      sub('가운데 확대 (도장 2×2칸)', sx, ry + sw + 28, 20);
+      const ky = ry + sw + 50; g.fillStyle = '#fff'; g.fillRect(sx, ky, sw, sw);
+      const kc = document.createElement('canvas'); kc.width = kc.height = 64; const kid = kc.getContext('2d').createImageData(64, 64);
+      for (let i = 0; i < 4096; i++) { const v = Math.max(0, Math.min(255, 128 + tile[i] * 70)); kid.data[i * 4] = v; kid.data[i * 4 + 1] = v; kid.data[i * 4 + 2] = v; kid.data[i * 4 + 3] = 255; }
+      kc.getContext('2d').putImageData(kid, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(kc, 0, 0, 64, 64, sx, ky, sw, sw); g.strokeRect(sx, ky, sw, sw);
+      sub('이 열쇠의 도장 무늬 (기준)', sx, ky + sw + 28, 20);
+      // 확대 영역 표시
+      g.strokeStyle = ROSE; g.lineWidth = 4; g.strokeRect(rr.x + cx * rr.s, rr.y + cy * rr.s, tsize * 2 * rr.s, tsize * 2 * rr.s);
+      sub(`도장 한 칸 약 ${tsize}px · 사진 전체에 바둑판처럼 반복 · 색은 Seal이 보이게 입힌 것`, M, ry + rh + 34, 22);
+      // 바닥
+      g.fillStyle = TINT; g.fillRect(0, H - 150, W, 150);
+      sub('이 카드는 신고할 때 붙이는 참고 자료이며 법적 증거가 아닙니다.', M, H - 92, 24, INK);
+      sub('도장은 사진 자체에는 보이지 않으며, 같은 열쇠로만 찾을 수 있습니다. Seal · pebbleitgo.com/seal', M, H - 54, 22);
       $('card-wrap').hidden = false; this.cardBlob = await toBlob(c, 0.9);
-      track('card_made', { matched: !!this.matched }); c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      track('card_made', { matched: !!this.matched, tag: !!(this.matched && this.matched.tag) }); c.scrollIntoView({ behavior: 'smooth', block: 'center' });
     },
   };
 
@@ -648,8 +758,11 @@
   // =================================================================
   function renderKey() { $('key-code').textContent = Key.code(); }
   async function renderLedgerInfo() {
-    const all = await Ledger.all();
-    $('ledger-info').textContent = all.length ? `도장 찍은 사진 ${all.length}장의 축소본과 날짜가 이 폰에 있어요. 확인할 때 어느 사진인지 맞추는 데 써요.` : '아직 도장 찍은 사진이 없어요. 도장을 찍으면 작은 축소본과 날짜를 이 폰에 남겨요.';
+    const u = await Ledger.usage(), lim = ledgerLimit();
+    document.querySelectorAll('[data-ledger-mb]').forEach((b) => b.classList.toggle('is-on', +b.dataset.ledgerMb === lim));
+    $('ledger-info').textContent = u.count
+      ? `기록 ${u.count}장 · 그중 완전한 사진 ${u.photos}장(${(u.bytes / 1048576).toFixed(1)}MB / 한도 ${lim}MB). 한도를 넘으면 오래된 사진의 큰 파일만 지우고 날짜·축소본은 남겨요.`
+      : `아직 도장 찍은 사진이 없어요. 도장을 찍으면 사진과 날짜를 이 폰에 보관해요(완전한 사진은 ${lim}MB까지, 기록은 ${LEDGER_MAX}장까지).`;
   }
   function initHeader() {
     $('btn-home').addEventListener('click', () => { if (!$('view-home').hidden) return; if (Protect.src) Protect.leave(); else show('view-home'); });
@@ -663,6 +776,8 @@
       else $('key-msg').textContent = '백업 코드는 0~9, a~f로 된 8자리예요. 다시 확인해 주세요.';
     });
     $('btn-ledger-clear').addEventListener('click', async () => { await Ledger.clear(); await renderLedgerInfo(); App.showToast('장부를 비웠어요.'); track('ledger_clear'); });
+    $('btn-ledger-drop').addEventListener('click', async () => { await Ledger.dropPhotos(); await renderLedgerInfo(); App.showToast('큰 사진만 비웠어요. 날짜와 축소본은 남아 있어요.'); track('ledger_drop_photos'); });
+    document.querySelectorAll('[data-ledger-mb]').forEach((b) => b.addEventListener('click', async () => { try { localStorage.setItem('seal:ledgerMB', b.dataset.ledgerMb); } catch (_) {} const d = await Ledger.prune(LEDGER_MAX, ledgerLimit()); await renderLedgerInfo(); if (d) App.showToast(`한도에 맞춰 오래된 사진 ${d}장은 축소본만 남겼어요.`); track('ledger_limit_set', { mb: +b.dataset.ledgerMb }); }));
   }
 
   // 홈: 도장 전후 비교 슬라이더

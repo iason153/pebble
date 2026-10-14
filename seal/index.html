@@ -55,6 +55,7 @@
   <!-- 숨은 파일 입력 -->
   <input type="file" id="file-protect" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true">
   <input type="file" id="file-verify" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true">
+  <input type="file" id="file-mine" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true">
 
   <!-- ══ 홈 ══════════════════════════════════════════ -->
   <section id="view-home" class="view" aria-label="처음">
@@ -130,13 +131,14 @@
       <div class="steps" aria-label="단계">
         <span class="step is-on" data-step="1"><i></i>점검</span>
         <span class="step" data-step="2"><i></i>도장</span>
-        <span class="step" data-step="3"><i></i>내보내기</span>
+        <span class="step" data-step="3"><i></i>저장·공유</span>
       </div>
     </div>
 
     <div id="stage" class="stage">
       <canvas id="canvas"></canvas>
       <div id="box-layer" class="stage__layer"></div>
+      <div id="ocr-banner" class="stage__banner" hidden><b id="ocr-banner-title"></b><small id="ocr-banner-sub"></small><button id="ocr-banner-close" type="button" aria-label="닫기">✕</button></div>
       <p id="stage-hint" class="stage__hint" hidden></p>
       <div id="stage-busy" class="stage__busy" hidden>처리 중…</div>
     </div>
@@ -173,11 +175,13 @@
         <div class="opt__text"><b>보이지 않는 도장</b><small>사진 전체에 숨겨요. 잘라 가거나 캡처해도 남아요.</small></div>
         <button id="sw-stamp" class="switch" type="button" role="switch" aria-checked="true" aria-label="보이지 않는 도장"></button>
       </div>
+      <p id="stamp-note" class="opt__note"></p>
       <div class="opt">
         <div class="opt__text"><b>보이는 이름표</b><small>구석에 작은 글자를 넣어요. 도용 계정에 올라가도 그대로 보여요.</small></div>
         <button id="sw-tag" class="switch" type="button" role="switch" aria-checked="false" aria-label="보이는 이름표"></button>
       </div>
       <div id="tag-opts" class="opt opt--stack" hidden>
+        <div id="tag-presets" class="chip-row" hidden></div>
         <input id="tag-text" class="text-input" type="text" maxlength="24" placeholder="예: @my_account" autocomplete="off">
         <div class="seg" role="group" aria-label="이름표 위치"><button type="button" data-tagpos="corner" class="is-on">구석에 작게</button><button type="button" data-tagpos="center">가운데 옅게</button></div>
       </div>
@@ -185,15 +189,15 @@
         <div class="opt__text"><b>크기 줄이기</b><small>긴 변 2048px로 줄여 가볍게 보내요.</small></div>
         <button id="sw-resize" class="switch" type="button" role="switch" aria-checked="false" aria-label="크기 줄이기"></button>
       </div>
-      <div class="actions"><button id="btn-back-check" class="btn-ghost" type="button">이전</button><button id="btn-do-stamp" class="btn-main" type="button">도장 찍고 내보내기</button></div>
+      <div class="actions"><button id="btn-back-check" class="btn-ghost" type="button">이전</button><button id="btn-do-stamp" class="btn-main" type="button">도장 찍기</button></div>
     </div>
 
     <!-- 3 내보내기 -->
     <div id="panel-export" class="panel" hidden>
-      <h2 class="panel__title">3. 준비됐어요</h2>
+      <h2 class="panel__title">3. 저장하거나 공유하세요</h2>
       <ul id="done-list" class="done-list"></ul>
       <div class="actions"><button id="btn-save" class="btn-ghost btn-ghost--brass" type="button">저장</button><button id="btn-share-photo" class="btn-main" type="button">공유하기</button></div>
-      <p class="panel__desc">갤러리에 저장한 뒤 올려도 되고, 공유하기로 인스타·카톡에 바로 보내도 돼요.</p>
+      <p class="panel__desc">아직 폰에 저장되지 않았어요. <b>저장</b>을 누르면 갤러리에, <b>공유하기</b>를 누르면 인스타·카톡으로 바로 보내요.</p>
       <div class="actions"><button id="btn-restart" class="btn-ghost" type="button">다른 사진 하기</button></div>
     </div>
   </section>
@@ -224,9 +228,16 @@
       </div>
       <div class="stats"><div>일치 점수<b id="stat-score"></b></div><div>걸린 시간<b id="stat-time"></b></div><div>도장 한 칸<b id="stat-tile"></b></div></div>
       <div id="match" class="match" hidden><img id="match-img" alt=""><div class="match__text"><b id="match-title">이 사진 같아요</b><span id="match-sub"></span></div></div>
+      <div class="row-links"><button id="btn-pick-ledger" class="link-btn" type="button">장부에서 직접 고르기</button></div>
+      <div id="gallery-row" class="gallery-row" hidden>
+        <p class="panel__desc">장부에 완전한 사진이 없어요. 갤러리에 저장해 둔 <b>도장 찍은 사진</b>을 넣으면 도장을 확인한 뒤 카드에 써요.</p>
+        <div class="actions"><button id="btn-pick-gallery" class="btn-ghost btn-ghost--brass" type="button">갤러리에서 내 사진 고르기</button></div>
+        <p id="gallery-msg" class="panel__desc" hidden></p>
+      </div>
       <div class="actions"><button id="btn-make-card" class="btn-main" type="button">신고 카드 만들기</button></div>
       <div id="card-wrap" hidden>
-        <canvas id="card-canvas" class="card-preview" width="1080" height="1350"></canvas>
+        <p class="panel__desc">아래는 미리보기예요. 저장·공유되는 카드는 1080×1920 크기로 또렷해요.</p>
+        <canvas id="card-canvas" class="card-preview" width="1080" height="1920"></canvas>
         <div class="actions" style="margin-top:8px"><button id="btn-card-save" class="btn-ghost btn-ghost--brass" type="button">카드 저장</button><button id="btn-card-share" class="btn-main" type="button">카드 공유</button></div>
       </div>
       <div class="actions"><button id="btn-verify-again" class="btn-ghost" type="button">다른 캡처 확인</button></div>
@@ -257,6 +268,7 @@
         <li>"신고 카드 만들기"로 캡처·내 사진·드러낸 도장·도장 찍은 날짜가 담긴 그림 한 장을 만들어 신고할 때 붙여요.</li>
       </ol>
       <h3>3. 열쇠와 백업 코드</h3>
+      <p>도장을 찍은 사진은 날짜와 함께 폰 안 <b>장부</b>에 보관돼요(완전한 사진은 기본 150MB까지, 넘으면 오래된 것부터 축소본만 남김). 장부에 큰 사진이 없으면 카드 만들 때 갤러리에서 가져올 수 있어요.</p>
       <p>도장은 이 폰에만 있는 <b>열쇠</b>로 찍어요. 오른쪽 위 열쇠 버튼에서 <b>백업 코드 8자리</b>를 꼭 적어 두세요. 폰을 바꾸거나 브라우저 데이터를 지우면 열쇠가 사라지고, 코드가 없으면 예전 사진을 확인할 수 없어요.</p>
       <h3>4. 못 하는 것</h3>
       <ul>
@@ -284,10 +296,23 @@
       <p id="key-msg" class="setting-note"></p>
       <div class="setting-block">
         <h3>도장 장부</h3>
-        <p id="ledger-info" class="setting-note" style="margin:0">도장 찍은 사진의 작은 축소본과 날짜를 이 폰에 남겨요. 확인할 때 어느 사진인지 맞추는 데 써요.</p>
-        <div class="setting-row"><button id="btn-ledger-clear" type="button">장부 비우기</button></div>
+        <p id="ledger-info" class="setting-note" style="margin:0"></p>
+        <p class="setting-note">완전한 사진 보관 한도</p>
+        <div class="seg" role="group" aria-label="보관 한도"><button type="button" data-ledger-mb="50">50MB</button><button type="button" data-ledger-mb="150" class="is-on">150MB</button><button type="button" data-ledger-mb="400">400MB</button></div>
+        <div class="setting-row"><button id="btn-ledger-drop" type="button">큰 사진만 비우기</button><button id="btn-ledger-clear" type="button">전부 비우기</button></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- 장부에서 사진 고르기 시트 -->
+<div id="ledger-sheet" class="sheet sheet--tall" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="ledger-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top"><h2 id="ledger-title" class="sheet__title">어느 사진이에요?</h2><button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <p class="sheet__desc">도장 찍은 사진 중 캡처와 같은 사진을 골라 주세요. 신고 카드에 들어가요.</p>
+    <div class="sheet__scroll"><div id="ledger-grid" class="ledger-grid"></div></div>
   </div>
 </div>
 

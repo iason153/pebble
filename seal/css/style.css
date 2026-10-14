@@ -464,6 +464,24 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .stage__hint { position: absolute; left: 10px; right: 10px; bottom: 10px; margin: 0; padding: 8px 12px; border-radius: 10px; background: rgba(43, 38, 40, 0.78); color: #fff; font-size: 0.8rem; line-height: 1.4; text-align: center; backdrop-filter: blur(6px); }
 .stage__busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(43, 38, 40, 0.5); color: #fff; font-size: 0.9rem; font-weight: 700; }
 
+/* 사진 위 결과 띠 (글자 찾기 결과) */
+.stage__banner { position: absolute; left: 10px; right: 10px; top: 10px; display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 10px 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(8px); box-shadow: 0 6px 20px rgba(43, 38, 40, 0.18); }
+.stage__banner b { font-size: 0.92rem; color: var(--rose-deep); }
+.stage__banner small { grid-column: 1; font-size: 0.76rem; line-height: 1.4; color: var(--muted); }
+.stage__banner button { grid-column: 2; grid-row: 1 / 3; align-self: start; width: 32px; height: 32px; border: none; border-radius: 50%; background: var(--blush); color: var(--text); font-size: 0.9rem; }
+.opt__note { margin: -6px 0 2px; padding: 8px 12px; border-radius: 12px; background: var(--lilac); font-size: 0.8rem; line-height: 1.45; color: var(--text); }
+.tag-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1.5px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+.tag-chip.is-on { border-color: var(--rose-deep); background: var(--blush); color: var(--rose-deep); }
+.row-links { display: flex; justify-content: flex-end; }
+.row-links .link-btn { color: var(--rose-deep); font-weight: 700; text-decoration: none; }
+.ledger-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-bottom: 8px; }
+.ledger-grid button { padding: 0; border: 2px solid transparent; border-radius: 12px; background: var(--blush); overflow: hidden; aspect-ratio: 1; }
+.ledger-grid button.is-on { border-color: var(--rose-deep); }
+.ledger-grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ledger-grid small { display: block; padding: 4px; font-size: 0.68rem; color: var(--muted); }
+.ledger-grid button { aspect-ratio: auto; }
+.ledger-grid .ledger-grid__img { aspect-ratio: 1; }
+
 /* 패널(각 단계의 조작) */
 .panel { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
 .panel__title { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--font-display); font-size: 1.05rem; font-weight: 800; color: var(--rose-deep); }
@@ -549,6 +567,10 @@ details.more > *:not(summary) { margin-top: 6px; }
 .match__text { flex: 1; min-width: 0; font-size: 0.85rem; line-height: 1.4; }
 .match__text b { display: block; }
 .card-preview { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); }
+
+/* 갤러리에서 내 사진 가져오기 */
+.gallery-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--peach); }
+.gallery-row .panel__desc { margin: 0; }
 
 /* 설정 시트 */
 .keybox { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 12px; background: var(--blush); }
