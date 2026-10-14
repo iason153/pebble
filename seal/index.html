@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Seal — 올리기 전에, 내 사진 지키기</title>
+<meta name="description" content="SNS에 올리기 전 번호판·문패를 가리고 보이지 않는 도장을 심어요. 사칭 계정에 내 사진이 올라가도 캡처 한 장으로 내 것임을 확인해요. 사진은 폰 밖으로 안 나가요. 로그인 없이 무료.">
+<!-- ⚠️ 공개 전 테스트 기간: 검색엔진에 노출하지 않음. 정식 공개 때 이 줄을 지우고 sitemap에 추가 -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="canonical" href="https://pebbleitgo.com/seal/">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FDF8F3">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="icons/favicon.ico" sizes="48x48">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Seal">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@700;800&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1 class="app-title"><button id="btn-home" class="app-title__btn" type="button" aria-label="Seal — 처음으로"><img class="app-title__mark" src="icons/icon.svg" alt="" width="28" height="28">Seal</button></h1>
+  <div class="header-actions">
+    <button id="btn-guide" class="text-btn" type="button">사용법</button>
+    <button id="btn-share" class="icon-btn" type="button" aria-label="Seal 친구에게 공유하기">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="18" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4" stroke="currentColor" stroke-width="2"/></svg>
+    </button>
+    <button id="btn-settings" class="icon-btn" type="button" aria-label="내 도장 열쇠와 설정">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12h9M18 12v3M21 12v2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <button id="btn-install" class="install-btn" type="button" hidden>설치</button>
+  </div>
+</header>
+
+<main class="app-main">
+
+  <!-- 카카오톡·네이버 앱 안 브라우저 안내 -->
+  <div id="inapp-banner" class="inapp-banner" role="note" hidden>
+    <p class="inapp-banner__text"><b id="inapp-name">카카오톡</b> 안에서 열렸어요.<br><span id="inapp-target">크롬</span>에서 열어야 설치돼요.</p>
+    <button id="btn-inapp-open" class="inapp-banner__btn" type="button">크롬으로 열기</button>
+    <button id="btn-inapp-close" class="inapp-banner__close" type="button" aria-label="안내 닫기">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+
+  <!-- 숨은 파일 입력 -->
+  <input type="file" id="file-protect" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true">
+  <input type="file" id="file-verify" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true">
+
+  <!-- ══ 홈 ══════════════════════════════════════════ -->
+  <section id="view-home" class="view" aria-label="처음">
+    <div class="hero">
+      <p class="hero__eyebrow">Before you post</p>
+      <h2 class="hero__title">올리기 전에,<br>내 사진에 <em>보이지 않는 도장</em>을.</h2>
+      <p class="hero__sub">번호판·문패처럼 알려지면 안 될 것은 지우고, 눈에 안 보이는 도장을 심어요. 누가 내 사진으로 사칭해도 캡처 한 장으로 내 것임을 보여 줄 수 있어요.</p>
+    </div>
+
+    <div class="start">
+      <button id="btn-start-protect" class="start__btn start__btn--main" type="button">
+        <span class="start__ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 8.5c-1.6 0-2.6.8-2.6 1.9 0 2.3 5.2 1.2 5.2 3.6 0 1.2-1.1 2-2.7 2-1.4 0-2.4-.6-2.8-1.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+        <span class="start__text"><b>사진 지키고 올리기</b><small>점검하고 가리기 → 도장 심기 → 저장·공유</small></span>
+        <svg class="start__chev" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <button id="btn-start-verify" class="start__btn" type="button">
+        <span class="start__ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="m15 15 5 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="m8.2 10.6 1.6 1.6 3-3.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="start__text"><b>내 사진인지 확인하기</b><small>사칭 계정 화면을 캡처해서 넣으면 도장을 찾아요</small></span>
+        <svg class="start__chev" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+      </button>
+    </div>
+
+    <div class="section-title"><h2>도장은 이렇게 숨어요</h2><small>손잡이를 움직여 보세요</small></div>
+    <div class="bento">
+      <div class="bento__big">
+        <div class="compare" id="compare">
+          <img src="img/demo-stamped.jpg" alt="도장을 심은 사진. 원본과 구분되지 않음" width="720" height="720">
+          <img id="compare-after" class="compare__after" src="img/demo-revealed.jpg" alt="숨은 도장을 일부러 진하게 드러낸 사진. 사진 전체에 고운 무늬가 깔려 있음" width="720" height="720">
+          <div id="compare-bar" class="compare__bar"></div>
+          <div id="compare-knob" class="compare__knob" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="m9 7-4 5 4 5M15 7l4 5-4 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <span class="compare__tag compare__tag--l">도장 찍은 사진</span><span class="compare__tag compare__tag--r">도장을 드러내면</span>
+          <input id="compare-range" type="range" min="0" max="100" value="50" aria-label="도장 찍은 사진과 드러낸 모습 비교">
+        </div>
+        <div class="bento__caption"><span><b>똑같아 보이죠?</b> 도장은 사진 전체에 바둑판처럼 숨어 있어요.</span><span>NASA 공개 사진</span></div>
+      </div>
+      <div class="bento__tile bento__tile--blush"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>0건</b><small>사진이 폰 밖으로 나간 적. 서버도, 로그인도 없어요.</small></div>
+      <div class="bento__tile bento__tile--peach"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h7v7H4zM13 4h7v7h-7zM13 13h7v7h-7zM4 16h7v4H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><b>217/220</b><small>잘림·캡처·재압축 22가지 상황에서 도장을 찾은 횟수.</small></div>
+      <div class="bento__tile bento__tile--lilac"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><b>1분</b><small>사칭 계정 캡처 한 장으로 신고 카드까지.</small></div>
+      <div class="bento__tile bento__tile--blush"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 20c1.5-4 4-5 6-5l9-9-3-3-9 9c0 2-1 4.5-3 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><b>가리기</b><small>번호판·문패·송장을 손가락으로, 또는 글자를 찾아서.</small></div>
+    </div>
+
+    <div class="section-title"><h2>이렇게 써요</h2></div>
+    <div class="howto">
+      <div class="howto__card">
+        <h3>올리기 전</h3>
+        <ol class="howto__steps">
+          <li>사진을 고르면 위치 정보가 있는지 알려 주고, 내보낼 때 지워요.</li>
+          <li>번호판·문패·택배 송장은 손으로 문질러 가리거나, "글자 찾아보기"로 찾아서 가려요.</li>
+          <li>보이지 않는 도장을 심고 저장하거나 바로 공유해요.</li>
+        </ol>
+      </div>
+      <div class="howto__card">
+        <h3>사칭 계정을 발견했을 때</h3>
+        <ol class="howto__steps">
+          <li>그 계정의 게시물을 열어 화면을 캡처해요. (작은 격자 썸네일 말고, 게시물을 연 화면)</li>
+          <li>"내 사진인지 확인하기"에 캡처를 넣어요. 설치했다면 공유 메뉴에서 Seal을 골라도 돼요.</li>
+          <li>도장이 나오면 신고 카드를 만들어 신고할 때 붙여요.</li>
+        </ol>
+      </div>
+    </div>
+    <p class="limits"><b>솔직하게 알려 드려요.</b> 도용 자체를 막지는 못해요. 기울여 올린 사진이나 아주 작은 썸네일에서는 도장을 못 찾을 수 있고, 결과는 법적 증거가 아니라 신고할 때 붙이는 참고 자료예요.</p>
+
+    <footer class="app-about">
+      <p><b>Seal</b>은 SNS에 올리기 전 사진을 한 번 거치는 무료 도구예요. 위험한 것을 가리고, 내 사진이라는 표시를 심어요. 로그인 없이 쓰고, 사진과 열쇠는 이 기기에만 있어요.</p>
+      <p><a href="/">Pebble</a></p>
+    </footer>
+  </section>
+
+  <!-- ══ 사진 지키기 (점검 → 도장 → 내보내기) ══════════ -->
+  <section id="view-protect" class="view" aria-label="사진 지키기" hidden>
+    <div class="topbar">
+      <button id="btn-back-protect" class="back-btn" type="button"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m14 6-6 6 6 6"/></svg>처음</button>
+      <div class="steps" aria-label="단계">
+        <span class="step is-on" data-step="1"><i></i>점검</span>
+        <span class="step" data-step="2"><i></i>도장</span>
+        <span class="step" data-step="3"><i></i>내보내기</span>
+      </div>
+    </div>
+
+    <div id="stage" class="stage">
+      <canvas id="canvas"></canvas>
+      <div id="box-layer" class="stage__layer"></div>
+      <p id="stage-hint" class="stage__hint" hidden></p>
+      <div id="stage-busy" class="stage__busy" hidden>처리 중…</div>
+    </div>
+
+    <!-- 1 점검 -->
+    <div id="panel-check" class="panel">
+      <h2 class="panel__title">1. 올리기 전 점검</h2>
+      <div id="exif-chips" class="chip-row"></div>
+      <div class="tools">
+        <button id="btn-brush" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 20c1.5-4 4-5 6-5l9-9-3-3-9 9c0 2-1 4.5-3 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>손으로 가리기</button>
+        <button id="btn-ocr" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>글자 찾아보기</button>
+        <button id="btn-undo" class="tool-btn" type="button" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 7H5v4M5.5 10.5A7 7 0 1 1 6 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>되돌리기</button>
+        <button id="btn-hide-all" class="tool-btn" type="button" hidden>찾은 글자 모두 가리기</button>
+      </div>
+      <div id="brush-row" class="brush-size" hidden><span>굵기</span><div class="seg" role="group" aria-label="굵기"><button type="button" data-size="s">가늘게</button><button type="button" data-size="m" class="is-on">보통</button><button type="button" data-size="l">굵게</button></div></div>
+      <p id="ocr-note" class="panel__desc" hidden></p>
+      <details class="more">
+        <summary>뭘 가려야 할까요?</summary>
+        <ul class="check">
+          <li>집 문패·호수·아파트 이름, 배경의 주소</li>
+          <li>차 번호판, 자전거·킥보드 번호</li>
+          <li>택배 송장, 영수증, 명함, 신분증</li>
+          <li>거울·창문·선글라스에 비친 얼굴</li>
+          <li>아이 이름이 적힌 가방·이름표, 학교 이름</li>
+        </ul>
+      </details>
+      <div class="actions"><button id="btn-to-stamp" class="btn-main" type="button">다음: 도장 심기</button></div>
+    </div>
+
+    <!-- 2 도장 -->
+    <div id="panel-stamp" class="panel" hidden>
+      <h2 class="panel__title">2. 내 사진 표시 심기</h2>
+      <div class="opt">
+        <div class="opt__text"><b>보이지 않는 도장</b><small>사진 전체에 숨겨요. 잘라 가거나 캡처해도 남아요.</small></div>
+        <button id="sw-stamp" class="switch" type="button" role="switch" aria-checked="true" aria-label="보이지 않는 도장"></button>
+      </div>
+      <div class="opt">
+        <div class="opt__text"><b>보이는 이름표</b><small>구석에 작은 글자를 넣어요. 도용 계정에 올라가도 그대로 보여요.</small></div>
+        <button id="sw-tag" class="switch" type="button" role="switch" aria-checked="false" aria-label="보이는 이름표"></button>
+      </div>
+      <div id="tag-opts" class="opt opt--stack" hidden>
+        <input id="tag-text" class="text-input" type="text" maxlength="24" placeholder="예: @my_account" autocomplete="off">
+        <div class="seg" role="group" aria-label="이름표 위치"><button type="button" data-tagpos="corner" class="is-on">구석에 작게</button><button type="button" data-tagpos="center">가운데 옅게</button></div>
+      </div>
+      <div class="opt">
+        <div class="opt__text"><b>크기 줄이기</b><small>긴 변 2048px로 줄여 가볍게 보내요.</small></div>
+        <button id="sw-resize" class="switch" type="button" role="switch" aria-checked="false" aria-label="크기 줄이기"></button>
+      </div>
+      <div class="actions"><button id="btn-back-check" class="btn-ghost" type="button">이전</button><button id="btn-do-stamp" class="btn-main" type="button">도장 찍고 내보내기</button></div>
+    </div>
+
+    <!-- 3 내보내기 -->
+    <div id="panel-export" class="panel" hidden>
+      <h2 class="panel__title">3. 준비됐어요</h2>
+      <ul id="done-list" class="done-list"></ul>
+      <div class="actions"><button id="btn-save" class="btn-ghost btn-ghost--brass" type="button">저장</button><button id="btn-share-photo" class="btn-main" type="button">공유하기</button></div>
+      <p class="panel__desc">갤러리에 저장한 뒤 올려도 되고, 공유하기로 인스타·카톡에 바로 보내도 돼요.</p>
+      <div class="actions"><button id="btn-restart" class="btn-ghost" type="button">다른 사진 하기</button></div>
+    </div>
+  </section>
+
+  <!-- ══ 내 사진인지 확인 ══════════════════════════════ -->
+  <section id="view-verify" class="view" aria-label="내 사진인지 확인" hidden>
+    <div class="topbar">
+      <button id="btn-back-verify" class="back-btn" type="button"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m14 6-6 6 6 6"/></svg>처음</button>
+    </div>
+
+    <div id="verify-intro" class="panel">
+      <h2 class="panel__title">내 사진인지 확인하기</h2>
+      <p class="panel__desc">사칭 계정의 게시물을 <b>열어서</b> 화면을 캡처한 뒤 넣어 주세요. 내려받은 사진도 돼요. 폰에서는 수십 초 걸릴 수 있어요.</p>
+      <div class="actions"><button id="btn-pick-verify" class="btn-main" type="button">캡처·사진 고르기</button></div>
+    </div>
+
+    <div id="verify-run" class="panel" hidden>
+      <h2 class="panel__title">도장을 찾는 중</h2>
+      <div class="progress"><i id="verify-bar"></i></div>
+      <p id="verify-status" class="panel__desc">사진을 준비하고 있어요…</p>
+      <div class="stage"><canvas id="verify-canvas"></canvas></div>
+    </div>
+
+    <div id="verify-result" class="panel" hidden>
+      <div id="verdict" class="verdict">
+        <span class="verdict__ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><path d="m6 12 4 4 8-8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="verdict__text"><b id="verdict-title"></b><small id="verdict-sub"></small></span>
+      </div>
+      <div class="stats"><div>일치 점수<b id="stat-score"></b></div><div>걸린 시간<b id="stat-time"></b></div><div>도장 한 칸<b id="stat-tile"></b></div></div>
+      <div id="match" class="match" hidden><img id="match-img" alt=""><div class="match__text"><b id="match-title">이 사진 같아요</b><span id="match-sub"></span></div></div>
+      <div class="actions"><button id="btn-make-card" class="btn-main" type="button">신고 카드 만들기</button></div>
+      <div id="card-wrap" hidden>
+        <canvas id="card-canvas" class="card-preview" width="1080" height="1350"></canvas>
+        <div class="actions" style="margin-top:8px"><button id="btn-card-save" class="btn-ghost btn-ghost--brass" type="button">카드 저장</button><button id="btn-card-share" class="btn-main" type="button">카드 공유</button></div>
+      </div>
+      <div class="actions"><button id="btn-verify-again" class="btn-ghost" type="button">다른 캡처 확인</button></div>
+    </div>
+  </section>
+</main>
+
+<!-- 사용법 시트 -->
+<div id="guide-sheet" class="sheet sheet--tall" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top"><h2 id="guide-title" class="sheet__title">Seal 사용법</h2><button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="sheet__scroll guide">
+      <p>Seal은 사진을 SNS에 올리기 전에 한 번 거치는 도구예요. 두 가지를 해요. <b>위험한 것을 가리기</b>, 그리고 <b>내 사진이라는 보이지 않는 도장 심기</b>.</p>
+      <h3>1. 사진 지키고 올리기</h3>
+      <ol>
+        <li><b>점검</b>: 사진을 고르면 위치 정보가 들어 있는지 알려 줘요. 내보낼 때 자동으로 지워져요.</li>
+        <li><b>가리기</b>: "손으로 가리기"를 켜고 손가락으로 문지르면 모자이크가 돼요. "글자 찾아보기"를 누르면 번호판·전화번호처럼 생긴 글자를 찾아 네모로 보여 주고, 네모를 누르면 가려져요. 처음 한 번은 글자 인식 파일(몇 MB)을 내려받아요.</li>
+        <li><b>도장</b>: 보이지 않는 도장은 기본으로 켜져 있어요. 원하면 보이는 이름표도 넣을 수 있어요.</li>
+        <li><b>내보내기</b>: 저장하거나 공유하기로 바로 올려요.</li>
+      </ol>
+      <h3>2. 사칭 계정을 발견했을 때</h3>
+      <ol>
+        <li>그 계정의 게시물을 <b>열어서</b> 화면을 캡처해요. 프로필의 작은 격자 썸네일은 너무 작아서 못 찾아요.</li>
+        <li>"내 사진인지 확인하기"에서 캡처를 골라요. 홈 화면에 설치했다면 갤러리의 공유 메뉴에서 Seal을 골라도 돼요(갤럭시).</li>
+        <li>점수가 9 이상이면 내 도장이 확실해요. 7.5~9는 약하게 보이는 것, 그 아래는 못 찾은 거예요.</li>
+        <li>"신고 카드 만들기"로 캡처·내 사진·드러낸 도장·도장 찍은 날짜가 담긴 그림 한 장을 만들어 신고할 때 붙여요.</li>
+      </ol>
+      <h3>3. 열쇠와 백업 코드</h3>
+      <p>도장은 이 폰에만 있는 <b>열쇠</b>로 찍어요. 오른쪽 위 열쇠 버튼에서 <b>백업 코드 8자리</b>를 꼭 적어 두세요. 폰을 바꾸거나 브라우저 데이터를 지우면 열쇠가 사라지고, 코드가 없으면 예전 사진을 확인할 수 없어요.</p>
+      <h3>4. 못 하는 것</h3>
+      <ul>
+        <li>도용 자체를 막지는 못해요. 발견은 본인이나 지인이 해야 해요.</li>
+        <li>기울여 올린 사진, 아주 작은 썸네일, 무늬가 거의 없는 사진(하늘만 찍은 사진 등)은 못 찾을 수 있어요.</li>
+        <li>글자 자동 찾기는 작거나 비스듬한 글자를 놓칠 수 있어요. 마지막엔 꼭 눈으로 확인하세요.</li>
+        <li>결과는 법적 증거가 아니라 신고할 때 붙이는 참고 자료예요.</li>
+      </ul>
+      <h3>5. 개인정보</h3>
+      <p>사진·열쇠·장부는 모두 이 기기 안에만 있어요. 서버로 보내지 않고, 로그인도 없어요. 사용 통계(어느 단계까지 썼는지)만 익명으로 모아요.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 설정(열쇠) 시트 -->
+<div id="settings-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top"><h2 id="settings-title" class="sheet__title">내 도장 열쇠</h2><button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="sheet__scroll">
+      <p class="sheet__desc">도장은 이 열쇠로 찍고, 같은 열쇠로만 찾을 수 있어요. 백업 코드를 메모해 두면 폰을 바꿔도 예전 사진을 확인할 수 있어요.</p>
+      <div class="keybox"><code id="key-code">--------</code><button id="btn-copy-key" type="button">복사</button></div>
+      <div class="setting-row"><input id="key-input" class="text-input" type="text" maxlength="8" placeholder="백업 코드 8자리 입력" autocomplete="off" autocapitalize="none"><button id="btn-set-key" type="button">이 코드로 바꾸기</button></div>
+      <p id="key-msg" class="setting-note"></p>
+      <div class="setting-block">
+        <h3>도장 장부</h3>
+        <p id="ledger-info" class="setting-note" style="margin:0">도장 찍은 사진의 작은 축소본과 날짜를 이 폰에 남겨요. 확인할 때 어느 사진인지 맞추는 데 써요.</p>
+        <div class="setting-row"><button id="btn-ledger-clear" type="button">장부 비우기</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 설치 안내 시트 (install.js가 내용을 채움) -->
+<div id="install-sheet" class="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="install-sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__top"><h2 id="install-sheet-title" class="sheet__title">홈 화면에 설치하기</h2><button class="sheet__x" type="button" data-close aria-label="닫기"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <p id="install-sheet-desc" class="sheet__desc"></p>
+    <div id="install-sheet-body" class="install-body"></div>
+    <div class="sheet__actions"><button id="btn-install-primary" class="sheet__btn sheet__btn--primary" type="button" hidden></button><button class="sheet__btn" type="button" data-close>닫기</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden><span id="toast-msg" class="toast__msg"></span><button id="toast-action" class="toast__action" type="button" hidden></button></div>
+
+<script src="js/config.js"></script>
+<script src="js/analytics.js"></script>
+<script src="js/share.js"></script>
+<script src="js/install.js"></script>
+<script src="js/seal-core.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "Seal — 올리기 전에, 내 사진 지키기",
+  "short_name": "Seal",
+  "description": "SNS에 올리기 전 위험한 것을 가리고 보이지 않는 도장을 심어, 도용당해도 내 사진임을 확인하는 도구",
+  "id": "/seal/",
+  "start_url": "/seal/?source=pwa",
+  "scope": "/seal/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FDF8F3",
+  "theme_color": "#FDF8F3",
+  "lang": "ko-KR",
+  "dir": "ltr",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "share_target": {
+    "action": "/seal/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "files": [ { "name": "photo", "accept": ["image/*"] } ] }
+  }
+}
