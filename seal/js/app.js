@@ -144,7 +144,7 @@
       const all = (await this.all()).filter((e) => e.photo); all.forEach((e) => { e.photo = null; e.photoDropped = true; });
       await new Promise((res) => { const t = db.transaction('ledger', 'readwrite'); all.forEach((e) => t.objectStore('ledger').put(e)); t.oncomplete = res; t.onerror = res; });
     },
-    async usage() { const all = await this.all(); return { count: all.length, photos: all.filter((e) => e.photo).length, bytes: all.reduce((s, e) => s + ((e.photo && e.photo.size) || 0), 0) }; },
+    async usage() { const all = await this.all(); return { count: all.length, photos: all.filter((e) => e.photo).length, bytes: all.reduce((s, e) => s + ((e.photo && e.photo.size) || 0), 0), midBytes: all.reduce((s, e) => s + ((e.mid && e.mid.size) || 0), 0) }; },
   };
   // 장부의 보관 사진(blob)을 그림으로
   function blobToImage(blob) { return new Promise((res) => { if (!blob) return res(null); const url = URL.createObjectURL(blob), i = new Image(); i.onload = () => { URL.revokeObjectURL(url); res(i); }; i.onerror = () => { URL.revokeObjectURL(url); res(null); }; i.src = url; }); }
@@ -545,12 +545,13 @@
         if (useStamp) {
           const th = thumbOf(out, 320);
           const gp = grayPlane(out, 48);
-          const entry = { date: Date.now(), w: out.width, h: out.height, thumb: th.toDataURL('image/jpeg', 0.8), photo: this.outBlob, gw: gp.w, gh: gp.h, gray: gp.g, keyCode: Key.code(), tag: useTag ? { text: tagText, pos: this.tagPos } : null };
+          const mid = await toBlob(thumbOf(out, 1280), 0.82); // 큰 파일이 지워져도 카드에 쓸 중간본(장당 150~250KB)은 항상 남김
+          const entry = { date: Date.now(), w: out.width, h: out.height, thumb: th.toDataURL('image/jpeg', 0.8), photo: this.outBlob, mid, gw: gp.w, gh: gp.h, gray: gp.g, keyCode: Key.code(), tag: useTag ? { text: tagText, pos: this.tagPos } : null };
           let note = '도장 장부에 사진과 날짜를 보관했어요 (이 폰에만)';
           try { await Ledger.add(entry); }
-          catch (_) { entry.photo = null; entry.photoDropped = true; try { await Ledger.add(entry); } catch (_) {} note = '폰 저장 공간이 부족해 장부에는 축소본과 날짜만 남겼어요'; }
+          catch (_) { entry.photo = null; entry.photoDropped = true; try { await Ledger.add(entry); } catch (_) { entry.mid = null; try { await Ledger.add(entry); } catch (_) {} } note = '폰 저장 공간이 부족해 장부에는 중간 크기 사진과 날짜만 남겼어요'; }
           const dropped = await Ledger.prune(LEDGER_MAX, ledgerLimit());
-          if (dropped) note += ` · 한도(${ledgerLimit()}MB)를 넘어 오래된 사진 ${dropped}장은 축소본만 남겼어요`;
+          if (dropped) note += ` · 한도(${ledgerLimit()}MB)를 넘어 오래된 사진 ${dropped}장은 중간 크기만 남겼어요`;
           items.push(`<li>${note}</li>`);
         }
         $('done-list').innerHTML = items.join('');
@@ -653,7 +654,7 @@
         const best = await matchLedger(this.suspect); this.lastMatch = best;
         if (best && best.c > MATCH_TH && best.margin > 0.04) this.setMatched(best.e, '비슷해 보여요 (자동, 참고용)');
       }
-      $('btn-pick-ledger').hidden = z < TH_WEAK; $('gallery-row').hidden = z < TH_WEAK || !!(this.matched && this.matched.photo); $('gallery-msg').hidden = true;
+      $('btn-pick-ledger').hidden = z < TH_WEAK; $('gallery-row').hidden = z < TH_WEAK || !!(this.matched && (this.matched.photo || this.matched.mid)); $('gallery-msg').hidden = true;
       $('btn-make-card').hidden = z < TH_WEAK;
       $('verify-run').hidden = true; $('verify-result').hidden = false; window.scrollTo({ top: 0 });
     },
@@ -674,10 +675,10 @@
       } catch (err) { $('gallery-msg').textContent = '사진을 열지 못했어요: ' + (err.message || err); }
     },
     setMatched(e, how) {
-      this.matched = e; $('match').hidden = !e; $('gallery-row').hidden = !!(e && e.photo);
+      this.matched = e; $('match').hidden = !e; $('gallery-row').hidden = !!(e && (e.photo || e.mid));
       if (!e) return;
       $('match-img').src = e.thumb; $('match-title').textContent = how === 'manual' ? '내가 고른 사진' : how === 'gallery' ? '갤러리에서 가져온 내 사진' : '이 사진 같아요';
-      $('match-sub').textContent = `${fmtDate(new Date(e.date))}에 도장을 찍은 사진${how === 'manual' || how === 'gallery' ? '' : ' · ' + how}${e.photo ? '' : ' · 큰 사진은 장부에 없음(축소본만)'}`;
+      $('match-sub').textContent = `${fmtDate(new Date(e.date))}에 도장을 찍은 사진${how === 'manual' || how === 'gallery' ? '' : ' · ' + how}${e.photo ? '' : e.mid ? ' · 중간 크기 사진(1280px)으로 카드에 넣어요' : ' · 큰 사진은 장부에 없음(축소본만)'}`;
       if (this.cardBlob) { $('card-wrap').hidden = true; this.cardBlob = null; }
     },
     async openPicker() {
@@ -712,7 +713,7 @@
       fit(this.suspect, M, top, colW, boxH);
       let mine = null;
       if (this.matched) {
-        mine = (this.matched.photo && await blobToImage(this.matched.photo)) || await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = this.matched.thumb; });
+        mine = (this.matched.photo && await blobToImage(this.matched.photo)) || (this.matched.mid && await blobToImage(this.matched.mid)) || await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = this.matched.thumb; });
         if (mine) {
           const r = fit(mine, M + colW + 32, top, colW, boxH);
           if (this.matched.tag) { // 이름표 위치를 색 테두리로 표시
@@ -724,7 +725,7 @@
             g.fillStyle = '#E0345B'; g.font = `800 22px ${F}`; g.fillText(`이름표 "${t.text}"`, r.x + bx * r.s, r.y + by * r.s - 8);
           }
         }
-        sub(`도장 찍은 날짜 ${fmtDate(new Date(this.matched.date))}${this.matched.fromGallery ? ` · 갤러리 사진, 도장 확인 점수 ${this.matched.galleryScore.toFixed(1)}` : this.matched.photo ? '' : ' · 축소본'}`, M + colW + 32, top + boxH + 34, 22, INK);
+        sub(`도장 찍은 날짜 ${fmtDate(new Date(this.matched.date))}${this.matched.fromGallery ? ` · 갤러리 사진, 도장 확인 점수 ${this.matched.galleryScore.toFixed(1)}` : this.matched.photo ? '' : this.matched.mid ? ' · 장부 보관본(1280px)' : ' · 축소본'}`, M + colW + 32, top + boxH + 34, 22, INK);
       } else {
         g.fillStyle = MUTED; g.font = `500 26px ${F}`; g.textAlign = 'center';
         g.fillText('장부에 같은 사진이 없어요', M + colW + 32 + colW / 2, top + boxH / 2 - 12); g.fillText('(다른 폰에서 찍었거나 장부를 비움)', M + colW + 32 + colW / 2, top + boxH / 2 + 28); g.textAlign = 'left';
@@ -771,8 +772,8 @@
     const u = await Ledger.usage(), lim = ledgerLimit();
     document.querySelectorAll('[data-ledger-mb]').forEach((b) => b.classList.toggle('is-on', +b.dataset.ledgerMb === lim));
     $('ledger-info').textContent = u.count
-      ? `기록 ${u.count}장 · 그중 완전한 사진 ${u.photos}장(${(u.bytes / 1048576).toFixed(1)}MB / 한도 ${lim}MB). 한도를 넘으면 오래된 사진의 큰 파일만 지우고 날짜·축소본은 남겨요.`
-      : `아직 도장 찍은 사진이 없어요. 도장을 찍으면 사진과 날짜를 이 폰에 보관해요(완전한 사진은 ${lim}MB까지, 기록은 ${LEDGER_MAX}장까지).`;
+      ? `기록 ${u.count}장(중간 크기 보관본 ${(u.midBytes / 1048576).toFixed(1)}MB) · 그중 원본 크기 사진 ${u.photos}장(${(u.bytes / 1048576).toFixed(1)}MB / 한도 ${lim}MB). 한도를 넘으면 오래된 사진의 원본 크기만 지우고 날짜·중간 크기(1280px)는 남아 카드에 쓸 수 있어요.`
+      : `아직 도장 찍은 사진이 없어요. 도장을 찍으면 사진과 날짜를 이 폰에 보관해요(원본 크기는 ${lim}MB까지, 중간 크기·날짜는 ${LEDGER_MAX}장까지).`;
   }
   function initHeader() {
     $('btn-home').addEventListener('click', () => { if (!$('view-home').hidden) return; if (Protect.src) Protect.leave(); else show('view-home'); });
