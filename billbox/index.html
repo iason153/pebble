@@ -50,6 +50,13 @@
 </header>
 
 <main id="main" class="main">
+  <!-- 읽기 준비(사전 내려받기) 배너 — 처음 한 번만 보임 -->
+  <section class="prep" id="ocr-prep" hidden aria-live="polite">
+    <div class="prep__row"><span class="prep__icon" id="prep-icon">📥</span><p class="prep__msg" id="prep-msg">읽기 준비 중</p><button type="button" class="btn btn--sm" id="btn-prep-retry" hidden>다시 받기</button></div>
+    <div class="progress__bar prep__bar"><div class="progress__fill" id="prep-fill"></div></div>
+    <p class="muted small" id="prep-sub">처음 한 번만 한글 사전(약 8MB)을 내려받아요. 와이파이면 1분 안쪽. 받는 동안 다른 건 다 써도 돼요.</p>
+  </section>
+
   <!-- 요약 스티커 -->
   <section class="summary" id="summary" aria-live="polite">
     <div class="summary__big"><span id="sum-count">0</span><small>건</small></div>

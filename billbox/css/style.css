@@ -111,6 +111,15 @@ a { color: var(--forest); }
 .intro__steps b { flex: none; }
 .intro__note { background: var(--mint); border: 2px dashed var(--ink); border-radius: 8px; padding: 8px 10px; font-size: .92rem; margin-bottom: 12px; }
 
+/* 읽기 준비 배너 */
+.prep { background: var(--brass-lt); border: var(--line) solid var(--ink); border-radius: var(--r); box-shadow: var(--shadow); padding: 12px 14px; margin: 8px 0 14px; }
+.prep__row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.prep__icon { font-size: 1.5rem; }
+.prep__msg { font-weight: 900; flex: 1; }
+.prep__bar { height: 12px; margin-bottom: 6px; }
+.prep.is-ready { background: var(--mint); }
+.prep.is-error { background: var(--red-lt); }
+
 /* 목록 */
 .group { margin-bottom: 18px; }
 .group__head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 900; font-size: 1.05rem; }

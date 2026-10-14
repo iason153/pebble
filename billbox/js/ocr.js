@@ -13,6 +13,25 @@ window.BillboxOCR = (function () {
   const cfg = () => (window.BILLBOX_CONFIG && window.BILLBOX_CONFIG.OCR) || {};
   let worker = null;
   let loading = null;
+  let state = 'idle'; // idle | loading | ready | error
+  let stateMsg = '';
+  let stateProgress = 0;
+  const listeners = [];
+  function setState(st, msg, prog) {
+    state = st;
+    if (msg != null) stateMsg = msg;
+    if (prog != null) stateProgress = prog;
+    listeners.forEach((fn) => {
+      try {
+        fn({ state, msg: stateMsg, progress: stateProgress });
+      } catch (_) {}
+    });
+  }
+  function onState(fn) {
+    listeners.push(fn);
+    fn({ state, msg: stateMsg, progress: stateProgress });
+  }
+  const READY_TIMEOUT = 150000; // 2분 30초 안에 준비 안 되면 실패로 보고 다시 시도하게
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -28,30 +47,54 @@ window.BillboxOCR = (function () {
   /** 엔진 준비(처음만 느림). onProgress(0~1, 문구) */
   async function ready(onProgress) {
     if (worker) return worker;
-    if (loading) return loading;
+    if (loading) {
+      // 이미 내려받는 중이면 진행 상황만 이어서 보여 준다
+      if (onProgress) onState(({ state: st, msg, progress }) => st === 'loading' && onProgress(0.05 + progress * 0.3, msg));
+      return loading;
+    }
+    const report = (p, msg) => {
+      setState('loading', msg, p);
+      onProgress && onProgress(0.05 + p * 0.3, msg);
+    };
     loading = (async () => {
       const c = cfg();
-      onProgress && onProgress(0.02, '읽기 도구를 준비하고 있어요');
+      report(0.02, '읽기 도구를 준비하고 있어요');
       await loadScript(c.SCRIPT);
-      const w = await window.Tesseract.createWorker(['kor', 'eng'], 1, {
+      const opts = {
         workerPath: c.WORKER,
         corePath: c.CORE,
-        langPath: c.LANG_PATH,
         gzip: true,
         logger: (m) => {
-          if (!onProgress) return;
-          if (m.status === 'loading language traineddata' || m.status === 'loading tesseract core') onProgress(0.05 + (m.progress || 0) * 0.25, '한글 사전을 내려받고 있어요 — 처음 한 번만, 1분쯤 걸려요');
-          else if (m.status === 'initializing api') onProgress(0.32, '거의 준비됐어요');
+          if (m.status === 'loading tesseract core') report(0.05 + (m.progress || 0) * 0.3, '읽기 엔진을 내려받고 있어요 (약 3MB)');
+          else if (m.status === 'loading language traineddata') report(0.4 + (m.progress || 0) * 0.5, '한글 사전을 내려받고 있어요 (약 5MB, 처음 한 번만)');
+          else if (m.status === 'initializing api') report(0.95, '거의 준비됐어요');
         },
-      });
+        errorHandler: (err) => {
+          console.warn('[Billbox OCR]', err);
+        },
+      };
+      if (c.LANG_PATH) opts.langPath = c.LANG_PATH;
+      // 언어 파일 주소가 살아 있는지 먼저 가볍게 확인(404면 Tesseract.js가 영원히 기다리므로 여기서 바로 실패시킴)
+      const langBase = c.LANG_PATH ? `${c.LANG_PATH}/kor` : 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/kor/4.0.0_best_int/kor';
+      try {
+        const head = await fetch(`${langBase}.traineddata.gz`, { method: 'HEAD', cache: 'force-cache' });
+        if (!head.ok) throw new Error('언어 파일 주소 오류 ' + head.status);
+      } catch (e) {
+        if (/주소 오류/.test(e.message)) throw e;
+        /* 네트워크가 잠깐 끊긴 경우는 아래 createWorker가 캐시(IndexedDB)로 성공할 수 있으니 넘어감 */
+      }
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('내려받기가 너무 오래 걸려요. 와이파이에서 다시 시도해 주세요')), READY_TIMEOUT));
+      const w = await Promise.race([window.Tesseract.createWorker(['kor', 'eng'], 1, opts), timeout]);
       await w.setParameters({ preserve_interword_spaces: '1' });
       worker = w;
+      setState('ready', '찍을 준비 됐어요', 1);
       return w;
     })();
     try {
       return await loading;
     } catch (e) {
       loading = null;
+      setState('error', e.message || '읽기 도구를 준비하지 못했어요', 0);
       throw e;
     }
   }
@@ -198,11 +241,8 @@ window.BillboxOCR = (function () {
   /** 미리 내려받기(첫 화면에서 조용히) — 실패해도 조용히 넘어감 */
   function warmup() {
     if (worker || loading) return;
-    try {
-      const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
-      idle(() => ready(null).catch(() => {}));
-    } catch (_) {}
+    setTimeout(() => ready(null).catch(() => {}), 400);
   }
 
-  return { ready, readBill, warmup, enhance, toCanvas };
+  return { ready, readBill, warmup, onState, enhance, toCanvas, getState: () => ({ state, msg: stateMsg, progress: stateProgress }) };
 })();

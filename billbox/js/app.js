@@ -40,8 +40,48 @@
       if (!S.settings().introSeen) $('intro').hidden = false;
       this.render();
       this.registerSW();
+      this.wirePrep();
       window.BillboxOCR.warmup();
       track('open', { items: S.load().length });
+    },
+
+    /** 사전 내려받기 배너: 처음 한 번 보이고, 준비되면 "찍을 준비 됐어요"로 바뀐 뒤 사라짐 */
+    wirePrep() {
+      const box = $('ocr-prep');
+      let shownLoading = false;
+      $('btn-prep-retry').addEventListener('click', () => {
+        $('btn-prep-retry').hidden = true;
+        window.BillboxOCR.ready(null).catch(() => {});
+        track('ocr_prep_retry');
+      });
+      window.BillboxOCR.onState(({ state, msg, progress }) => {
+        if (state === 'loading') {
+          shownLoading = true;
+          box.hidden = false;
+          box.classList.remove('is-ready', 'is-error');
+          $('prep-icon').textContent = '📥';
+          $('prep-msg').textContent = msg || '읽기 준비 중';
+          $('prep-fill').style.width = Math.max(3, Math.round(progress * 100)) + '%';
+          $('btn-prep-retry').hidden = true;
+        } else if (state === 'ready') {
+          if (!shownLoading) return; // 이미 받아 둔 경우엔 배너 자체를 안 보여 줌
+          box.classList.add('is-ready');
+          $('prep-icon').textContent = '✅';
+          $('prep-msg').textContent = '찍을 준비 됐어요! 이제 바로 읽어요';
+          $('prep-fill').style.width = '100%';
+          $('prep-sub').textContent = '사전은 폰에 저장돼서 다음부터는 안 받아요.';
+          track('ocr_prep_done');
+          setTimeout(() => (box.hidden = true), 6000);
+        } else if (state === 'error') {
+          box.hidden = false;
+          box.classList.add('is-error');
+          $('prep-icon').textContent = '⚠️';
+          $('prep-msg').textContent = msg || '읽기 도구를 준비하지 못했어요';
+          $('prep-sub').textContent = '인터넷 연결을 확인하고 다시 받아 주세요. 그동안은 "직접 입력"으로 쓸 수 있어요.';
+          $('btn-prep-retry').hidden = false;
+          track('ocr_prep_fail');
+        }
+      });
     },
 
     registerSW() {
@@ -184,6 +224,8 @@
     },
 
     openScan() {
+      const st = window.BillboxOCR.getState();
+      if (st.state !== 'ready') this.showToast(st.state === 'error' ? '읽기 도구가 아직 준비 안 됐어요. 홈의 [다시 받기]를 눌러 주세요' : '아직 사전을 받는 중이에요. 찍으면 받은 뒤 이어서 읽어요', { duration: 4000 });
       $('scan-pick').hidden = false;
       $('scan-progress').hidden = true;
       this.openSheet($('scan-sheet'));
