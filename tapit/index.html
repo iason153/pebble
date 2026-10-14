@@ -12,7 +12,7 @@
 <meta property="og:title" content="Tapit — 탭 한 번으로 링크 복사">
 <meta property="og:description" content="자주 보내는 링크를 모아 두고 한 번 눌러 복사하는 링크 메모장">
 <meta property="og:url" content="https://pebbleitgo.com/tapit/">
-<meta property="og:image" content="https://pebbleitgo.com/tapit/og.png">
+<meta property="og:image" content="https://pebbleitgo.com/tapit/og.png?v=3">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 
@@ -578,7 +578,7 @@ $('shareVeil').addEventListener('click',function(e){
       if(!window.Kakao)throw 0;
       if(!Kakao.isInitialized())Kakao.init(KAKAO_KEY);
       var u=shareUrl('kakao');
-      Kakao.Share.sendDefault({objectType:'feed',content:{title:SHARE_TITLE,description:SHARE_TEXT,imageUrl:APP_URL+'og.png',imageWidth:1200,imageHeight:630,link:{mobileWebUrl:u,webUrl:u}},buttons:[{title:'Tapit 열기',link:{mobileWebUrl:u,webUrl:u}}]});
+      Kakao.Share.sendDefault({objectType:'feed',content:{title:SHARE_TITLE,description:SHARE_TEXT,imageUrl:APP_URL+'og.png?v=3',imageWidth:1200,imageHeight:630,link:{mobileWebUrl:u,webUrl:u}},buttons:[{title:'Tapit 열기',link:{mobileWebUrl:u,webUrl:u}}]});
       track('app_share',{method:'kakao'});
     }catch(x){copyApp('kakao');track('app_share',{method:'kakao_fallback'})}
     return;
