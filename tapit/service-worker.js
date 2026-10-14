@@ -8,7 +8,7 @@
  * 버전을 올릴 때는 CACHE_NAME 숫자만 바꾸면 이전 캐시가 자동 정리된다.
  */
 
-const CACHE_NAME = 'tapit-shell-v1';
+const CACHE_NAME = 'tapit-shell-v2';
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/tapit/
 
 const APP_SHELL = [
@@ -20,6 +20,7 @@ const APP_SHELL = [
   'icons/maskable-192.png',
   'icons/maskable-512.png',
   'icons/favicon-32.png',
+  'og.png',
 ].map((p) => new URL(p, SCOPE).toString());
 
 self.addEventListener('install', (event) => {
