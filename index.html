@@ -14,7 +14,9 @@
 <meta property="og:url" content="https://pebbleitgo.com/">
 <meta property="og:image" content="https://pebbleitgo.com/lineup/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='32' cy='36' rx='26' ry='20' fill='%230f0f0f'/%3E%3Cellipse cx='24' cy='28' rx='8' ry='4' fill='%23ffffff' opacity='.35'/%3E%3C/svg%3E">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 
 <script type="application/ld+json">
 [
@@ -30,7 +32,7 @@
     "@type": "Organization",
     "name": "Pebble",
     "url": "https://pebbleitgo.com/",
-    "logo": "https://pebbleitgo.com/lineup/icons/icon-512.png"
+    "logo": "https://pebbleitgo.com/icons/pebble-logo-1024.png"
   }
 ]
 </script>
@@ -81,22 +83,9 @@
   }
 
   .brand__mark {
-    width: 30px;
-    height: 24px;
-    border-radius: 50% / 55%;
-    background: var(--text);
-    position: relative;
-  }
-
-  .brand__mark::after {
-    content: "";
-    position: absolute;
-    top: 5px;
-    left: 6px;
-    width: 9px;
-    height: 4px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.35);
+    width: 44px;
+    height: 44px;
+    display: block;
   }
 
   h1 {
@@ -201,7 +190,7 @@
 </head>
 <body>
 <main>
-  <div class="brand"><span class="brand__mark" aria-hidden="true"></span>Pebble</div>
+  <div class="brand"><img class="brand__mark" src="/icons/pebble-mark-128.png" alt="" width="44" height="44">Pebble</div>
 
   <h1>소소한 불편을 덜어주는<br>작은 도구들</h1>
   <p class="lead">무시하고 넘어가도 되지만, 매일 조금씩 거슬리는 것들. Pebble은 그런 불편을 하나씩 골라 가벼운 웹 도구로 만들어요.</p>
