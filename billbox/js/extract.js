@@ -28,8 +28,13 @@ window.BillboxExtract = (function () {
   function candidates(text) {
     const A = [];
     const D = [];
+    let prev = '';
     for (const raw of text.split('\n')) {
       const ln = normLine(raw);
+      // 표 모양 고지서는 "납부마감일" 같은 이름표가 윗줄에, 값이 아랫줄에 오기도 한다 → 윗줄 이름표도 가점(조금 덜)
+      const prevAmtKw = AMT_KW.test(prev);
+      const prevDateKw = DATE_KW.test(prev) && !DATE_NEG.test(prev);
+      prev = ln;
       const acct = /\d{3,}-\d{2,}-\d{3,}/.test(ln);
 
       const amtRe = /(\d{1,3}(?:,\d{3})+)\s*(원|윈|위|은|8)?/g;
@@ -40,6 +45,7 @@ window.BillboxExtract = (function () {
         let s = 0;
         if (m[2]) s += 2;
         if (AMT_KW.test(ln)) s += 3;
+        else if (prevAmtKw) s += 2;
         if (acct) s -= 3;
         if (AMT_NEG.test(ln)) s -= 3;
         if (/\d{4}[.\s]+\d{1,2}[.\s]+\d{1,2}/.test(ln)) s += 1;
@@ -54,6 +60,7 @@ window.BillboxExtract = (function () {
         const d = `${m[1]}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`;
         let s = 0;
         if (DATE_KW.test(ln)) s += 3;
+        else if (prevDateKw) s += 2;
         if (DATE_NEG.test(ln)) s -= 3;
         if (/납부|남부/.test(ln)) s += 1;
         D.push({ d, s });
@@ -88,7 +95,7 @@ window.BillboxExtract = (function () {
     const amount = am[0] ? +am[0][0] : null;
     const due = dm[0] ? dm[0][0] : null;
     // "확신": 1등 점수가 2등의 1.5배 이상이고 점수 자체가 어느 정도 될 때
-    const sure = (arr) => arr.length > 0 && arr[0][1] >= 4 && (arr.length === 1 || arr[0][1] >= arr[1][1] * 1.5);
+    const sure = (arr) => arr.length > 0 && arr[0][1] >= 3 && (arr.length === 1 || arr[0][1] >= arr[1][1] * 1.5);
     return {
       kind,
       tag,

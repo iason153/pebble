@@ -7,7 +7,7 @@
  * - OCR 엔진·언어 파일(CDN)은 Tesseract.js가 스스로 IndexedDB에 저장하므로 여기서 손대지 않음
  */
 
-const CACHE_NAME = 'billbox-shell-v1';
+const CACHE_NAME = 'billbox-shell-v2';
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/billbox/
 
 const APP_SHELL = [
@@ -22,6 +22,7 @@ const APP_SHELL = [
   'js/extract.js',
   'js/ocr.js',
   'js/push.js',
+  'js/share.js',
   'js/install.js',
   'js/app.js',
   'icons/icon.svg',

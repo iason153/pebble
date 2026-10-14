@@ -43,6 +43,7 @@
 <header class="top">
   <h1 class="logo"><span class="logo__box">Bill</span><span class="logo__tag">box</span></h1>
   <div class="top__btns">
+    <button type="button" id="btn-share" class="btn btn--sm btn--ghost" aria-label="Billbox 친구에게 공유하기">📤 공유</button>
     <button type="button" id="btn-install" class="btn btn--sm btn--ghost" hidden>설치</button>
     <button type="button" id="btn-settings" class="btn btn--sm btn--ghost" aria-label="설정">⚙ 설정</button>
   </div>
@@ -96,7 +97,7 @@
             <ul>
               <li>고지서 전체가 아니라 <b>금액과 납부기한이 있는 부분</b>만 크게 찍어도 돼요.</li>
               <li>카톡·앱 고지서는 <b>화면 캡처</b>를 앨범에서 고르면 돼요.</li>
-              <li>읽는 데 10~20초쯤 걸려요. 처음 한 번은 한글 사전을 내려받아 더 걸려요.</li>
+              <li>보통 5~15초 걸려요. <b>처음 한 번</b>은 한글 사전(약 10MB)을 내려받아 1분쯤 더 걸려요. 읽는 동안 화면을 켜 두세요.</li>
               <li>잘못 읽으면 다음 화면에서 바로 고칠 수 있어요. 못 읽어도 직접 입력하면 돼요.</li>
             </ul>
           </details>
@@ -110,7 +111,8 @@
           <div class="progress__stamp" aria-hidden="true">👀</div>
           <p class="progress__msg" id="progress-msg">읽기 도구를 준비하고 있어요</p>
           <div class="progress__bar"><div class="progress__fill" id="progress-fill"></div></div>
-          <p class="muted small">폰 안에서만 읽어요. 사진은 안 나가요.</p>
+          <p class="small" id="progress-sec" aria-live="off"></p>
+          <p class="muted small">폰 안에서만 읽어요. 사진은 안 나가요. 보통 5~15초, 처음엔 사전을 내려받아 더 걸려요.</p>
         </div>
         <button type="button" class="btn btn--block btn--ghost" id="btn-scan-cancel">그만두고 직접 입력</button>
       </div>
@@ -247,6 +249,7 @@
 <script src="js/extract.js"></script>
 <script src="js/ocr.js"></script>
 <script src="js/push.js"></script>
+<script src="js/share.js"></script>
 <script src="js/install.js"></script>
 <script src="js/app.js"></script>
 </body>

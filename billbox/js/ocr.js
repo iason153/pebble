@@ -40,7 +40,7 @@ window.BillboxOCR = (function () {
         gzip: true,
         logger: (m) => {
           if (!onProgress) return;
-          if (m.status === 'loading language traineddata' || m.status === 'loading tesseract core') onProgress(0.05 + (m.progress || 0) * 0.25, '한글 사전을 내려받고 있어요 (처음 한 번만)');
+          if (m.status === 'loading language traineddata' || m.status === 'loading tesseract core') onProgress(0.05 + (m.progress || 0) * 0.25, '한글 사전을 내려받고 있어요 — 처음 한 번만, 1분쯤 걸려요');
           else if (m.status === 'initializing api') onProgress(0.32, '거의 준비됐어요');
         },
       });
@@ -147,26 +147,52 @@ window.BillboxOCR = (function () {
    * 사진 한 장 읽기. 두 번 읽어 글자 배열을 돌려준다.
    * @returns {Promise<{texts:string[], confidences:number[], ms:number}>}
    */
-  async function readBill(file, onProgress) {
-    const t0 = Date.now();
-    const w = await ready(onProgress);
-    const bmp = await fileToBitmap(file);
-    const raw = toCanvas(bmp, 1700);
-    const pre = enhance(raw, 2600);
-    if (bmp.close) bmp.close();
+  /** 읽는 동안 화면이 꺼지지 않게(안드로이드 크롬은 화면이 꺼지면 작업이 멈춘다) */
+  async function keepAwake() {
+    try {
+      if ('wakeLock' in navigator) return await navigator.wakeLock.request('screen');
+    } catch (_) {}
+    return null;
+  }
 
-    onProgress && onProgress(0.4, '글자를 읽고 있어요 (1/2)');
-    await w.setParameters({ tessedit_pageseg_mode: '3' });
-    const r1 = await w.recognize(raw);
-    onProgress && onProgress(0.7, '한 번 더 꼼꼼히 읽고 있어요 (2/2)');
-    await w.setParameters({ tessedit_pageseg_mode: '4' });
-    const r2 = await w.recognize(pre);
-    onProgress && onProgress(0.97, '정리하고 있어요');
-    return {
-      texts: [r1.data.text || '', r2.data.text || ''],
-      confidences: [r1.data.confidence || 0, r2.data.confidence || 0],
-      ms: Date.now() - t0,
-    };
+  /**
+   * 사진 한 장 읽기.
+   * 1차: 원본(작게). 금액·기한 둘 다 확신이면 여기서 끝(시간 절반).
+   * 2차: 자신 없을 때만 손질본을 한 번 더 읽어 후보를 합친다.
+   * @param {(texts:string[])=>boolean} [goodEnough] 1차 결과로 충분한지 판단(extract.sure)
+   * @returns {Promise<{texts:string[], confidences:number[], passes:number, ms:number}>}
+   */
+  async function readBill(file, onProgress, goodEnough) {
+    const t0 = Date.now();
+    const lock = await keepAwake();
+    try {
+      const w = await ready(onProgress);
+      const bmp = await fileToBitmap(file);
+      const raw = toCanvas(bmp, 1400);
+      if (bmp.close) bmp.close();
+
+      onProgress && onProgress(0.45, '글자를 읽고 있어요');
+      await w.setParameters({ tessedit_pageseg_mode: '3' });
+      const r1 = await w.recognize(raw);
+      const texts = [r1.data.text || ''];
+      const confidences = [r1.data.confidence || 0];
+      if (goodEnough && goodEnough(texts)) {
+        onProgress && onProgress(0.97, '정리하고 있어요');
+        return { texts, confidences, passes: 1, ms: Date.now() - t0 };
+      }
+      onProgress && onProgress(0.72, '자신이 없어서 한 번 더 꼼꼼히 읽어요');
+      const pre = enhance(raw, 2000);
+      await w.setParameters({ tessedit_pageseg_mode: '4' });
+      const r2 = await w.recognize(pre);
+      texts.push(r2.data.text || '');
+      confidences.push(r2.data.confidence || 0);
+      onProgress && onProgress(0.97, '정리하고 있어요');
+      return { texts, confidences, passes: 2, ms: Date.now() - t0 };
+    } finally {
+      try {
+        lock && lock.release();
+      } catch (_) {}
+    }
   }
 
   /** 미리 내려받기(첫 화면에서 조용히) — 실패해도 조용히 넘어감 */

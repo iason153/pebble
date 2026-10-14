@@ -58,6 +58,7 @@
         S.saveSettings({ introSeen: true });
       });
       $('btn-settings').addEventListener('click', () => this.openSettings());
+      $('btn-share').addEventListener('click', () => window.BillboxShare.share('header'));
       $('btn-scan').addEventListener('click', () => this.openScan());
       $('btn-manual').addEventListener('click', () => this.openEdit('manual'));
       $('list').addEventListener('click', (e) => {
@@ -200,10 +201,20 @@
       };
       prog(0.02, '사진을 여는 중');
       track('scan_start', { from });
+      const started = Date.now();
+      const tick = setInterval(() => {
+        if (token !== this.scanToken) return clearInterval(tick);
+        const sec = Math.round((Date.now() - started) / 1000);
+        $('progress-sec').textContent = sec >= 3 ? `${sec}초째 · 화면을 켜 두세요` : '';
+      }, 1000);
       let res;
       try {
-        res = await window.BillboxOCR.readBill(file, prog);
+        res = await window.BillboxOCR.readBill(file, prog, (texts) => {
+          const ex = window.BillboxExtract.extract(texts);
+          return !!(ex.amount && ex.due && ex.sure.amount && ex.sure.due);
+        });
       } catch (err) {
+        clearInterval(tick);
         if (token !== this.scanToken) return;
         track('scan_fail', { reason: 'engine' });
         this.hideSheetNow($('scan-sheet'));
@@ -211,10 +222,11 @@
         this.showToast(`읽기 도구를 준비하지 못했어요 (${err.message || '네트워크'}). 직접 입력해 주세요`, { duration: 5000 });
         return;
       }
+      clearInterval(tick);
       if (token !== this.scanToken) return;
       const ex = window.BillboxExtract.extract(res.texts);
       const got = (ex.amount ? 1 : 0) + (ex.due ? 1 : 0) + (ex.kind ? 1 : 0);
-      track('scan_done', { got, kind: ex.kind ? ex.kind.id : 'none', ms: Math.round(res.ms / 1000), conf: Math.round(Math.max(...res.confidences)) });
+      track('scan_done', { got, kind: ex.kind ? ex.kind.id : 'none', ms: Math.round(res.ms / 1000), passes: res.passes, conf: Math.round(Math.max(...res.confidences)) });
       this.hideSheetNow($('scan-sheet'));
       if (got === 0) {
         this.openEdit('manual');

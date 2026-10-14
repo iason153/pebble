@@ -18,5 +18,5 @@ window.BILLBOX_CONFIG = Object.freeze({
     LANG_PATH: 'https://tessdata.projectnaptha.com/4.0.0_best_int',
   }),
   REMIND_HOUR_DEFAULT: 9,
-  VERSION: '1.0.0',
+  VERSION: '1.0.1',
 });
