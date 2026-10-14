@@ -154,6 +154,13 @@
         <button id="btn-undo" class="tool-btn" type="button" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 7H5v4M5.5 10.5A7 7 0 1 1 6 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>되돌리기</button>
         <button id="btn-hide-all" class="tool-btn" type="button" hidden>찾은 것 모두 가리기</button>
       </div>
+      <div id="hide-style" class="hide-style" hidden>
+        <span>얼굴 가리기</span>
+        <div class="seg seg--wrap" role="group" aria-label="얼굴 가리는 방식">
+          <button type="button" data-style="mosaic" class="is-on">모자이크</button><button type="button" data-style="blur">흐림</button>
+          <button type="button" data-style="sticker:😊" aria-label="웃는 얼굴 스티커">😊</button><button type="button" data-style="sticker:😎" aria-label="선글라스 스티커">😎</button><button type="button" data-style="sticker:🙂" aria-label="미소 스티커">🙂</button><button type="button" data-style="sticker:🐻" aria-label="곰 스티커">🐻</button><button type="button" data-style="sticker:🌸" aria-label="꽃 스티커">🌸</button><button type="button" data-style="sticker:⭐" aria-label="별 스티커">⭐</button><button type="button" data-style="sticker:❤️" aria-label="하트 스티커">❤️</button>
+        </div>
+      </div>
       <div id="brush-row" class="brush-size" hidden><span>굵기</span><div class="seg" role="group" aria-label="굵기"><button type="button" data-size="s">가늘게</button><button type="button" data-size="m" class="is-on">보통</button><button type="button" data-size="l">굵게</button></div></div>
       <p id="ocr-note" class="panel__desc" hidden></p>
       <details class="more">

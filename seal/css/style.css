@@ -490,7 +490,7 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .panel__desc { margin: -4px 0 0; font-size: 0.85rem; line-height: 1.5; color: var(--muted); }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.info-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border-radius: 999px; background: var(--blush); color: var(--rose-deep); font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.info-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 10px; border-radius: 14px; background: var(--blush); color: var(--rose-deep); font-size: 0.8rem; font-weight: 700; line-height: 1.35; max-width: 100%; }
 .info-chip--warn { background: #F6EBD2; color: var(--warn); }
 .info-chip--ok { background: var(--blush); color: var(--rose-deep); }
 
@@ -505,6 +505,9 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .tool-btn { border-radius: 999px; }
 .tool-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .tool-btn svg { flex-shrink: 0; }
+.hide-style { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
+.seg--wrap { flex-wrap: wrap; }
+.seg--wrap button { min-width: 40px; padding: 0 9px; font-size: 1rem; }
 .brush-size { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
 .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--blush); }
 .seg button { min-height: 36px; padding: 0 12px; border: none; border-radius: 999px; background: none; color: var(--muted); font-size: 0.82rem; font-weight: 700; white-space: nowrap; }

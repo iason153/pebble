@@ -329,7 +329,7 @@
   const Protect = {
     canvas: $('canvas'), ctx: null, src: null,     // src: 편집 중 사진
     undo: [], brushOn: false, brushSize: 'm', strokeSrc: null, bbox: null,
-    boxes: [], exif: null, ocr: null, out: null, outBlob: null, tagPos: 'corner', step: 1,
+    boxes: [], exif: null, ocr: null, out: null, outBlob: null, tagPos: 'corner', step: 1, hideStyle: 'mosaic',
 
     init() {
       this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
@@ -344,6 +344,9 @@
       }));
       $('btn-undo').addEventListener('click', () => this.doUndo());
       $('ocr-banner-close').addEventListener('click', () => this.banner(''));
+      document.querySelectorAll('#hide-style [data-style]').forEach((b) => b.addEventListener('click', () => {
+        document.querySelectorAll('#hide-style [data-style]').forEach((x) => x.classList.toggle('is-on', x === b)); this.hideStyle = b.dataset.style; track('hide_style', { style: this.hideStyle });
+      }));
       $('btn-ocr').addEventListener('click', () => this.runOcr());
       $('btn-face').addEventListener('click', () => this.runFace());
       $('btn-hide-all').addEventListener('click', () => { const n = this.boxes.length; this.boxes.slice().forEach((b) => this.hideBox(b)); track('hide_all', { count: n }); });
@@ -382,7 +385,7 @@
     async start(file) {
       show('view-protect'); this.goStep(1);
       $('stage-busy').hidden = false; $('stage-busy').textContent = '사진을 여는 중…';
-      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); this.banner(''); $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
+      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); this.banner(''); $('hide-style').hidden = true; $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
       try {
         const [c, exif] = await Promise.all([loadImage(file, MAX_EDIT), scanExif(file)]);
         this.src = c; this.exif = exif;
@@ -392,7 +395,7 @@
           const pos = exif.lat !== null ? ` · ${exif.lat >= 0 ? '북위' : '남위'} ${Math.abs(exif.lat).toFixed(4)}, ${exif.lon >= 0 ? '동경' : '서경'} ${Math.abs(exif.lon).toFixed(4)}` : '';
           chips.push(`<span class="info-chip info-chip--warn">촬영 위치가 들어 있어요${pos} → 내보낼 때 지워요</span>`);
           this.hint('이 사진엔 찍은 장소 좌표가 들어 있어요. 집·회사·아이 학교 근처라면 특히 조심하세요. Seal이 지워 드려요.');
-        } else chips.push('<span class="info-chip info-chip--ok">위치 정보 없음</span>');
+        } else chips.push('<span class="info-chip info-chip--ok">위치 정보 없음 (폰이 미리 지웠을 수 있어요)</span>');
         if (exif.exif) chips.push('<span class="info-chip">촬영 정보(기종·시각) → 지워요</span>');
         chips.push(`<span class="info-chip">${c.width}×${c.height}</span>`);
         $('exif-chips').innerHTML = chips.join('');
@@ -470,11 +473,26 @@
       if (u.box) { this.boxes.push(u.box); this.renderBoxes(); }
       $('btn-undo').disabled = this.undo.length === 0; track('mask_undo');
     },
-    hideRect(x, y, w, h) {
+    hideRect(x, y, w, h, style) {
       const W = this.canvas.width, H = this.canvas.height;
       x = Math.max(0, Math.floor(x)); y = Math.max(0, Math.floor(y)); w = Math.min(W - x, Math.ceil(w)); h = Math.min(H - y, Math.ceil(h));
       if (w <= 0 || h <= 0) return null;
       const before = this.ctx.getImageData(x, y, w, h);
+      if (style === 'blur') { // 흐림: 작게 줄였다 키움
+        const tmp = document.createElement('canvas'); tmp.width = Math.max(2, Math.ceil(w / 14)); tmp.height = Math.max(2, Math.ceil(h / 14));
+        tmp.getContext('2d').drawImage(this.canvas, x, y, w, h, 0, 0, tmp.width, tmp.height);
+        this.ctx.save(); this.ctx.beginPath(); this.ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); this.ctx.clip();
+        this.ctx.imageSmoothingEnabled = true; this.ctx.filter = 'blur(' + Math.round(Math.max(w, h) / 40) + 'px)'; this.ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, x - 4, y - 4, w + 8, h + 8); this.ctx.filter = 'none'; this.ctx.restore();
+        return { x, y, w, h, data: before };
+      }
+      if (style && style.startsWith('sticker:')) { // 스티커: 폰 글꼴의 이모지를 얼굴 크기로 (되돌리기 영역을 넉넉히 다시 잡음)
+        const em = style.slice(8), size = Math.round(Math.max(w, h) * 1.15);
+        const cx = x + w / 2, cy = y + h / 2; x = Math.max(0, Math.floor(cx - size * 0.75)); y = Math.max(0, Math.floor(cy - size * 0.75)); w = Math.min(W - x, Math.ceil(size * 1.5)); h = Math.min(H - y, Math.ceil(size * 1.5));
+        const before2 = this.ctx.getImageData(x, y, w, h);
+        this.ctx.save(); this.ctx.font = `${size}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Samsung Color Emoji", sans-serif`;
+        this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'middle'; this.ctx.fillText(em, cx, cy); this.ctx.restore();
+        return { x, y, w, h, data: before2 };
+      }
       const block = Math.max(8, Math.round(Math.max(W, H) / 60), Math.round(h / 2.5));
       const tmp = document.createElement('canvas'); tmp.width = Math.max(1, Math.ceil(w / block)); tmp.height = Math.max(1, Math.ceil(h / block));
       tmp.getContext('2d').drawImage(this.canvas, x, y, w, h, 0, 0, tmp.width, tmp.height);
@@ -546,7 +564,7 @@
         this.renderBoxes();
         this.banner(faces.length ? `얼굴 ${faces.length}곳 찾음 · 네모를 눌러 가리기` : '얼굴을 찾지 못함',
           faces.length ? '옆얼굴·가려진 얼굴·작은 얼굴은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '정면 얼굴 위주로 찾아요. 옆얼굴·가려진 얼굴은 놓칠 수 있으니 보이는 게 있으면 손으로 가려 주세요.');
-        $('btn-hide-all').hidden = this.boxes.length === 0;
+        $('btn-hide-all').hidden = this.boxes.length === 0; $('hide-style').hidden = faces.length === 0;
         track('face_done', { found: faces.length });
       } catch (err) {
         App.showToast(err.message || '얼굴 찾기에 실패했어요', { duration: 4000 }); track('face_fail');
@@ -568,7 +586,7 @@
       });
     },
     hideBox(b) {
-      const u = this.hideRect(b.x, b.y, b.w, b.h);
+      const u = this.hideRect(b.x, b.y, b.w, b.h, b.kind === 'face' ? this.hideStyle : 'mosaic');
       this.boxes = this.boxes.filter((x) => x !== b);
       if (u) { u.box = b; this.pushUndo(u); }
       this.renderBoxes(); $('btn-hide-all').hidden = this.boxes.length === 0;
