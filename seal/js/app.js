@@ -183,20 +183,32 @@
   // =================================================================
   // 그림 도구
   // =================================================================
-  function loadImage(file, maxSide) {
-    return new Promise((res, rej) => {
-      const url = URL.createObjectURL(file), im = new Image();
-      im.onload = () => {
-        let w = im.naturalWidth, h = im.naturalHeight;
-        if (!w || !h) { URL.revokeObjectURL(url); return rej(new Error('사진 크기를 읽을 수 없어요')); }
-        const s = Math.min(1, maxSide / Math.max(w, h)); w = Math.round(w * s); h = Math.round(h * s);
-        const c = document.createElement('canvas'); c.width = w; c.height = h;
-        c.getContext('2d').drawImage(im, 0, 0, w, h);
-        URL.revokeObjectURL(url); res(c);
-      };
-      im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이 파일은 사진으로 열 수 없어요')); };
-      im.src = url;
-    });
+  // 사진 열기: createImageBitmap(방향 자동 보정·큰 사진에 강함) → 안 되면 <img>. HEIF 등 못 읽는 형식은 이유를 알려 준다.
+  async function loadImage(file, maxSide) {
+    const name = (file.name || '').toLowerCase(), type = file.type || '';
+    const looksHeif = /\.(heic|heif)$/.test(name) || /hei[cf]/.test(type);
+    const fail = (why) => new Error(`${why} (형식 ${type || name.split('.').pop() || '알 수 없음'}, ${Math.round(file.size / 1024)}KB)`);
+    let bmp = null;
+    if (window.createImageBitmap) {
+      try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+      catch (_) { try { bmp = await createImageBitmap(file); } catch (_) { bmp = null; } }
+    }
+    let src = bmp, w = bmp ? bmp.width : 0, h = bmp ? bmp.height : 0;
+    if (!bmp) {
+      src = await new Promise((res, rej) => {
+        const url = URL.createObjectURL(file), im = new Image();
+        im.onload = () => { URL.revokeObjectURL(url); res(im); };
+        im.onerror = () => { URL.revokeObjectURL(url); rej(fail(looksHeif ? '고효율 사진(HEIF)은 브라우저가 못 읽어요. 카메라 설정에서 "고효율 사진"을 끄고 다시 찍거나, 갤러리에서 JPG로 변환해 주세요' : '이 파일은 사진으로 열 수 없어요')); };
+        im.src = url;
+      });
+      w = src.naturalWidth; h = src.naturalHeight;
+    }
+    if (!w || !h) throw fail('사진 크기를 읽을 수 없어요');
+    const s = Math.min(1, maxSide / Math.max(w, h)), cw = Math.round(w * s), ch = Math.round(h * s);
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    c.getContext('2d').drawImage(src, 0, 0, cw, ch);
+    if (bmp && bmp.close) bmp.close();
+    return c;
   }
   function toBlob(canvas, q = 0.92) { return new Promise((res) => canvas.toBlob((b) => res(b), 'image/jpeg', q)); }
   function thumbOf(canvas, size) {
