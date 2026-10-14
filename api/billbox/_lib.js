@@ -13,11 +13,12 @@
  */
 const webpush = require('web-push');
 
-const URL_ = process.env.UPSTASH_REDIS_REST_URL;
-const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+// Vercel 마켓플레이스에서 Upstash를 연결하면 UPSTASH_REDIS_REST_* 또는 KV_REST_API_* 이름으로 들어온다 → 둘 다 지원
+const URL_ = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
 async function redis(...cmd) {
-  if (!URL_ || !TOKEN) throw new Error('Upstash 환경변수가 없어요');
+  if (!URL_ || !TOKEN) throw new Error('Redis 환경변수(UPSTASH_REDIS_REST_URL 또는 KV_REST_API_URL)가 없어요');
   const r = await fetch(URL_, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(cmd) });
   const j = await r.json();
   if (j.error) throw new Error(j.error);
