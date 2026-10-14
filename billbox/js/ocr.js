@@ -87,6 +87,9 @@ window.BillboxOCR = (function () {
       const w = await Promise.race([window.Tesseract.createWorker(['kor', 'eng'], 1, opts), timeout]);
       await w.setParameters({ preserve_interword_spaces: '1' });
       worker = w;
+      try {
+        localStorage.setItem('billbox:ocr-cached', '1');
+      } catch (_) {}
       setState('ready', '찍을 준비 됐어요', 1);
       return w;
     })();
@@ -99,7 +102,39 @@ window.BillboxOCR = (function () {
     }
   }
 
-  async function fileToBitmap(file) {
+  /**
+   * 엔진을 메모리에서 내림. 사전·엔진 파일은 브라우저 저장소(IndexedDB)에 남아 있어서 다음엔 몇 초면 다시 올라온다.
+   * 카메라 앱으로 넘어가기 전·읽기가 끝난 뒤 부른다 → 안드로이드가 크롬 탭을 꺼 버리는 일("메모리가 부족하여…")을 줄인다.
+   */
+  async function release() {
+    const w = worker;
+    worker = null;
+    loading = null;
+    if (w) {
+      try {
+        await w.terminate();
+      } catch (_) {}
+    }
+  }
+  function isCached() {
+    try {
+      return localStorage.getItem('billbox:ocr-cached') === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** 사진을 열 때부터 작게(1,200만 화소 사진을 그대로 풀면 50MB 가까이 메모리를 쓴다) */
+  async function fileToBitmap(file, max) {
+    try {
+      const probe = await createImageBitmap(file, { imageOrientation: 'from-image', resizeWidth: 64, resizeQuality: 'low' });
+      const portrait = probe.height >= probe.width;
+      probe.close && probe.close();
+      const opt = { imageOrientation: 'from-image', resizeQuality: 'high' };
+      if (portrait) opt.resizeHeight = max;
+      else opt.resizeWidth = max;
+      return await createImageBitmap(file, opt);
+    } catch (_) {}
     try {
       return await createImageBitmap(file, { imageOrientation: 'from-image' });
     } catch (_) {
@@ -209,10 +244,11 @@ window.BillboxOCR = (function () {
     const t0 = Date.now();
     const lock = await keepAwake();
     try {
-      const w = await ready(onProgress);
-      const bmp = await fileToBitmap(file);
+      // 사진부터 작게 줄인 뒤(원본은 바로 버림) 엔진을 올린다 → 메모리가 겹치지 않게
+      const bmp = await fileToBitmap(file, 1400);
       const raw = toCanvas(bmp, 1400);
       if (bmp.close) bmp.close();
+      const w = await ready(onProgress);
 
       onProgress && onProgress(0.45, '글자를 읽고 있어요');
       await w.setParameters({ tessedit_pageseg_mode: '3' });
@@ -235,14 +271,24 @@ window.BillboxOCR = (function () {
       try {
         lock && lock.release();
       } catch (_) {}
+      // 다 읽으면 엔진을 메모리에서 내림(다음 찍기 때 몇 초 만에 다시 올라옴)
+      setTimeout(() => release(), 0);
     }
   }
 
   /** 미리 내려받기(첫 화면에서 조용히) — 실패해도 조용히 넘어감 */
   function warmup() {
     if (worker || loading) return;
-    setTimeout(() => ready(null).catch(() => {}), 400);
+    if (isCached()) {
+      setState('ready', '찍을 준비 됐어요', 1); // 이미 받아 둠 → 메모리에 올리지 않음
+      return;
+    }
+    setTimeout(() => {
+      ready(null)
+        .then(() => release()) // 받아만 두고 메모리에선 내림
+        .catch(() => {});
+    }, 400);
   }
 
-  return { ready, readBill, warmup, onState, enhance, toCanvas, getState: () => ({ state, msg: stateMsg, progress: stateProgress }) };
+  return { ready, readBill, warmup, release, isCached, onState, enhance, toCanvas, getState: () => ({ state, msg: stateMsg, progress: stateProgress }) };
 })();

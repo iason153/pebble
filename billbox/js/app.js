@@ -209,13 +209,41 @@
     // 찍기
     // =================================================================
     wireScan() {
-      ['file-camera', 'file-album'].forEach((id) =>
-        $(id).addEventListener('change', (e) => {
+      ['file-camera', 'file-album'].forEach((id) => {
+        const input = $(id);
+        // 사진 고르는 앱으로 넘어가기 전에: 엔진을 메모리에서 내리고, "고르는 중" 표시를 남김(크롬이 꺼졌다 돌아오면 안내용)
+        input.addEventListener('click', () => {
+          window.BillboxOCR.release();
+          try {
+            sessionStorage.setItem('billbox:picking', String(Date.now()));
+          } catch (_) {}
+        });
+        input.addEventListener('change', (e) => {
+          try {
+            sessionStorage.removeItem('billbox:picking');
+          } catch (_) {}
           const f = e.target.files && e.target.files[0];
           e.target.value = '';
-          if (f) this.scan(f, id === 'file-camera' ? 'camera' : 'album');
-        })
-      );
+          if (f) this.scan(f, id === 'file-camera' ? 'camera_app' : 'album');
+        });
+      });
+      $('btn-cam-open').addEventListener('click', () => this.openCam());
+      $('btn-cam-cancel').addEventListener('click', () => {
+        this.stopCam();
+        $('scan-cam').hidden = true;
+        $('scan-pick').hidden = false;
+      });
+      $('btn-cam-shot').addEventListener('click', () => this.shot());
+      $('btn-cam-torch').addEventListener('click', () => this.toggleTorch());
+      // 시트를 닫으면 카메라도 끔
+      const obs = new MutationObserver(() => {
+        if ($('scan-sheet').hidden) this.stopCam();
+      });
+      obs.observe($('scan-sheet'), { attributes: true, attributeFilter: ['hidden'] });
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) this.stopCam();
+      });
+      this.checkLostPhoto();
       $('btn-scan-cancel').addEventListener('click', () => {
         this.scanToken++;
         this.hideSheetNow($('scan-sheet'));
@@ -223,11 +251,96 @@
       });
     },
 
+    /** 카메라 앱·앨범에 갔다가 크롬이 꺼져서 돌아온 경우 안내 */
+    checkLostPhoto() {
+      let t = 0;
+      try {
+        t = Number(sessionStorage.getItem('billbox:picking') || 0);
+        sessionStorage.removeItem('billbox:picking');
+      } catch (_) {}
+      if (!t || Date.now() - t > 10 * 60 * 1000) return;
+      track('scan_lost');
+      setTimeout(() => {
+        this.openScan();
+        $('scan-lost').hidden = false;
+      }, 300);
+    },
+
+    camSupported() {
+      return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    },
+
+    async openCam() {
+      if (!this.camSupported()) {
+        $('lbl-camera-app').hidden = false;
+        $('btn-cam-open').hidden = true;
+        $('file-camera').click();
+        return;
+      }
+      $('scan-pick').hidden = true;
+      $('scan-cam').hidden = false;
+      try {
+        this.camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+        const v = $('cam-video');
+        v.srcObject = this.camStream;
+        await v.play().catch(() => {});
+        const track0 = this.camStream.getVideoTracks()[0];
+        const caps = track0 && track0.getCapabilities ? track0.getCapabilities() : {};
+        $('btn-cam-torch').hidden = !caps.torch;
+        this.torchOn = false;
+        track('cam_open', { ok: 1 });
+      } catch (err) {
+        track('cam_open', { ok: 0, reason: (err && err.name) || 'x' });
+        this.stopCam();
+        $('scan-cam').hidden = true;
+        $('scan-pick').hidden = false;
+        // 앱 안 카메라가 안 되면(권한 거부 등) 카메라 앱 방식으로
+        $('lbl-camera-app').hidden = false;
+        this.showToast(err && err.name === 'NotAllowedError' ? '카메라 권한이 꺼져 있어요. "카메라 앱으로 찍기"나 앨범을 써 주세요' : '앱 안 카메라를 못 열었어요. "카메라 앱으로 찍기"를 써 주세요', { duration: 4500 });
+      }
+    },
+
+    stopCam() {
+      if (this.camStream) {
+        this.camStream.getTracks().forEach((t) => t.stop());
+        this.camStream = null;
+      }
+      const v = $('cam-video');
+      if (v) v.srcObject = null;
+    },
+
+    async toggleTorch() {
+      const t = this.camStream && this.camStream.getVideoTracks()[0];
+      if (!t) return;
+      this.torchOn = !this.torchOn;
+      try {
+        await t.applyConstraints({ advanced: [{ torch: this.torchOn }] });
+      } catch (_) {}
+    },
+
+    async shot() {
+      const v = $('cam-video');
+      if (!v.videoWidth) return;
+      const max = 1600;
+      const r = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(v.videoWidth * r);
+      c.height = Math.round(v.videoHeight * r);
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      this.stopCam();
+      $('scan-cam').hidden = true;
+      const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));
+      c.width = c.height = 0;
+      if (blob) this.scan(blob, 'camera');
+    },
+
     openScan() {
       const st = window.BillboxOCR.getState();
       if (st.state !== 'ready') this.showToast(st.state === 'error' ? '읽기 도구가 아직 준비 안 됐어요. 홈의 [다시 받기]를 눌러 주세요' : '아직 사전을 받는 중이에요. 찍으면 받은 뒤 이어서 읽어요', { duration: 4000 });
       $('scan-pick').hidden = false;
+      $('scan-cam').hidden = true;
       $('scan-progress').hidden = true;
+      $('scan-lost').hidden = true;
       this.openSheet($('scan-sheet'));
       track('scan_open');
     },
@@ -235,6 +348,7 @@
     async scan(file, from) {
       const token = ++this.scanToken;
       $('scan-pick').hidden = true;
+      $('scan-cam').hidden = true;
       $('scan-progress').hidden = false;
       const prog = (p, msg) => {
         if (token !== this.scanToken) return;

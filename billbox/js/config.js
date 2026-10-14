@@ -20,5 +20,5 @@ window.BILLBOX_CONFIG = Object.freeze({
     LANG_PATH: '',
   }),
   REMIND_HOUR_DEFAULT: 9,
-  VERSION: '1.0.2',
+  VERSION: '1.0.3',
 });

@@ -109,9 +109,25 @@
             </ul>
           </details>
         </div>
-        <label class="btn btn--big btn--brass btn--block file-btn">📷 카메라로 찍기<input type="file" id="file-camera" accept="image/*" capture="environment"></label>
+        <div class="notice card" id="scan-lost" hidden>
+          <p><b>사진이 사라졌어요.</b> 폰 메모리가 모자라 크롬이 잠깐 꺼졌던 것 같아요. 아래 <b>앱 안 카메라</b>로 찍거나 <b>앨범에서 고르기</b>를 써 주세요. 다른 탭을 닫으면 더 좋아요.</p>
+        </div>
+        <button type="button" class="btn btn--big btn--brass btn--block" id="btn-cam-open">📷 카메라로 찍기</button>
+        <label class="btn btn--big btn--block file-btn" id="lbl-camera-app" hidden>📷 카메라 앱으로 찍기<input type="file" id="file-camera" accept="image/*" capture="environment"></label>
         <label class="btn btn--big btn--block file-btn">🖼️ 앨범·캡처에서 고르기<input type="file" id="file-album" accept="image/*"></label>
         <p class="muted small">사진은 읽은 뒤 바로 버려요. 어디에도 저장하지 않아요.</p>
+      </div>
+      <div id="scan-cam" hidden>
+        <div class="cam">
+          <video id="cam-video" playsinline muted autoplay></video>
+          <div class="cam__guide" aria-hidden="true"><span>금액·납부기한이 이 안에 크게</span></div>
+        </div>
+        <div class="cam__btns">
+          <button type="button" class="btn btn--ghost" id="btn-cam-cancel">취소</button>
+          <button type="button" class="cam__shutter" id="btn-cam-shot" aria-label="찍기"></button>
+          <button type="button" class="btn btn--ghost" id="btn-cam-torch" hidden>💡 불빛</button>
+        </div>
+        <p class="muted small" style="text-align:center">앱 안에서 바로 찍어요. 카메라 앱으로 안 넘어가서 사진이 안 사라져요.</p>
       </div>
       <div id="scan-progress" hidden>
         <div class="progress card card--tilt">
