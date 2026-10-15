@@ -21,6 +21,13 @@ window.BillboxExtract = (function () {
     { re: /독촉/, label: '독촉' },
   ];
 
+  /** d(YYYY-MM-DD) - 오늘 (일) */
+  function dayDiff(d) {
+    const [y, m, dd] = d.split('-').map(Number);
+    const t = new Date();
+    return Math.round((Date.UTC(y, m - 1, dd) - Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000);
+  }
+
   function normLine(raw) {
     return raw.replace(/[oO]/g, '0').replace(/[lI|]/g, '1');
   }
@@ -52,8 +59,10 @@ window.BillboxExtract = (function () {
         A.push({ v, s });
       }
 
-      const dateRe = /(20\d\d)\s*[.\-년,]?\s*(\d\s?\d|\d)\s*[.\-월,]\s*(\d\s?\d|\d)/g;
+      // "2026.12.05", "2026년 12월 5일", "2026.1 0.1 0." 그리고 점이 하나 빠진 "2026. 12 05"(글자 읽기에서 자주 생김)까지
+      const dateRe = /(20\d\d)\s*[.\-년,]?\s*(\d\s?\d|\d)\s*[.\-월,]\s*(\d\s?\d|\d)|(20\d\d)\s*[.\-년,]\s*(\d{1,2})\s+(\d{2})(?!\d)/g;
       while ((m = dateRe.exec(ln))) {
+        if (m[4]) m = [m[0], m[4], m[5], m[6]];
         const mo = +m[2].replace(/\s/g, '');
         const da = +m[3].replace(/\s/g, '');
         if (mo < 1 || mo > 12 || da < 1 || da > 31) continue;
@@ -63,6 +72,12 @@ window.BillboxExtract = (function () {
         else if (prevDateKw) s += 2;
         if (DATE_NEG.test(ln)) s -= 3;
         if (/납부|남부/.test(ln)) s += 1;
+        // "2025.05 ~ 2026.08", "12월 18일 ~ 받은 날 사이" 처럼 기간을 말하는 날짜는 납부기한이 아님
+        if (/~|∼|〜|부터|사이/.test(ln)) s -= 2;
+        // 납부기한은 보통 오늘 근처(지난 석 달 ~ 앞으로 넉 달). 너무 먼 날짜는 감점
+        const age = dayDiff(d);
+        if (age < -90 || age > 120) s -= 3;
+        else if (age >= -45 && age <= 75) s += 1;
         D.push({ d, s });
       }
     }
@@ -102,7 +117,7 @@ window.BillboxExtract = (function () {
       amount,
       due,
       altAmounts: am.slice(1, 4).map((x) => +x[0]),
-      altDues: dm.slice(1, 4).map((x) => x[0]),
+      altDues: dm.slice(1, 4).filter((x) => x[1] > 0).map((x) => x[0]), // 점수가 낮은(기간·옛 날짜) 건 후보로도 안 보여 줌
       sure: { amount: sure(am), due: sure(dm) },
     };
   }

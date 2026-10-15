@@ -267,8 +267,8 @@ window.BillboxOCR = (function () {
     users++;
     const lock = await keepAwake();
     try {
-      const bmp = await fileToBitmap(file, 1400);
-      const raw = toCanvas(bmp, 1400);
+      const bmp = await fileToBitmap(file, 1700);
+      const raw = toCanvas(bmp, 1700);
       if (bmp.close) bmp.close();
       const photo = await new Promise((res) => raw.toBlob(res, 'image/jpeg', 0.82));
       const recog = async (img, psm) => {
@@ -292,7 +292,7 @@ window.BillboxOCR = (function () {
         return { texts, confidences, passes: 1, ms: Date.now() - t0, photo };
       }
       onProgress && onProgress(0.72, '자신이 없어서 한 번 더 꼼꼼히 읽어요');
-      const pre = enhance(raw, 2000);
+      const pre = enhance(raw, 2400);
       const r2 = await recog(pre, '4');
       texts.push(r2.data.text || '');
       confidences.push(r2.data.confidence || 0);

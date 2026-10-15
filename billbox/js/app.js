@@ -469,6 +469,10 @@
         $('scan-pick').hidden = false;
       });
       $('btn-cam-shot').addEventListener('click', () => this.shot());
+      $('btn-retry-manual').addEventListener('click', () => {
+        this.hideSheetNow($('scan-sheet'));
+        this.openEdit('manual');
+      });
       $('btn-cam-torch').addEventListener('click', () => this.toggleTorch());
       // 시트를 닫으면 카메라도 끔
       const obs = new MutationObserver(() => {
@@ -507,30 +511,36 @@
 
     async openCam() {
       if (!this.camSupported()) {
-        $('lbl-camera-app').hidden = false;
         $('btn-cam-open').hidden = true;
         $('file-camera').click();
         return;
       }
       $('scan-pick').hidden = true;
       $('scan-cam').hidden = false;
+      $('cam-hint').textContent = '고지서를 테두리 안에 맞추고, 흔들리지 않게 잡아 주세요';
       try {
-        this.camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+        // 미리보기는 크게 요청(지원하는 만큼). 실제 사진은 아래 takePhoto로 카메라 원래 화질로 찍는다
+        this.camStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } },
+          audio: false,
+        });
         const v = $('cam-video');
         v.srcObject = this.camStream;
         await v.play().catch(() => {});
-        const track0 = this.camStream.getVideoTracks()[0];
-        const caps = track0 && track0.getCapabilities ? track0.getCapabilities() : {};
+        const t = this.camStream.getVideoTracks()[0];
+        const caps = t && t.getCapabilities ? t.getCapabilities() : {};
+        // 계속 초점 맞추기(지원 폰만)
+        if (caps.focusMode && caps.focusMode.includes('continuous')) t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
         $('btn-cam-torch').hidden = !caps.torch;
         this.torchOn = false;
-        track('cam_open', { ok: 1 });
+        this.imageCapture = 'ImageCapture' in window && t ? new window.ImageCapture(t) : null;
+        const st = t && t.getSettings ? t.getSettings() : {};
+        track('cam_open', { ok: 1, w: st.width || 0, h: st.height || 0, ic: this.imageCapture ? 1 : 0 });
       } catch (err) {
         track('cam_open', { ok: 0, reason: (err && err.name) || 'x' });
         this.stopCam();
         $('scan-cam').hidden = true;
         $('scan-pick').hidden = false;
-        // 앱 안 카메라가 안 되면(권한 거부 등) 카메라 앱 방식으로
-        $('lbl-camera-app').hidden = false;
         this.showToast(err && err.name === 'NotAllowedError' ? '카메라 권한이 꺼져 있어요. "카메라 앱으로 찍기"나 앨범을 써 주세요' : '앱 안 카메라를 못 열었어요. "카메라 앱으로 찍기"를 써 주세요', { duration: 4500 });
       }
     },
@@ -540,6 +550,7 @@
         this.camStream.getTracks().forEach((t) => t.stop());
         this.camStream = null;
       }
+      this.imageCapture = null;
       const v = $('cam-video');
       if (v) v.srcObject = null;
     },
@@ -553,20 +564,52 @@
       } catch (_) {}
     },
 
+    /**
+     * 찍기: ① ImageCapture.takePhoto — 카메라 원래 화질(초점·노출 자동), 카메라 앱과 비슷
+     *       ② 안 되면 미리보기 화면에서 테두리 안쪽만 잘라 씀(글자가 커지게)
+     */
     async shot() {
       const v = $('cam-video');
-      if (!v.videoWidth) return;
-      const max = 1600;
-      const r = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
-      const c = document.createElement('canvas');
-      c.width = Math.round(v.videoWidth * r);
-      c.height = Math.round(v.videoHeight * r);
-      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      if (!v.videoWidth || this.shooting) return;
+      this.shooting = true;
+      $('cam-hint').textContent = '찰칵! 그대로 잠깐만요…';
+      let blob = null;
+      let method = 'frame';
+      try {
+        if (this.imageCapture && this.imageCapture.takePhoto) {
+          let opts = {};
+          try {
+            const pc = await this.imageCapture.getPhotoCapabilities();
+            if (pc && pc.imageWidth && pc.imageWidth.max) opts = { imageWidth: pc.imageWidth.max, imageHeight: pc.imageHeight.max };
+            if (this.torchOn && pc.fillLightMode && pc.fillLightMode.includes('flash')) opts.fillLightMode = 'flash';
+          } catch (_) {}
+          blob = await Promise.race([this.imageCapture.takePhoto(opts), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 6000))]);
+          method = 'photo';
+        }
+      } catch (_) {
+        blob = null;
+      }
+      if (!blob) {
+        // 미리보기 화면에서 테두리(가로 8%~92%, 세로 12%~88%) 안쪽만 — 화면 표시(object-fit: cover)와 영상 좌표를 맞춰 계산
+        const vw = v.videoWidth, vh = v.videoHeight;
+        const r = v.getBoundingClientRect();
+        const sc = Math.max(r.width / vw, r.height / vh);
+        const offX = (vw * sc - r.width) / 2, offY = (vh * sc - r.height) / 2;
+        const gx = (r.width * 0.05 + offX) / sc, gy = (r.height * 0.08 + offY) / sc;
+        const gw = (r.width * 0.9) / sc, gh = (r.height * 0.84) / sc;
+        const c = document.createElement('canvas');
+        c.width = Math.round(gw);
+        c.height = Math.round(gh);
+        c.getContext('2d').drawImage(v, gx, gy, gw, gh, 0, 0, c.width, c.height);
+        blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.95));
+        c.width = c.height = 0;
+      }
+      const st = this.camStream ? this.camStream.getVideoTracks()[0].getSettings() : {};
+      track('cam_shot', { method, w: st.width || 0, h: st.height || 0 });
       this.stopCam();
+      this.shooting = false;
       $('scan-cam').hidden = true;
-      const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));
-      c.width = c.height = 0;
-      if (blob) this.scan(blob, 'camera');
+      if (blob) this.scan(blob, method === 'photo' ? 'camera' : 'camera_frame');
     },
 
     openScan() {
@@ -576,6 +619,7 @@
       $('scan-cam').hidden = true;
       $('scan-progress').hidden = true;
       $('scan-lost').hidden = true;
+      $('scan-retry').hidden = true;
       this.openSheet($('scan-sheet'));
       track('scan_open');
     },
@@ -622,9 +666,11 @@
       const got = (ex.amount ? 1 : 0) + (ex.due ? 1 : 0) + (ex.kind ? 1 : 0);
       track('scan_done', { got, kind: ex.kind ? ex.kind.id : 'none', ms: Math.round(res.ms / 1000), passes: res.passes, conf: Math.round(Math.max(...res.confidences)) });
       this.hideSheetNow($('scan-sheet'));
-      if (got === 0) {
-        this.openEdit('manual');
-        this.showToast('글자를 못 읽었어요. 직접 적어 주세요 (금액·기한 부분을 크게 찍으면 더 잘 읽어요)', { duration: 5500 });
+      if (got === 0 || (!ex.amount && !ex.due)) {
+        // 금액·기한을 하나도 못 읽음 → 바로 직접 입력으로 보내지 말고 다시 찍을 기회를 줌
+        this.openScan();
+        $('scan-retry').hidden = false;
+        $('scan-retry-msg').textContent = from === 'album' || from === 'share' ? '이 사진에서는 금액·기한을 못 읽었어요.' : '금액·기한을 못 읽었어요. 조금 더 가까이, 밝은 곳에서 다시 찍어 볼까요?';
         return;
       }
       this.openEdit('photo', ex);
