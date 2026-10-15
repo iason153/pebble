@@ -75,7 +75,40 @@ Pebble 메인(`/index.html`)에 Tapit 카드 추가, `/sitemap.xml`에 `/tapit/`
 7. Tapit 정식 아이콘(현재 임시), Pebble 메인 공유 그림(현재 Lineup 그림)
 8. 검색 등록: 구글 서치콘솔·네이버 서치어드바이저 사이트맵 재제출, 빙 웹마스터·다음 등록 (대표)
 9. 오토컴퍼니 프로젝트 방 등록 (Lineup·Getset과 함께)
-10. 네오 브루탈리즘 검토 결과: 전체 적용은 안 함. 원하면 복사·채널 버튼에만 짧은 그림자 한 방울 넣은 비교안.
+10. **GA4 주요 이벤트 표시 (다음 접속 때 먼저 안내할 것)** — 2026-10-14 대표가 폰에서 `channel_copy`·`app_installed`를 한 번씩 발생시킴. 관리 → 데이터 표시 → 이벤트 목록에 두 이벤트가 올라왔는지 확인 후 별(★)로 주요 이벤트 표시. "이벤트 만들기" 화면은 쓰지 말 것(page_view 기반 가짜 이벤트가 생김). 맞춤 측정기준 `tool`(이벤트 범위) 등록 여부도 확인. 서치콘솔 ↔ GA4 연결은 2026-10-14 완료 → 보고서 라이브러리에서 Search Console 컬렉션 게시 여부 확인.
+11. 네오 브루탈리즘 검토 결과: 전체 적용은 안 함. 원하면 복사·채널 버튼에만 짧은 그림자 한 방울 넣은 비교안.
+
+## 8-1. v4·v5 반영 (2026-10-15)
+
+- **v4**: 백업(화면 맨 아래, 내보내기 = `tapit-backup-YYYYMMDD.json` 저장 / 가져오기 = 주소 기준 중복 건너뛰고 합침 / 링크 5개 이상인데 백업 없으면 빨간 안내), 의견 보내기(오락실 문의 오픈채팅 https://open.kakao.com/o/s6jWLxuh — Pebble 전용 채팅 생기면 교체), 사용법 페이지 `tapit/guide.html`(검색어: 링크 메모장·카톡 나에게 보내기 대신·UTM 링크 만들기, FAQ 6개, WebApplication·FAQPage 구조화 정보), 메인 제목 "Tapit 탭잇 — 무료 링크 메모장, 탭 한 번으로 링크 복사", 하단 소개글, sitemap에 guide 추가.
+- **Tapit 정식 아이콘**: ChatGPT 4안 중 1번(노란 메모지 + 검은 링크 + 노란 탭 표시). 2번(흰 메모지)은 32px에서 배경에 묻혀 제외. 파일 `tapit/icons/`(tapit-logo-1024 포함).
+- **v5 Google Analytics 연동 (구현 완료, 테스트 모드)**
+  - 구글 클라우드 프로젝트 `pebble-lineup`(iason153@gmail.com): Analytics Data API·Admin API 사용, OAuth 앱 이름 Tapit(외부, 테스트 중), 승인된 도메인 pebbleitgo.com, 범위 `analytics.readonly`, 테스트 사용자 iason153·creatorock153, 웹 클라이언트 "Tapit web"(JS 원본 https://pebbleitgo.com, https://www.pebbleitgo.com).
+  - 클라이언트 ID(공개값): `973607682974-i24c50abhlbkpri3ud779ul415ql3b3a.apps.googleusercontent.com`. 보안 비밀번호는 쓰지 않음.
+  - 동작: Google Identity Services 토큰 방식(팝업) → Admin API로 계정의 속성 목록(최대 25개) → 속성마다 Data API 2회(hostName 목록 / hostName·sessionSource·sessionCampaignName별 세션, 최근 90일) → 링크 주소의 도메인 + 캠페인 앞부분(`캠페인이름_`)이 맞는 행을 채널(utm_source)별로 합산. 결과는 기기에만 저장(`S.ga`), 토큰은 메모리만.
+  - 화면: 카드 메타에 "방문 N", "자세히" → 링크별 채널 표(공유·방문·합계), 연동 해제·새로고침. 카톡 등 인앱에서는 구글이 로그인을 막으므로 크롬으로 열라고 안내. 시범 운영 문구 표시.
+  - 개인정보처리방침 `tapit/privacy.html`(Google API 사용자 데이터 정책·제한적 사용 문구 포함).
+  - 남은 일: 실제 계정으로 첫 연동 시험(대표), 정식 공개 시 구글 앱 심사(로고 120×120 업로드, 시연 영상 등).
+
+## 8-2. 남은 일 정리 (2026-10-15 기준, 이 목록이 최신)
+
+완료: v6 배포본 전달(상단 로고를 새 아이콘으로, 글자 옆 노란 박스 제거). GA4 주요 이벤트(app_installed·channel_copy) 표시, 서치콘솔↔GA4 연결, Search Console 보고서 게시 완료. 대표 계정으로 GA 연동 실사용 확인(방문 1 표시).
+
+대표 할 일
+1. v6 업로드(tapit 폴더) — v5까지 올렸다면 tapit 폴더만 덮어쓰기
+2. 서치콘솔·네이버에서 `/tapit/guide.html` 색인 요청
+3. 카카오 디벨로퍼스 Pebble 앱 아이콘을 Pebble 로고로 교체(완료 여부 미확인)
+4. 맞춤 측정기준 `tool` 등록 여부 확인
+5. 홍보(스레드·대부도 주민 카페), 1~2주 사용 후 피드백
+6. 오토컴퍼니 프로젝트 방 등록(Lineup·Getset과 함께)
+
+다음 개선 후보(피드백 보고 우선순위 결정)
+- 링크 주소 수정, 검색칸, 자주 쓰는 링크 고정·순서 바꾸기
+- 폰·PC 연결(저장 서버 필요 — 비용 원칙상 요청이 나오면)
+- GA 연동 정식 공개(구글 앱 심사)
+- Pebble 전용 오픈채팅 생기면 의견 보내기 주소 교체
+- 사이트 간 연결(헬로대부도·대부도타임·오락실 하단에 Pebble 도구 링크)
+- Pebble 메인 공유 그림(현재 Lineup 그림)
 
 ## 9. 작업 방식
 
