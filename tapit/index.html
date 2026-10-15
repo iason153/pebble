@@ -170,6 +170,14 @@ svg{display:block;flex:none}
 .about{margin:0;font-size:13px;line-height:1.65;color:var(--faint)}
 .gmore{display:flex;gap:8px;flex-wrap:wrap}
 .gmore a{flex:1;min-width:140px;text-align:center;text-decoration:none;color:var(--ink)}
+.gabody{display:flex;flex-direction:column;gap:12px}
+.gabody .note{font-size:12.5px;color:var(--faint)}
+.gabody .row2{display:flex;gap:8px}
+.gabody .row2 .btn{flex:1}
+.gabody td.n{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gabody .tot td{font-weight:600;border-bottom:0}
+.gabody .warn{color:var(--danger);font-size:14px}
+.meta .vis{font-weight:600;color:var(--ink)}
 .empty{border:1px dashed var(--line);border-radius:18px;padding:32px 18px;text-align:center;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 
@@ -355,11 +363,7 @@ td.v{font-weight:600}
 <div class="veil" id="gaVeil" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="gaT">
     <h2 id="gaT">Google Analytics 연동</h2>
-    <p>연동하면 공유 횟수 옆에 채널별 실제 방문 수가 표시됩니다. 어느 채널이 효과적인지 한눈에 비교할 수 있습니다.</p>
-    <table aria-label="연동 후 화면 예시"><thead><tr><th>채널 (예시)</th><th>공유</th><th>방문</th></tr></thead>
-    <tbody><tr><td>네이버 카페</td><td>3회</td><td class="v">42</td></tr><tr><td>카카오톡</td><td>2회</td><td class="v">17</td></tr><tr><td>밴드</td><td>1회</td><td class="v">5</td></tr></tbody></table>
-    <p>연동 전에 공유한 링크의 방문 기록도 함께 표시됩니다. 링크의 사이트에 Google Analytics가 설치되어 있어야 합니다.</p>
-    <button class="btn dark full" type="button" id="gaGo">Google 계정으로 연동 · 준비 중</button>
+    <div id="gaBody" class="gabody"></div>
     <button class="btn soft full" type="button" data-close style="border:0">닫기</button>
   </div>
 </div>
@@ -437,7 +441,7 @@ function render(){
   $('cats').hidden=gs.length<1;
   $('demo').hidden=!S.demo;
   var total=0;S.links.forEach(function(l){total+=l.log.length});
-  $('nudge').hidden=total<3||!!S.gaHide;
+  $('nudge').hidden=total<3||!!S.gaHide||!!(S.ga&&S.ga.stats);
   var ls=S.links.filter(function(l){return filter==='전체'||l.group===filter});
   $('list').innerHTML=ls.length?ls.map(card).join(''):'<div class="empty"><b>저장된 링크가 없습니다</b>위 입력란에 링크를 붙여넣고 추가를 누르세요.<br><button class="btn" type="button" id="emptyGuide" style="margin:14px auto 0">사용법 보기</button></div>';
   fitAll();
@@ -454,7 +458,8 @@ function card(l){
     chs.forEach(function(x){h+='<button class="ch fit'+(lastHit===l.id+x.c.id?' hit':'')+'" type="button" data-act="ch" data-ch="'+esc(x.c.id)+'">'+esc(x.c.name)+(x.n?'<b>'+x.n+'</b>':'')+'</button>'});
     if(chOpen[l.id])h+='<button class="ch more" type="button" data-act="manage">채널 관리</button>';
     h+='<button class="ch more" type="button" data-act="more" data-more="1"></button></div>';
-    h+='<div class="meta"><span>'+(l.log.length?'공유 '+l.log.length+'회 · 최근 '+day(last):'아직 공유 기록이 없습니다')+'</span>'+(l.log.length?'<button type="button" data-act="ga">방문 수 보기'+IC.arrow+'</button>':'')+'</div></section>';
+    var vt=gaTotal(l);
+    h+='<div class="meta"><span>'+(l.log.length?'공유 '+l.log.length+'회 · 최근 '+day(last):'아직 공유 기록이 없습니다')+(vt!==null?' · <span class="vis">방문 '+vt+'</span>':'')+'</span>'+(l.log.length?'<button type="button" data-act="ga">'+(vt!==null?'자세히':'방문 수 보기')+IC.arrow+'</button>':'')+'</div></section>';
   }
   return h+'</article>';
 }
@@ -508,7 +513,7 @@ $('list').addEventListener('click',function(e){
   if(act==='toggle'){l.open=!l.open;save();render();return}
   if(act==='more'){chOpen[l.id]=!chOpen[l.id];render();return}
   if(act==='manage'){renderCh();show('chVeil');return}
-  if(act==='ga'){show('gaVeil');track('ga_sheet_open',{from:'card'});return}
+  if(act==='ga'){openGA(l.id,'card');return}
   if(act==='edit'){openLink({id:l.id,url:l.url,name:l.name,group:l.group||'',camp:l.camp||'',kind:l.kind||''});return}
   if(act==='del'){removeLink(l)}
 });
@@ -523,9 +528,8 @@ $('cats').addEventListener('click',function(e){
   render();
 });
 $('clearDemo').addEventListener('click',function(){S={links:[],channels:S.channels};filter='전체';save();render()});
-$('nudgeGo').addEventListener('click',function(){show('gaVeil');track('ga_sheet_open',{from:'nudge'})});
+$('nudgeGo').addEventListener('click',function(){openGA(null,'nudge')});
 $('nudgeX').addEventListener('click',function(){S.gaHide=true;save();render()});
-$('gaGo').addEventListener('click',function(){track('ga_connect_click');toast('<span class="msg">준비 중입니다. Google 로그인과 함께 제공됩니다</span>',3000)});
 
 /* 링크 추가 · 편집 */
 function openLink(d){
@@ -727,6 +731,120 @@ $('bkFile').addEventListener('change',function(){
 });
 [].forEach.call(document.querySelectorAll('a[href*="open.kakao.com"]'),function(a){a.addEventListener('click',function(){track('feedback_click')})});
 var _render=render; render=function(){_render();renderBackup()};
+
+/* Google Analytics 연동: 브라우저에서 직접(서버 없음). 읽기 전용 권한. 토큰은 메모리에만 */
+var GA_CLIENT='973607682974-i24c50abhlbkpri3ud779ul415ql3b3a.apps.googleusercontent.com', GA_SCOPE='https://www.googleapis.com/auth/analytics.readonly';
+var gaToken=null, gaTokenExp=0, gaClient=null, gaBusy=false, gaView={link:null};
+function gaLoad(){
+  if(window.google&&google.accounts&&google.accounts.oauth2)return;
+  if(document.getElementById('gsiScript'))return;
+  var sc=document.createElement('script');sc.id='gsiScript';sc.src='https://accounts.google.com/gsi/client';sc.async=true;document.head.appendChild(sc);
+}
+function hostOf(u){try{return new URL(u).hostname.replace(/^www\./,'')}catch(e){return ''}}
+function gaTotal(l){var st=S.ga&&S.ga.stats&&S.ga.stats[l.id];if(!st)return null;var t=0;for(var k in st)t+=st[k];return t}
+function fmtTime(t){var d=new Date(t);return (d.getMonth()+1)+'.'+d.getDate()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)}
+function openGA(id,from){gaView.link=id;gaLoad();renderGA();show('gaVeil');track('ga_sheet_open',{from:from,connected:!!(S.ga&&S.ga.stats)})}
+function renderGA(msg){
+  var b=$('gaBody'), h='';
+  var inApp=(typeof env!=='undefined'&&env.inApp);
+  if(!(S.ga&&S.ga.stats)){
+    $('gaT').textContent='Google Analytics 연동';
+    h+='<p>연동하면 채널별 공유 횟수 옆에 실제 방문 수가 표시됩니다. 어느 채널이 효과적인지 한눈에 비교할 수 있습니다.</p>';
+    h+='<table aria-label="연동 후 화면 예시"><thead><tr><th>채널 (예시)</th><th>공유</th><th>방문</th></tr></thead><tbody><tr><td>네이버 카페</td><td>3회</td><td class="v">42</td></tr><tr><td>카카오톡</td><td>2회</td><td class="v">17</td></tr><tr><td>밴드</td><td>1회</td><td class="v">5</td></tr></tbody></table>';
+    h+='<p>링크의 사이트에 Google Analytics가 설치되어 있어야 합니다. 애널리틱스 데이터를 <b>보기만</b> 하며, 연동 정보는 이 기기에만 보관됩니다.</p>';
+    if(msg)h+='<p class="warn">'+msg+'</p>';
+    if(inApp)h+='<p class="warn">'+env.inApp.name+' 안에서는 Google 로그인이 막혀 있습니다. 크롬(아이폰은 사파리)에서 열어 주세요.</p>';
+    else h+='<button class="btn dark full" type="button" id="gaGo"'+(gaBusy?' disabled':'')+'>'+(gaBusy?'불러오는 중…':'Google 계정으로 연동')+'</button>';
+    h+='<p class="note">지금은 시범 운영 중이라 미리 등록된 Google 계정만 연동할 수 있습니다. 사용을 원하시면 의견 보내기로 알려 주세요. <a href="privacy.html" style="color:inherit">개인정보처리방침</a></p>';
+  }else{
+    var l=gaView.link?find(gaView.link):null;
+    var when='최근 90일 · 어제까지 집계 · '+fmtTime(S.ga.updated)+' 갱신';
+    if(l){
+      $('gaT').textContent=l.name;
+      var st=S.ga.stats[l.id], counts={};
+      l.log.forEach(function(e){counts[e[0]]=(counts[e[0]]||0)+1});
+      var ids={};for(var k in counts)ids[k]=1;if(st)for(var k2 in st)ids[k2]=1;
+      var rows=Object.keys(ids).map(function(id){var c=chan(id);return {name:c?c.name:id,n:counts[id]||0,v:st?(st[id]||0):null}}).sort(function(a,b){return (b.v||0)-(a.v||0)||b.n-a.n});
+      if(!S.ga.hosts||!S.ga.hosts[hostOf(l.url)])h+='<p class="warn">'+esc(hostOf(l.url))+' 사이트의 애널리틱스를 연동한 계정에서 찾지 못했습니다. 이 사이트의 애널리틱스가 있는 계정으로 다시 연동해 보세요.</p>';
+      if(rows.length){
+        var tn=0,tv=0;rows.forEach(function(r){tn+=r.n;tv+=(r.v||0)});
+        h+='<table><thead><tr><th>채널</th><th>공유</th><th>방문</th></tr></thead><tbody>'+rows.map(function(r){return '<tr><td class="n">'+esc(r.name)+'</td><td>'+r.n+'회</td><td class="v">'+(r.v===null?'–':r.v)+'</td></tr>'}).join('')+'<tr class="tot"><td>합계</td><td>'+tn+'회</td><td class="v">'+tv+'</td></tr></tbody></table>';
+      }else h+='<p>아직 이 링크를 채널로 공유한 기록이 없습니다.</p>';
+      h+='<p class="note">'+when+'. 방문은 그 채널 전용 링크로 들어온 방문(세션) 수입니다.</p>';
+    }else{
+      $('gaT').textContent='링크별 방문 수';
+      var list=S.links.filter(function(x){return x.log.length||gaTotal(x)});
+      if(list.length){
+        h+='<table><thead><tr><th>링크</th><th>공유</th><th>방문</th></tr></thead><tbody>'+list.map(function(x){var v=gaTotal(x);return '<tr><td class="n">'+esc(x.name)+'</td><td>'+x.log.length+'회</td><td class="v">'+(v===null?'–':v)+'</td></tr>'}).join('')+'</tbody></table>';
+      }else h+='<p>아직 채널로 공유한 링크가 없습니다.</p>';
+      h+='<p class="note">'+when+'</p>';
+    }
+    if(msg)h+='<p class="warn">'+msg+'</p>';
+    h+='<div class="row2"><button class="btn dark" type="button" id="gaRefresh"'+(gaBusy||inApp?' disabled':'')+'>'+(gaBusy?'불러오는 중…':'새로고침')+'</button><button class="btn" type="button" id="gaOff">연동 해제</button></div>';
+  }
+  b.innerHTML=h;
+}
+$('gaBody').addEventListener('click',function(e){
+  var t=e.target.closest('button'); if(!t)return;
+  if(t.id==='gaGo'){track('ga_connect_click');gaAuth(true)}
+  if(t.id==='gaRefresh'){track('ga_refresh');gaAuth(false)}
+  if(t.id==='gaOff'){
+    var tk=gaToken; delete S.ga; gaToken=null; save(); render(); renderGA();
+    try{if(tk&&google.accounts.oauth2.revoke)google.accounts.oauth2.revoke(tk,function(){})}catch(x){}
+    toast('<span class="msg">연동을 해제했습니다</span>'); track('ga_disconnect');
+  }
+});
+function gaAuth(first){
+  if(gaToken&&Date.now()<gaTokenExp-60000){gaFetch();return}
+  if(!(window.google&&google.accounts&&google.accounts.oauth2)){gaLoad();renderGA('Google 로그인 준비 중입니다. 잠시 후 다시 눌러 주세요.');return}
+  if(!gaClient){
+    gaClient=google.accounts.oauth2.initTokenClient({client_id:GA_CLIENT,scope:GA_SCOPE,callback:function(r){
+      if(!r||r.error){gaBusy=false;renderGA(r&&r.error==='access_denied'?'권한을 허용하지 않아 연동하지 않았습니다.':'Google 로그인에 실패했습니다. 다시 시도해 주세요.');track('ga_error',{step:'auth',code:r&&r.error||'none'});return}
+      gaToken=r.access_token;gaTokenExp=Date.now()+(Number(r.expires_in)||3600)*1000;gaFetch();
+    },error_callback:function(err){gaBusy=false;renderGA(err&&err.type==='popup_closed'?'로그인 창이 닫혔습니다.':'로그인 창을 열 수 없습니다. 팝업 차단을 확인해 주세요.');track('ga_error',{step:'popup',code:err&&err.type||'none'})}});
+  }
+  gaBusy=true;renderGA();
+  gaClient.requestAccessToken({prompt:first?'consent':''});
+}
+function gaApi(url,body){
+  return fetch(url,{method:body?'POST':'GET',headers:{'Authorization':'Bearer '+gaToken,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(function(r){
+    return r.json().catch(function(){return {}}).then(function(j){if(!r.ok){var e=new Error((j.error&&j.error.message)||('HTTP '+r.status));e.status=r.status;throw e}return j});
+  });
+}
+function gaFetch(){
+  gaBusy=true;renderGA();
+  gaApi('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200').then(function(j){
+    var props=[];(j.accountSummaries||[]).forEach(function(a){(a.propertySummaries||[]).forEach(function(p){props.push(p.property)})});
+    if(!props.length)throw Object.assign(new Error('noprop'),{status:-1});
+    props=props.slice(0,25);
+    var range=[{startDate:'90daysAgo',endDate:'today'}];
+    return Promise.all(props.map(function(pr){
+      var q1=gaApi('https://analyticsdata.googleapis.com/v1beta/'+pr+':runReport',{dateRanges:range,dimensions:[{name:'hostName'}],metrics:[{name:'sessions'}],limit:50}).catch(function(){return {}});
+      var q2=gaApi('https://analyticsdata.googleapis.com/v1beta/'+pr+':runReport',{dateRanges:range,dimensions:[{name:'hostName'},{name:'sessionSource'},{name:'sessionCampaignName'}],metrics:[{name:'sessions'}],limit:10000,
+        dimensionFilter:{notExpression:{filter:{fieldName:'sessionCampaignName',inListFilter:{values:['(not set)','(direct)','(organic)','(referral)','(none)']}}}}}).catch(function(){return {}});
+      return Promise.all([q1,q2]);
+    }));
+  }).then(function(res){
+    var hosts={}, rows=[];
+    res.forEach(function(pair){
+      (pair[0].rows||[]).forEach(function(r){hosts[r.dimensionValues[0].value.replace(/^www\./,'')]=1});
+      (pair[1].rows||[]).forEach(function(r){rows.push({h:r.dimensionValues[0].value.replace(/^www\./,''),src:r.dimensionValues[1].value,camp:r.dimensionValues[2].value,n:Number(r.metricValues[0].value)||0})});
+    });
+    var stats={};
+    S.links.forEach(function(l){
+      var h=hostOf(l.url), base=(slug(l.camp)||autoBase(l.url))+'_', st={};
+      rows.forEach(function(r){if(r.h===h&&r.camp.indexOf(base)===0){st[r.src]=(st[r.src]||0)+r.n}});
+      stats[l.id]=st;
+    });
+    S.ga={stats:stats,hosts:hosts,updated:Date.now()};save();gaBusy=false;render();renderGA();
+    toast('<span class="msg">방문 수를 불러왔습니다</span>');track('ga_connect_success',{hosts:Object.keys(hosts).length});
+  }).catch(function(e){
+    gaBusy=false;
+    var m=e.status===-1?'이 계정에서 볼 수 있는 애널리틱스 사이트가 없습니다. 애널리틱스가 있는 계정으로 연동해 주세요.':(e.status===401?'로그인이 만료되었습니다. 다시 눌러 주세요.':(e.status===403?'애널리틱스를 볼 권한이 없습니다. 연동할 때 권한을 허용했는지 확인해 주세요.':'방문 수를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'));
+    if(e.status===401)gaToken=null;
+    renderGA(m);track('ga_error',{step:'fetch',code:String(e.status||'')});
+  });
+}
 
 render();
 var Q=new URLSearchParams(location.search);
