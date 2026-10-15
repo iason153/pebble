@@ -201,10 +201,11 @@
           </div>
           <p class="muted small" id="repeat-hint"></p>
         </fieldset>
-        <fieldset class="field" id="field-account">
-          <legend>낼 곳 <span class="muted">(선택 · 이 폰에만 저장)</span></legend>
+        <fieldset class="field" id="field-account" data-check="account">
+          <legend>낼 곳(계좌) <span class="flag" id="flag-account" hidden>꼭 확인!</span> <button type="button" class="ok" data-ok="account" aria-pressed="false" aria-label="계좌 맞아요" hidden>✓</button></legend>
+          <input type="text" id="f-account" maxlength="60" placeholder="예: 농협 790227-36-132812 (가상계좌)" aria-describedby="acct-help">
+          <p class="muted small" id="acct-help">이 폰에만 저장돼요. 숫자 하나만 틀려도 다른 곳으로 가니 <b>고지서와 한 자리씩 맞춰 보고 ✓</b>를 눌러 주세요. 틀리면 위 칸을 직접 고친 뒤 ✓.</p>
           <div class="alts" id="alt-accounts"></div>
-          <input type="text" id="f-account" maxlength="60" placeholder="예: 농협 790227-36-132812 (가상계좌)">
         </fieldset>
         <p class="usage-line" id="edit-usage" hidden></p>
         <fieldset class="field">

@@ -63,11 +63,13 @@
       let shownLoading = false;
       $('btn-prep-retry').addEventListener('click', () => {
         $('btn-prep-retry').hidden = true;
-        window.BillboxOCR.ready(null).catch(() => {});
+        window.BillboxOCR.retry().catch(() => {});
         track('ocr_prep_retry');
       });
       window.BillboxOCR.onState(({ state, msg, progress }) => {
         if (state === 'loading') {
+          // 이미 받아 둔 폰에서 엔진을 다시 올릴 땐 배너를 띄우지 않음(찍기 화면 진행 표시로 충분)
+          if (window.BillboxOCR.isCached() && !shownLoading) return;
           shownLoading = true;
           box.hidden = false;
           box.classList.remove('is-ready', 'is-error');
@@ -706,7 +708,10 @@
         if (!b) return;
         $('alt-accounts').querySelectorAll('.chip').forEach((c) => c.classList.toggle('is-picked', c === b));
         $('f-account').value = b.dataset.acct;
+        this.setOk('account', false); // 계좌는 바꿨으면 다시 눈으로 확인해야 함
       });
+      // 계좌를 직접 고치면 확인을 풀고 다시 ✓ 받기
+      $('f-account').addEventListener('input', () => this.setOk('account', false));
       $('btn-repeat-change').addEventListener('click', () => {
         $('repeat-auto').hidden = true;
         $('repeat-pick').hidden = false;
@@ -742,11 +747,14 @@
       if (fs) fs.classList.toggle('is-ok', on);
       if (on && key === 'amount') $('flag-amount').hidden = true;
       if (on && key === 'due') $('flag-due').hidden = true;
+      if (key === 'account') $('flag-account').hidden = on || !$('f-account').value.trim();
       this.updateSaveLabel();
     },
     updateSaveLabel() {
       if (this.editMode !== 'photo') return;
-      const all = ['kind', 'amount', 'due'].every((k) => (document.querySelector(`[data-ok="${k}"]`) || {}).getAttribute?.('aria-pressed') === 'true');
+      if (!document.querySelector('[data-ok="account"]')) return;
+      const keys = ['kind', 'amount', 'due'].concat($('f-account').value.trim() ? ['account'] : []);
+      const all = keys.every((k) => (document.querySelector(`[data-ok="${k}"]`) || {}).getAttribute?.('aria-pressed') === 'true');
       $('btn-save').textContent = all ? '✅ 모두 확인, 저장' : '맞아요, 저장';
     },
     /** 종류에 정해진 주기가 있으면 질문 대신 "매월 자동 등록 ✓"만 보여 줌 */
@@ -850,6 +858,7 @@
       $('f-months').querySelectorAll('.is-on').forEach((b) => b.classList.remove('is-on'));
       this.collapseKinds(false);
       $('alt-accounts').innerHTML = '';
+      $('flag-account').hidden = true;
       $('edit-usage').hidden = true;
       this.editUsage = null;
       $('edit-thumb').hidden = true;
@@ -881,7 +890,11 @@
         if (data.tag) $('f-note').value = data.tag + ' 고지서';
         if (this.pendingPhoto && S.settings().photoKeep !== 'off') this.showThumb(this.pendingPhoto);
         if (data.accounts && data.accounts.length) {
-          $('alt-accounts').innerHTML = `<span class="alts__label">읽은 계좌 — 낼 곳을 고르세요</span>` + data.accounts.map((a) => `<button type="button" class="chip" data-acct="${esc(a.bank + ' ' + a.number)}">${esc(a.bank)} ${esc(a.number)}</button>`).join('');
+          // 제일 잘 읽힌 계좌 하나를 칸에 넣고, 나머지는 "다른 계좌" 후보로
+          const [best, ...rest] = data.accounts;
+          $('f-account').value = `${best.bank} ${best.number}`;
+          $('flag-account').hidden = false;
+          if (rest.length) $('alt-accounts').innerHTML = `<span class="alts__label">다른 계좌</span>` + rest.map((a) => `<button type="button" class="chip" data-acct="${esc(a.bank + ' ' + a.number)}">${esc(a.bank)} ${esc(a.number)}</button>`).join('');
         }
         if (data.usage) {
           this.editUsage = data.usage;
@@ -914,6 +927,12 @@
         $('f-due').value = data.due;
         $('f-note').value = data.note || '';
         $('f-account').value = data.account || '';
+        if (data.account && !data.accountChecked) {
+          // 확인 안 한 계좌는 고치기 화면에서도 ✓로 확인할 수 있게
+          const ab = document.querySelector('[data-ok="account"]');
+          ab.hidden = false;
+          $('flag-account').hidden = false;
+        }
         this.setRepeat(data.repeat || 'none', data.months || null);
         this.showRepeatAuto();
         window.BillboxDB.getPhoto(data.id).then((rec) => rec && rec.blob && this.showThumb(rec.blob, true));
@@ -952,6 +971,16 @@
       const id = $('f-id').value;
       const tag = ($('f-note').value.match(/독촉|압류예고/) || [''])[0];
       if (this.editUsage) f.usage = this.editUsage;
+      const acctBtn = document.querySelector('[data-ok="account"]');
+      if (f.account) {
+        if (this.editMode === 'photo') f.accountChecked = acctBtn.getAttribute('aria-pressed') === 'true';
+        else if (this.editMode === 'manual') f.accountChecked = true; // 직접 적은 건 본인이 쓴 것
+        else if (!acctBtn.hidden) f.accountChecked = acctBtn.getAttribute('aria-pressed') === 'true';
+        else {
+          const prev = S.get($('f-id').value) || {};
+          f.accountChecked = prev.account === f.account ? !!prev.accountChecked : true;
+        }
+      } else f.accountChecked = false;
       let item;
       if (id) {
         const prev = S.get(id) || {};
@@ -964,7 +993,7 @@
         window.BillboxDB.putPhoto(item.id, { blob: this.pendingPhoto, due: item.due, savedAt: Date.now(), paidAt: null });
       }
       this.pendingPhoto = null;
-      const oks = ['kind', 'amount', 'due'].filter((k) => (document.querySelector(`[data-ok="${k}"]`) || {}).getAttribute?.('aria-pressed') === 'true').length;
+      const oks = ['kind', 'amount', 'due', 'account'].filter((k) => (document.querySelector(`[data-ok="${k}"]`) || {}).getAttribute?.('aria-pressed') === 'true').length;
       track('save', { kind: f.kindId, repeat: f.repeat, source: id ? 'edit' : this.editMode, has_amount: f.amount != null ? 1 : 0, checked: oks, has_account: f.account ? 1 : 0 });
       this.closeSheet($('edit-sheet'));
       this.render();
@@ -1012,7 +1041,7 @@
           <div class="detail__cell"><b>얼마나 자주</b>${esc(K.repeatById(it.repeat || 'none').label)}${it.months && it.months.length ? `<br><span class="small">${it.months.join('·')}월</span>` : ''}</div>
         </div>
         ${photo ? `<button type="button" class="btn btn--big photo-btn" data-act="photo" style="margin-bottom:12px">${photoLabel}</button>` : ''}
-        ${it.account ? `<div class="acct"><span>🏦 ${esc(it.account)}</span><button type="button" class="btn btn--sm btn--brass" data-act="copy">복사</button></div>` : ''}
+        ${it.account ? `<div class="acct"><span>🏦 ${esc(it.account)}${it.accountChecked ? ' <span class="badge badge--mint">✓ 확인함</span>' : ' <span class="badge badge--red">확인 안 함</span>'}</span><button type="button" class="btn btn--sm btn--brass" data-act="copy">복사</button></div>${it.accountChecked ? '' : '<p class="small" style="margin:-6px 0 12px;color:var(--red)">사진에서 읽은 계좌예요. 보내기 전에 [고지서 보기]로 한 자리씩 맞춰 보세요. [✏️ 고치기]에서 ✓로 확인할 수 있어요.</p>'}` : ''}
         ${usageTxt ? `<p class="usage-line" style="margin:0 0 12px">${usageTxt}</p>` : ''}
         ${it.note ? `<p class="small" style="margin-bottom:12px">📝 ${esc(it.note)}</p>` : ''}
         ${stage ? `<div class="guide guide--${stage.tone}"><h3>${stage.title}</h3><ul>${stage.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${lf ? `<p style="margin-top:8px"><b>늦으면:</b> ${esc(lf.text)}</p>` : ''}<p class="guide__fine">참고용 안내예요. 고지서에 적힌 내용이 우선이에요.</p></div>` : ''}
@@ -1056,7 +1085,7 @@
             ok = true;
           } catch (_) {}
           track('account_copy', { ok: ok ? 1 : 0 });
-          this.showToast(ok ? `계좌번호를 복사했어요: ${num}` : `길게 눌러 복사해 주세요: ${num}`, { duration: 3500 });
+          this.showToast((ok ? `계좌번호를 복사했어요: ${num}` : `길게 눌러 복사해 주세요: ${num}`) + (it.accountChecked ? '' : ' · 고지서와 꼭 맞춰 보세요'), { duration: 4500 });
         } else if (act === 'unpay') {
           S.update(id, { paidAt: null });
           window.BillboxDB.patchPhoto(id, { paidAt: null });

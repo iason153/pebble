@@ -9,7 +9,8 @@
 
 importScripts('js/db.js'); // 폰 저장소(알림 문구에 금액 붙이기, 공유로 받은 사진)
 
-const CACHE_NAME = 'billbox-shell-v6';
+const CACHE_NAME = 'billbox-shell-v8';
+const ENGINE_CACHE = 'billbox-engine-r2'; // 읽기 엔진·사전(약 12MB). 앱 버전이 바뀌어도 그대로 둠, REV 바뀔 때만 새로
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/billbox/
 
 const APP_SHELL = [
@@ -46,7 +47,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('billbox-') && k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('billbox-') && k !== CACHE_NAME && k !== ENGINE_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -72,6 +73,23 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (!url.href.startsWith(SCOPE)) return;
   if (url.pathname.startsWith('/api/')) return;
+
+  // 읽기 엔진·사전: 한 번 받으면 폰에 저장해 두고 계속 씀(인터넷이 느리거나 끊겨도 읽기 가능)
+  if (url.pathname.includes('/billbox/vendor/')) {
+    event.respondWith(
+      caches.open(ENGINE_CACHE).then((c) =>
+        c.match(req).then(
+          (hit) =>
+            hit ||
+            fetch(req).then((res) => {
+              if (res && res.status === 200) c.put(req, res.clone());
+              return res;
+            })
+        )
+      )
+    );
+    return;
+  }
 
   const putInCache = (res) => {
     if (res && res.status === 200) {

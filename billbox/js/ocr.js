@@ -1,22 +1,32 @@
 'use strict';
 
 /**
- * Billbox 글자 읽기 — Tesseract.js(한글+영문), 전부 폰 안에서.
+ * Billbox 글자 읽기 — Tesseract.js(한글+영문), 전부 폰 안에서. 사진은 기기 밖으로 안 나감.
  *
- * - 사진은 기기 밖으로 나가지 않는다. 서버에 보내는 것 없음.
- * - "두 번 읽고 투표": ① 원본(크기만 줄임) ② 손질본(흑백·확대·대비·선명). 각각 읽어 extract.js에 넘긴다.
- *   사전 시험(8장)에서 손질본만 쓰면 가스 고지서가 틀렸고, 둘을 합쳤을 때 8/8이었다.
- * - 엔진·언어 파일은 CDN에서 처음 한 번 받고 브라우저가 저장(IndexedDB)한다. 이후는 오프라인도 됨.
- * - 어떻게 찍어도 최선: 사진이 흐리거나 기울어도 그냥 읽는다. 실패 시 "직접 입력"으로 넘긴다.
+ * v1.1.2 안정화 (대표 피드백: "어떨 땐 준비 안 됐다고 못 읽고 어떨 땐 됨")
+ * 원인 3가지를 고쳤다.
+ *  1) 엔진을 외부 CDN(jsDelivr)에서 매번 받았다 → 폰 인터넷이 잠깐 느리면 실패.
+ *     → 엔진·사전을 우리 사이트(billbox/vendor/)에 두고, 한 번 받으면 폰에 저장(서비스워커 + 브라우저 저장소).
+ *  2) 미리 받기(warmup)가 끝나면 엔진을 내리는데, 그 사이 사용자가 찍으면 읽는 도중에 엔진이 꺼졌다(경쟁 버그).
+ *     → "사용 중" 표시(lease)를 두고, 쓰는 사람이 없을 때만 내린다.
+ *  3) 준비 확인 요청이 404가 아닌 오류(일시 403·429 등)에도 실패로 처리했다.
+ *     → 우리 사이트 파일이라 확인 요청 자체를 없앰. 실패하면 자동으로 한 번 더 시도.
+ * - 메모리: 다 읽고 45초 동안 안 쓰면 내린다(연달아 찍을 땐 바로 읽게). 사진 고르러 다른 앱 갈 때도 내린다.
  */
 window.BillboxOCR = (function () {
   const cfg = () => (window.BILLBOX_CONFIG && window.BILLBOX_CONFIG.OCR) || {};
+  const abs = (p) => new URL(p, location.href).toString().replace(/\/$/, '');
   let worker = null;
   let loading = null;
+  let users = 0; // 지금 엔진을 쓰는 중인 작업 수
+  let idleTimer = null;
   let state = 'idle'; // idle | loading | ready | error
   let stateMsg = '';
   let stateProgress = 0;
   const listeners = [];
+  const IDLE_MS = 45000;
+  const READY_TIMEOUT = 120000;
+
   function setState(st, msg, prog) {
     state = st;
     if (msg != null) stateMsg = msg;
@@ -31,7 +41,7 @@ window.BillboxOCR = (function () {
     listeners.push(fn);
     fn({ state, msg: stateMsg, progress: stateProgress });
   }
-  const READY_TIMEOUT = 150000; // 2분 30초 안에 준비 안 되면 실패로 보고 다시 시도하게
+  let progressSink = null; // 지금 찍는 화면의 진행 표시
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -39,86 +49,99 @@ window.BillboxOCR = (function () {
       const s = document.createElement('script');
       s.src = src;
       s.onload = resolve;
-      s.onerror = () => reject(new Error('OCR 엔진을 내려받지 못했어요'));
+      s.onerror = () => reject(new Error('읽기 엔진 파일을 못 받았어요'));
       document.head.appendChild(s);
     });
   }
 
-  /** 엔진 준비(처음만 느림). onProgress(0~1, 문구) */
-  async function ready(onProgress) {
-    if (worker) return worker;
-    if (loading) {
-      // 이미 내려받는 중이면 진행 상황만 이어서 보여 준다
-      if (onProgress) onState(({ state: st, msg, progress }) => st === 'loading' && onProgress(0.05 + progress * 0.3, msg));
-      return loading;
-    }
+  async function createOnce() {
+    const c = cfg();
     const report = (p, msg) => {
       setState('loading', msg, p);
-      onProgress && onProgress(0.05 + p * 0.3, msg);
+      progressSink && progressSink(0.05 + p * 0.3, msg);
     };
-    loading = (async () => {
-      const c = cfg();
-      report(0.02, '읽기 도구를 준비하고 있어요');
-      await loadScript(c.SCRIPT);
-      const opts = {
-        workerPath: c.WORKER,
-        corePath: c.CORE,
-        gzip: true,
-        logger: (m) => {
-          if (m.status === 'loading tesseract core') report(0.05 + (m.progress || 0) * 0.3, '읽기 엔진을 내려받고 있어요 (약 3MB)');
-          else if (m.status === 'loading language traineddata') report(0.4 + (m.progress || 0) * 0.5, '한글 사전을 내려받고 있어요 (약 5MB, 처음 한 번만)');
-          else if (m.status === 'initializing api') report(0.95, '거의 준비됐어요');
-        },
-        errorHandler: (err) => {
-          console.warn('[Billbox OCR]', err);
-        },
-      };
-      if (c.LANG_PATH) opts.langPath = c.LANG_PATH;
-      // 언어 파일 주소가 살아 있는지 먼저 가볍게 확인(404면 Tesseract.js가 영원히 기다리므로 여기서 바로 실패시킴)
-      const langBase = c.LANG_PATH ? `${c.LANG_PATH}/kor` : 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/kor/4.0.0_best_int/kor';
-      try {
-        const head = await fetch(`${langBase}.traineddata.gz`, { method: 'HEAD', cache: 'force-cache' });
-        if (!head.ok) throw new Error('언어 파일 주소 오류 ' + head.status);
-      } catch (e) {
-        if (/주소 오류/.test(e.message)) throw e;
-        /* 네트워크가 잠깐 끊긴 경우는 아래 createWorker가 캐시(IndexedDB)로 성공할 수 있으니 넘어감 */
-      }
-      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('내려받기가 너무 오래 걸려요. 와이파이에서 다시 시도해 주세요')), READY_TIMEOUT));
-      const w = await Promise.race([window.Tesseract.createWorker(['kor', 'eng'], 1, opts), timeout]);
-      await w.setParameters({ preserve_interword_spaces: '1' });
-      worker = w;
-      try {
-        localStorage.setItem('billbox:ocr-cached', '1');
-      } catch (_) {}
-      setState('ready', '찍을 준비 됐어요', 1);
-      return w;
-    })();
+    report(0.02, '읽기 도구를 준비하고 있어요');
+    await loadScript(abs(c.SCRIPT));
+    let timedOut = false;
+    const make = window.Tesseract.createWorker(['kor', 'eng'], 1, {
+      workerPath: abs(c.WORKER),
+      corePath: abs(c.CORE),
+      langPath: abs(c.LANG_PATH),
+      gzip: true,
+      logger: (m) => {
+        if (m.status === 'loading tesseract core') report(0.05 + (m.progress || 0) * 0.3, '읽기 엔진을 준비하고 있어요');
+        else if (m.status === 'loading language traineddata') report(0.4 + (m.progress || 0) * 0.5, isCached() ? '한글 사전을 불러오는 중' : '한글 사전을 내려받고 있어요 (처음 한 번만)');
+        else if (m.status === 'initializing api') report(0.95, '거의 준비됐어요');
+      },
+      errorHandler: (err) => console.warn('[Billbox OCR]', err),
+    });
+    const timeout = new Promise((_, rej) =>
+      setTimeout(() => {
+        timedOut = true;
+        rej(new Error('준비가 너무 오래 걸려요'));
+      }, READY_TIMEOUT)
+    );
+    // 늦게라도 만들어진 엔진은 꺼서 메모리를 비움
+    make.then((w) => timedOut && w.terminate().catch(() => {})).catch(() => {});
+    const w = await Promise.race([make, timeout]);
+    await w.setParameters({ preserve_interword_spaces: '1' });
+    return w;
+  }
+
+  /** 엔진 준비. 실패하면 한 번 더 자동으로 시도 */
+  async function ready(onProgress) {
+    clearTimeout(idleTimer);
+    if (onProgress) progressSink = onProgress;
+    if (worker) return worker;
+    if (!loading) {
+      loading = (async () => {
+        let lastErr;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const w = await createOnce();
+            worker = w;
+            try {
+              localStorage.setItem('billbox:ocr-cached', cfg().REV || '1');
+            } catch (_) {}
+            setState('ready', '찍을 준비 됐어요', 1);
+            return w;
+          } catch (e) {
+            lastErr = e;
+            if (attempt === 1) setState('loading', '잠깐 끊겼어요. 한 번 더 시도할게요', 0.05);
+          }
+        }
+        throw lastErr;
+      })();
+    }
     try {
       return await loading;
     } catch (e) {
-      loading = null;
-      setState('error', e.message || '읽기 도구를 준비하지 못했어요', 0);
+      setState('error', `${(e && e.message) || '읽기 도구를 준비하지 못했어요'} · 인터넷을 확인하고 다시 받아 주세요`, 0);
       throw e;
+    } finally {
+      loading = null;
     }
   }
 
-  /**
-   * 엔진을 메모리에서 내림. 사전·엔진 파일은 브라우저 저장소(IndexedDB)에 남아 있어서 다음엔 몇 초면 다시 올라온다.
-   * 카메라 앱으로 넘어가기 전·읽기가 끝난 뒤 부른다 → 안드로이드가 크롬 탭을 꺼 버리는 일("메모리가 부족하여…")을 줄인다.
-   */
-  async function release() {
+  /** 쓰는 사람이 없을 때만 엔진을 메모리에서 내림(사전은 폰 저장소에 남음) */
+  async function release(force) {
+    clearTimeout(idleTimer);
+    if (users > 0 && !force) return;
     const w = worker;
     worker = null;
-    loading = null;
     if (w) {
       try {
         await w.terminate();
       } catch (_) {}
     }
   }
+  function releaseLater() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => release(), IDLE_MS);
+  }
   function isCached() {
     try {
-      return localStorage.getItem('billbox:ocr-cached') === '1';
+      return localStorage.getItem('billbox:ocr-cached') === (cfg().REV || '1');
     } catch (_) {
       return false;
     }
@@ -237,24 +260,31 @@ window.BillboxOCR = (function () {
    * 사진 한 장 읽기.
    * 1차: 원본(작게). 금액·기한 둘 다 확신이면 여기서 끝(시간 절반).
    * 2차: 자신 없을 때만 손질본을 한 번 더 읽어 후보를 합친다.
-   * @param {(texts:string[])=>boolean} [goodEnough] 1차 결과로 충분한지 판단(extract.sure)
-   * @returns {Promise<{texts:string[], confidences:number[], passes:number, ms:number}>}
+   * 읽는 도중 엔진이 꺼지는 등 문제가 생기면 엔진을 새로 올려 한 번 더 읽는다.
    */
   async function readBill(file, onProgress, goodEnough) {
     const t0 = Date.now();
+    users++;
     const lock = await keepAwake();
     try {
-      // 사진부터 작게 줄인 뒤(원본은 바로 버림) 엔진을 올린다 → 메모리가 겹치지 않게
       const bmp = await fileToBitmap(file, 1400);
       const raw = toCanvas(bmp, 1400);
       if (bmp.close) bmp.close();
-      // 고지서 보기용 사본(폰 안에만 저장). 글자가 읽힐 만큼만 — 장당 200~300KB
       const photo = await new Promise((res) => raw.toBlob(res, 'image/jpeg', 0.82));
-      const w = await ready(onProgress);
-
+      const recog = async (img, psm) => {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const w = await ready(onProgress);
+          try {
+            await w.setParameters({ tessedit_pageseg_mode: psm });
+            return await w.recognize(img);
+          } catch (e) {
+            if (attempt === 2) throw e;
+            await release(true); // 망가진 엔진은 버리고 새로
+          }
+        }
+      };
       onProgress && onProgress(0.45, '글자를 읽고 있어요');
-      await w.setParameters({ tessedit_pageseg_mode: '3' });
-      const r1 = await w.recognize(raw);
+      const r1 = await recog(raw, '3');
       const texts = [r1.data.text || ''];
       const confidences = [r1.data.confidence || 0];
       if (goodEnough && goodEnough(texts)) {
@@ -263,34 +293,39 @@ window.BillboxOCR = (function () {
       }
       onProgress && onProgress(0.72, '자신이 없어서 한 번 더 꼼꼼히 읽어요');
       const pre = enhance(raw, 2000);
-      await w.setParameters({ tessedit_pageseg_mode: '4' });
-      const r2 = await w.recognize(pre);
+      const r2 = await recog(pre, '4');
       texts.push(r2.data.text || '');
       confidences.push(r2.data.confidence || 0);
       onProgress && onProgress(0.97, '정리하고 있어요');
       return { texts, confidences, passes: 2, ms: Date.now() - t0, photo };
     } finally {
+      users = Math.max(0, users - 1);
+      progressSink = null;
       try {
         lock && lock.release();
       } catch (_) {}
-      // 다 읽으면 엔진을 메모리에서 내림(다음 찍기 때 몇 초 만에 다시 올라옴)
-      setTimeout(() => release(), 0);
+      releaseLater();
     }
   }
 
-  /** 미리 내려받기(첫 화면에서 조용히) — 실패해도 조용히 넘어감 */
+  /** 첫 화면에서 미리 받아 두기. 받은 뒤 아무도 안 쓰면 메모리에서 내림 */
   function warmup() {
     if (worker || loading) return;
     if (isCached()) {
-      setState('ready', '찍을 준비 됐어요', 1); // 이미 받아 둠 → 메모리에 올리지 않음
+      setState('ready', '찍을 준비 됐어요', 1); // 이미 받아 둠 → 메모리에 안 올림
       return;
     }
     setTimeout(() => {
       ready(null)
-        .then(() => release()) // 받아만 두고 메모리에선 내림
+        .then(() => releaseLater())
         .catch(() => {});
     }, 400);
   }
 
-  return { ready, readBill, warmup, release, isCached, onState, enhance, toCanvas, getState: () => ({ state, msg: stateMsg, progress: stateProgress }) };
+  /** 홈의 [다시 받기] */
+  function retry() {
+    return ready(null).then(() => releaseLater());
+  }
+
+  return { ready, readBill, warmup, retry, release, isCached, onState, enhance, toCanvas, getState: () => ({ state, msg: stateMsg, progress: stateProgress }) };
 })();

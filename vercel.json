@@ -1,5 +1,19 @@
 {
   "crons": [
-    { "path": "/api/billbox/send", "schedule": "0 * * * *" }
+    {
+      "path": "/api/billbox/send",
+      "schedule": "0 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/billbox/vendor/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
   ]
 }
