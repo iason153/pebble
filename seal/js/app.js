@@ -416,7 +416,7 @@
       this.step = n;
       document.querySelectorAll('.step').forEach((s) => { const k = +s.dataset.step; s.classList.toggle('is-on', k === n); s.classList.toggle('is-done', k < n); });
       $('panel-check').hidden = n !== 1; $('panel-stamp').hidden = n !== 2; $('panel-export').hidden = n !== 3;
-      if (n !== 1) { this.setBrush(false); this.setRect(false); this.clearBoxes(); this.banner(''); } $('hide-style').hidden = n !== 1;
+      if (n !== 1) { this.setBrush(false); this.setRect(false); this.clearBoxes(); this.banner(''); } $('hide-style').hidden = n !== 1; $('tool-dock').hidden = n !== 1; $('stage').classList.toggle('stage--sticky', n === 1);
       if (n === 2) { track('protect_step_stamp'); this.renderStampNote(); this.renderTagPresets(); }
       window.scrollTo({ top: 0 });
     },

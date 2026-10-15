@@ -103,7 +103,7 @@
         <h3>올리기 전</h3>
         <ol class="howto__steps">
           <li>사진을 고르면 촬영 위치(좌표)가 들어 있는지 보여 주고, 내보낼 때 지워요.</li>
-          <li>남의 얼굴은 "얼굴 찾아보기", 번호판·문패는 "네모 그리기"나 "글자 찾아보기"로 가려요. 모자이크·흐림·스티커 중 골라요.</li>
+          <li>남의 얼굴은 "얼굴 찾기", 번호판·문패는 "네모 그리기"나 "글자 찾기"로 가려요. 모자이크·흐림·스티커 중 골라요.</li>
           <li>보이지 않는 도장을 심고 저장하거나 바로 공유해요.</li>
         </ol>
       </div>
@@ -135,14 +135,24 @@
       </div>
     </div>
 
-    <div id="stage" class="stage">
+    <div id="stage" class="stage stage--sticky">
       <canvas id="canvas"></canvas>
       <div id="box-layer" class="stage__layer"></div>
       <div id="ghost" class="stage__ghost" hidden></div>
       <p id="stage-hint" class="stage__hint" hidden></p>
       <div id="stage-busy" class="stage__busy" hidden>처리 중…</div>
     </div>
-    <div id="ocr-banner" class="result-strip" hidden><b id="ocr-banner-title"></b><small id="ocr-banner-sub"></small><button id="ocr-banner-close" type="button" aria-label="닫기">✕</button></div>
+    <div id="tool-dock" class="tool-dock">
+      <div class="tools">
+    <button id="btn-brush" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 20c1.5-4 4-5 6-5l9-9-3-3-9 9c0 2-1 4.5-3 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>손으로 가리기</button>
+    <button id="btn-rect" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/></svg>네모 그리기</button>
+    <button id="btn-face" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="9" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 20c1-3.5 3.8-5.5 7-5.5s6 2 7 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>얼굴 찾기</button>
+    <button id="btn-ocr" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>글자 찾기</button>
+    <button id="btn-undo" class="tool-btn" type="button" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 7H5v4M5.5 10.5A7 7 0 1 1 6 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>되돌리기</button>
+    <button id="btn-hide-all" class="tool-btn" type="button" hidden>찾은 것 모두 가리기</button>
+  </div>
+  <div id="brush-row" class="brush-size" hidden><span>굵기</span><div class="seg" role="group" aria-label="굵기"><button type="button" data-size="s">가늘게</button><button type="button" data-size="m" class="is-on">보통</button><button type="button" data-size="l">굵게</button></div></div>
+    </div>
     <div id="hide-style" class="hide-style" hidden>
       <span>가리는 방법</span>
       <div class="seg seg--wrap" role="group" aria-label="얼굴 가리는 방식">
@@ -151,20 +161,12 @@
       </div>
     </div>
 
+    <div id="ocr-banner" class="result-strip" hidden><b id="ocr-banner-title"></b><small id="ocr-banner-sub"></small><button id="ocr-banner-close" type="button" aria-label="닫기">✕</button></div>
 
     <!-- 1 점검 -->
     <div id="panel-check" class="panel">
       <h2 class="panel__title">1. 올리기 전 점검</h2>
       <div id="exif-chips" class="chip-row"></div>
-      <div class="tools">
-        <button id="btn-brush" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 20c1.5-4 4-5 6-5l9-9-3-3-9 9c0 2-1 4.5-3 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>손으로 가리기</button>
-        <button id="btn-rect" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/></svg>네모 그리기</button>
-        <button id="btn-face" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="9" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 20c1-3.5 3.8-5.5 7-5.5s6 2 7 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>얼굴 찾아보기</button>
-        <button id="btn-ocr" class="tool-btn" type="button"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>글자 찾아보기</button>
-        <button id="btn-undo" class="tool-btn" type="button" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 7H5v4M5.5 10.5A7 7 0 1 1 6 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>되돌리기</button>
-        <button id="btn-hide-all" class="tool-btn" type="button" hidden>찾은 것 모두 가리기</button>
-      </div>
-      <div id="brush-row" class="brush-size" hidden><span>굵기</span><div class="seg" role="group" aria-label="굵기"><button type="button" data-size="s">가늘게</button><button type="button" data-size="m" class="is-on">보통</button><button type="button" data-size="l">굵게</button></div></div>
       <p id="ocr-note" class="panel__desc" hidden></p>
       <details class="more">
         <summary>뭘 가려야 할까요?</summary>
@@ -271,7 +273,7 @@
       <h3>1. 사진 지키고 올리기</h3>
       <ol>
         <li><b>점검</b>: 사진을 고르면 위치 정보가 들어 있는지 알려 줘요. 내보낼 때 자동으로 지워져요.</li>
-        <li><b>가리기</b>: "가리는 방법"에서 모자이크·흐림·스티커를 고르고, "손으로 가리기"로 문지르거나(스티커는 톡 눌러 붙이기) "네모 그리기"로 영역을 그려 가려요. "얼굴 찾아보기"는 사진 속 얼굴을 찾아 네모로 보여 줘요. 네모를 끌어 옮기고 모서리로 크기를 바꿀 수 있고, 모자이크·흐림·스티커 중 골라 가려요. "글자 찾아보기"를 누르면 번호판·전화번호처럼 생긴 글자를 찾아 네모로 보여 주고, 네모를 누르면 가려져요. 처음 한 번은 글자 인식 파일(몇 MB)을 내려받아요.</li>
+        <li><b>가리기</b>: "가리는 방법"에서 모자이크·흐림·스티커를 고르고, "손으로 가리기"로 문지르거나(스티커는 톡 눌러 붙이기) "네모 그리기"로 영역을 그려 가려요. "얼굴 찾기"는 사진 속 얼굴을 찾아 네모로 보여 줘요. 네모를 끌어 옮기고 모서리로 크기를 바꿀 수 있고, 모자이크·흐림·스티커 중 골라 가려요. "글자 찾기"를 누르면 번호판·전화번호처럼 생긴 글자를 찾아 네모로 보여 주고, 네모를 누르면 가려져요. 처음 한 번은 글자 인식 파일(몇 MB)을 내려받아요.</li>
         <li><b>도장</b>: 보이지 않는 도장은 기본으로 켜져 있어요. 원하면 보이는 이름표도 넣을 수 있어요.</li>
         <li><b>내보내기</b>: 저장하거나 공유하기로 바로 올려요.</li>
       </ol>

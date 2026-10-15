@@ -452,6 +452,14 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 }
 .stage.is-brush { touch-action: none; cursor: crosshair; }
 .stage canvas { display: block; width: 100%; height: auto; max-height: 62dvh; object-fit: contain; margin: 0 auto; }
+/* 점검 단계: 사진이 화면 위에 붙어 있고 도구는 그 아래 — 스크롤 오르내리지 않게 */
+.stage--sticky { position: sticky; top: 60px; z-index: 5; box-shadow: 0 0 0 8px var(--cream), 0 10px 24px rgba(43, 38, 40, 0.18); }
+.stage--sticky canvas { max-height: 38dvh; }
+.tool-dock { display: flex; flex-direction: column; gap: 8px; }
+.tool-dock .tools { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.tool-dock .tool-btn { min-height: 48px; padding: 6px 8px; font-size: 0.86rem; gap: 4px; }
+.tool-dock .tool-btn svg { width: 16px; height: 16px; }
+@media (max-width: 359px) { .tool-dock .tool-btn { font-size: 0.82rem; padding: 6px 4px; } .tool-dock .tool-btn svg { display: none; } }
 .stage__layer { position: absolute; inset: 0; pointer-events: none; }
 .stage__box {
   position: absolute; pointer-events: auto;
@@ -612,4 +620,6 @@ details.more > *:not(summary) { margin-top: 6px; }
   .bento__big { grid-column: 1; grid-row: 1 / 3; }
   .tools { grid-template-columns: repeat(4, 1fr); }
   .stage canvas { max-height: 70dvh; }
+  .stage--sticky { position: relative; top: auto; }
+  .stage--sticky canvas { max-height: 70dvh; }
 }
