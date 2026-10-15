@@ -8,7 +8,7 @@
  * 버전을 올릴 때는 CACHE_NAME 숫자만 바꾼다.
  */
 
-const CACHE_NAME = 'seal-shell-v10';
+const CACHE_NAME = 'seal-shell-v11';
 const SHARE_CACHE = 'seal-share';
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/seal/
 

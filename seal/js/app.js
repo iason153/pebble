@@ -385,7 +385,7 @@
     async start(file) {
       show('view-protect'); this.goStep(1);
       $('stage-busy').hidden = false; $('stage-busy').textContent = '사진을 여는 중…';
-      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); this.banner(''); $('hide-style').hidden = true; $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
+      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); this.banner(''); $('hide-style').hidden = true; this.faceBusy = false; $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
       try {
         const [c, exif] = await Promise.all([loadImage(file, MAX_EDIT), scanExif(file)]);
         this.src = c; this.exif = exif;
@@ -485,9 +485,10 @@
         this.ctx.imageSmoothingEnabled = true; this.ctx.filter = 'blur(' + Math.round(Math.max(w, h) / 40) + 'px)'; this.ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, x - 4, y - 4, w + 8, h + 8); this.ctx.filter = 'none'; this.ctx.restore();
         return { x, y, w, h, data: before };
       }
-      if (style && style.startsWith('sticker:')) { // 스티커: 폰 글꼴의 이모지를 얼굴 크기로 (되돌리기 영역을 넉넉히 다시 잡음)
-        const em = style.slice(8), size = Math.round(Math.max(w, h) * 1.15);
-        const cx = x + w / 2, cy = y + h / 2; x = Math.max(0, Math.floor(cx - size * 0.75)); y = Math.max(0, Math.floor(cy - size * 0.75)); w = Math.min(W - x, Math.ceil(size * 1.5)); h = Math.min(H - y, Math.ceil(size * 1.5));
+      if (style && style.startsWith('sticker:')) { // 스티커: 폰 글꼴의 이모지를 네모 안에 꽉 차게 (되돌리기 영역은 네모보다 조금 넉넉히)
+        const em = style.slice(8), size = Math.round(Math.min(w, h) * 0.98);
+        const cx = x + w / 2, cy = y + h / 2; const px = Math.round(size * 0.15);
+        x = Math.max(0, x - px); y = Math.max(0, y - px); w = Math.min(W - x, w + px * 2); h = Math.min(H - y, h + px * 2);
         const before2 = this.ctx.getImageData(x, y, w, h);
         this.ctx.save(); this.ctx.font = `${size}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Samsung Color Emoji", sans-serif`;
         this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'middle'; this.ctx.fillText(em, cx, cy); this.ctx.restore();
@@ -532,38 +533,26 @@
       }
       $('stage-busy').hidden = true; btn.disabled = false; this.ocrBusy = false;
     },
-    // ── 얼굴 자동 찾기 (picojs, 눌렀을 때만 불러옴. 정면 위주, ±20°·±40° 회전 보강)
+    // ── 얼굴 자동 찾기 (face-api.js Tiny Face Detector, 눌렀을 때만 불러옴. 기울인·돌린 얼굴도 잡음)
     async runFace() {
       if (this.faceBusy) return;
       this.faceBusy = true; const btn = $('btn-face'); btn.disabled = true;
-      $('stage-busy').hidden = false; $('stage-busy').textContent = '얼굴 찾기 준비 중… (처음엔 240KB를 내려받아요)';
+      $('stage-busy').hidden = false; $('stage-busy').textContent = '얼굴 찾기 준비 중… (처음엔 약 1MB를 내려받아요)';
       track('face_start');
       try {
-        const base = new URL(cfg.FACE_BASE || 'vendor/pico/', location.href).toString();
-        if (!window.pico) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = base + 'pico.js'; s.onload = res; s.onerror = () => rej(new Error('얼굴 찾기 파일을 내려받지 못했어요. 인터넷 연결을 확인해 주세요.')); document.head.appendChild(s); });
-        if (!this.faceClassify) { const r = await fetch(base + 'facefinder'); if (!r.ok) throw new Error('얼굴 찾기 모델을 내려받지 못했어요.'); this.faceClassify = pico.unpack_cascade(new Int8Array(await r.arrayBuffer())); }
+        const base = new URL(cfg.FACE_BASE || 'vendor/faceapi/', location.href).toString();
+        if (!window.faceapi) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = base + 'face-api.min.js'; s.onload = res; s.onerror = () => rej(new Error('얼굴 찾기 파일을 내려받지 못했어요. 인터넷 연결을 확인해 주세요.')); document.head.appendChild(s); });
+        if (!faceapi.nets.tinyFaceDetector.params) await faceapi.nets.tinyFaceDetector.loadFromUri(base);
         $('stage-busy').textContent = '얼굴을 찾는 중…';
         await new Promise((r) => setTimeout(r, 30));
-        const W0 = this.canvas.width, H0 = this.canvas.height, s = Math.min(1, 1000 / Math.max(W0, H0)), w = Math.round(W0 * s), h = Math.round(H0 * s);
-        const found = [];
-        for (const ang of [0, -20, 20, -40, 40]) {
-          const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
-          g.translate(w / 2, h / 2); g.rotate(ang * Math.PI / 180); g.drawImage(this.canvas, -w / 2, -h / 2, w, h);
-          const d = g.getImageData(0, 0, w, h).data, gray = new Uint8Array(w * h);
-          for (let i = 0; i < w * h; i++) gray[i] = (2 * d[i * 4] + 7 * d[i * 4 + 1] + d[i * 4 + 2]) / 10;
-          let dets = pico.run_cascade({ pixels: gray, nrows: h, ncols: w, ldim: w }, this.faceClassify, { shiftfactor: 0.1, minsize: Math.round(Math.min(w, h) * 0.06), maxsize: 1000, scalefactor: 1.1 });
-          dets = pico.cluster_detections(dets, 0.2).filter((x) => x[3] > 10);
-          const ca = Math.cos(ang * Math.PI / 180), sa = Math.sin(ang * Math.PI / 180);
-          for (const x of dets) { const cy = x[0] - h / 2, cx = x[1] - w / 2; found.push({ x: (cx * ca + cy * sa + w / 2) / s, y: (-cx * sa + cy * ca + h / 2) / s, r: x[2] / s, q: x[3] }); }
-        }
-        // 같은 얼굴 겹침 제거(가까운 것은 점수 높은 것만)
-        found.sort((p, q) => q.q - p.q); const faces = [];
-        for (const f of found) { if (!faces.some((o) => Math.hypot(o.x - f.x, o.y - f.y) < Math.max(o.r, f.r) * 0.6)) faces.push(f); }
+        const small = thumbOf(this.canvas, 1024), k = this.canvas.width / small.width;
+        const dets = await faceapi.detectAllFaces(small, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 }));
+        const faces = dets.map((d) => ({ x: d.box.x * k, y: d.box.y * k, w: d.box.width * k, h: d.box.height * k, q: d.score }));
         const nextId = this.boxes.length ? Math.max(...this.boxes.map((b) => b.id)) + 1 : 0;
-        this.boxes = this.boxes.filter((b) => b.kind !== 'face').concat(faces.map((f, i) => { const r = f.r * 0.62; return { id: nextId + i, kind: 'face', x: f.x - r, y: f.y - r * 1.1, w: r * 2, h: r * 2.3 }; }));
+        this.boxes = this.boxes.filter((b) => b.kind !== 'face').concat(faces.map((f, i) => { const pad = Math.max(f.w, f.h) * 0.12; return { id: nextId + i, kind: 'face', x: f.x - pad, y: f.y - pad * 1.6, w: f.w + pad * 2, h: f.h + pad * 2.6 }; }));
         this.renderBoxes();
-        this.banner(faces.length ? `얼굴 ${faces.length}곳 찾음 · 네모를 눌러 가리기` : '얼굴을 찾지 못함',
-          faces.length ? '옆얼굴·가려진 얼굴·작은 얼굴은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '정면 얼굴 위주로 찾아요. 옆얼굴·가려진 얼굴은 놓칠 수 있으니 보이는 게 있으면 손으로 가려 주세요.');
+        this.banner(faces.length ? `얼굴 ${faces.length}곳 찾음 · 네모를 눌러 가리기 · 끌어서 옮기고 모서리로 크기 조절` : '얼굴을 찾지 못함',
+          faces.length ? '가려진 얼굴·아주 작은 얼굴은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '가려진 얼굴·아주 작은 얼굴은 놓칠 수 있어요. 보이는 게 있으면 손으로 가려 주세요.');
         $('btn-hide-all').hidden = this.boxes.length === 0; $('hide-style').hidden = faces.length === 0;
         track('face_done', { found: faces.length });
       } catch (err) {
@@ -577,11 +566,30 @@
       const r = this.canvas.getBoundingClientRect(), st = $('stage').getBoundingClientRect();
       const W = this.canvas.width, H = this.canvas.height, s = Math.min(r.width / W, r.height / H);
       const ox = r.left - st.left + (r.width - W * s) / 2, oy = r.top - st.top + (r.height - H * s) / 2;
+      this.boxScale = { s, ox, oy };
       this.boxes.forEach((b) => {
-        const el = document.createElement('button'); el.type = 'button'; el.className = 'stage__box' + (b.kind === 'face' ? ' stage__box--face' : '');
-        el.style.left = `${ox + b.x * s}px`; el.style.top = `${oy + b.y * s}px`; el.style.width = `${b.w * s}px`; el.style.height = `${b.h * s}px`;
-        el.setAttribute('aria-label', b.kind === 'face' ? '찾은 얼굴 가리기' : '찾은 글자 가리기');
-        el.addEventListener('click', (e) => { e.stopPropagation(); this.hideBox(b); track('ocr_hide_one'); });
+        const el = document.createElement('div'); el.className = 'stage__box' + (b.kind === 'face' ? ' stage__box--face' : '');
+        el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', b.kind === 'face' ? '찾은 얼굴 가리기 (끌어서 옮기기)' : '찾은 글자 가리기');
+        const place = () => { el.style.left = `${ox + b.x * s}px`; el.style.top = `${oy + b.y * s}px`; el.style.width = `${b.w * s}px`; el.style.height = `${b.h * s}px`; };
+        place(); b._place = place;
+        const handle = document.createElement('span'); handle.className = 'stage__box-handle'; handle.setAttribute('aria-hidden', 'true'); el.appendChild(handle);
+        // 탭 = 가리기, 끌기 = 옮기기, 모서리 끌기 = 크기 조절
+        let mode = null, sx = 0, sy = 0, bx = 0, by = 0, bw = 0, bh = 0, moved = false;
+        el.addEventListener('pointerdown', (ev) => {
+          ev.stopPropagation(); ev.preventDefault(); el.setPointerCapture(ev.pointerId);
+          mode = ev.target === handle ? 'resize' : 'move'; sx = ev.clientX; sy = ev.clientY; bx = b.x; by = b.y; bw = b.w; bh = b.h; moved = false;
+        });
+        el.addEventListener('pointermove', (ev) => {
+          if (!mode) return; const dx = (ev.clientX - sx) / s, dy = (ev.clientY - sy) / s;
+          if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 6) moved = true;
+          if (mode === 'move') { b.x = Math.min(W - b.w, Math.max(0, bx + dx)); b.y = Math.min(H - b.h, Math.max(0, by + dy)); }
+          else { b.w = Math.max(24, Math.min(W - b.x, bw + dx)); b.h = Math.max(24, Math.min(H - b.y, bh + dy)); }
+          place();
+        });
+        const end = (ev) => { if (!mode) return; const m = mode; mode = null; try { el.releasePointerCapture(ev.pointerId); } catch (_) {}
+          if (!moved) { this.hideBox(b); track(b.kind === 'face' ? 'face_hide_one' : 'ocr_hide_one'); } else track('box_adjust', { mode: m, kind: b.kind }); };
+        el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+        el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.hideBox(b); } });
         layer.appendChild(el);
       });
     },

@@ -461,6 +461,9 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
   box-shadow: 0 0 0 2px rgba(43, 38, 40, 0.5);
 }
 .stage__box::after { content: "가리기"; position: absolute; left: 0; top: -22px; padding: 1px 6px; border-radius: 6px; background: var(--gold-hi); color: var(--rose-deep); font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
+.stage__box { touch-action: none; cursor: move; }
+.stage__box-handle { position: absolute; right: -10px; bottom: -10px; width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 2px solid var(--rose-deep); box-shadow: 0 2px 6px rgba(0,0,0,0.3); cursor: nwse-resize; }
+.stage__box-handle::after { content: ""; position: absolute; left: 7px; top: 7px; width: 8px; height: 8px; border-right: 2px solid var(--rose-deep); border-bottom: 2px solid var(--rose-deep); }
 .stage__box--face { border-radius: 40%; border-color: #fff; background: rgba(255, 255, 255, 0.12); }
 .stage__box--face::after { content: "얼굴 가리기"; background: #fff; }
 .stage__hint { position: absolute; left: 10px; right: 10px; bottom: 10px; margin: 0; padding: 8px 12px; border-radius: 10px; background: rgba(43, 38, 40, 0.78); color: #fff; font-size: 0.8rem; line-height: 1.4; text-align: center; backdrop-filter: blur(6px); }
@@ -505,7 +508,7 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 .tool-btn { border-radius: 999px; }
 .tool-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .tool-btn svg { flex-shrink: 0; }
-.hide-style { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
+.hide-style { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -4px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.85rem; color: var(--muted); }
 .seg--wrap { flex-wrap: wrap; }
 .seg--wrap button { min-width: 40px; padding: 0 9px; font-size: 1rem; }
 .brush-size { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
