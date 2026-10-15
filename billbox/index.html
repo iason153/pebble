@@ -64,6 +64,7 @@
       <p class="summary__title" id="sum-title">이번 주에 낼 것</p>
       <p class="summary__sub" id="sum-sub">아직 등록한 게 없어요</p>
     </div>
+    <button type="button" class="summary__more" id="btn-money">💰 이번 달 나갈 돈 ›</button>
   </section>
 
   <!-- 첫 안내 -->
@@ -148,6 +149,7 @@
   <div class="sheet__panel">
     <div class="sheet__head"><h2 id="edit-title">확인해 주세요</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
     <div class="sheet__scroll">
+      <button type="button" class="thumb" id="edit-thumb" hidden aria-label="찍은 고지서 크게 보기"><img id="edit-thumb-img" alt=""><span class="thumb__tag">🔍 눌러서 크게 보기</span></button>
       <p class="edit__lead" id="edit-lead" hidden></p>
       <div class="notice card" id="edit-similar" hidden>
         <p>같은 종류가 이미 있어요: <b id="similar-name"></b> (<span id="similar-due"></span>)</p>
@@ -158,48 +160,84 @@
       </div>
       <form id="edit-form" novalidate>
         <input type="hidden" id="f-id">
-        <fieldset class="field">
-          <legend>무엇을</legend>
+        <fieldset class="field" id="field-kind" data-check="kind">
+          <legend>무엇을 <button type="button" class="ok" data-ok="kind" aria-pressed="false" aria-label="무엇을 맞아요" hidden>✓</button></legend>
           <div class="kind-picked" id="f-kind-picked" hidden><span class="chip is-on" id="f-kind-picked-chip"></span><button type="button" class="btn btn--sm" id="btn-kind-change">다른 종류</button></div>
           <div class="chips" id="f-kinds" role="radiogroup"></div>
           <label class="field__label" for="f-name">이름 <span class="muted">(알림에 보여요)</span></label>
           <input type="text" id="f-name" maxlength="30" placeholder="예: 도시가스, 넷플릭스, 차 할부">
         </fieldset>
-        <fieldset class="field" id="field-amount">
-          <legend>얼마 <span class="flag" id="flag-amount" hidden>확인!</span></legend>
+        <fieldset class="field" id="field-amount" data-check="amount">
+          <legend>얼마 <span class="flag" id="flag-amount" hidden>확인!</span> <button type="button" class="ok" data-ok="amount" aria-pressed="false" aria-label="금액 맞아요" hidden>✓</button></legend>
           <div class="amount-wrap">
             <input type="text" id="f-amount" inputmode="numeric" placeholder="0" aria-label="금액(원)">
             <span class="amount-unit">원</span>
           </div>
           <div class="alts" id="alt-amounts"></div>
         </fieldset>
-        <fieldset class="field" id="field-due">
-          <legend>언제까지 <span class="flag" id="flag-due" hidden>확인!</span></legend>
+        <fieldset class="field" id="field-due" data-check="due">
+          <legend>언제까지 <span class="flag" id="flag-due" hidden>확인!</span> <button type="button" class="ok" data-ok="due" aria-pressed="false" aria-label="날짜 맞아요" hidden>✓</button></legend>
           <input type="date" id="f-due" aria-label="납부기한">
           <div class="alts" id="alt-dues"></div>
-          <div class="chips chips--sm" id="f-quickdue">
-            <button type="button" class="chip" data-days="0">오늘</button>
-            <button type="button" class="chip" data-days="3">3일 뒤</button>
-            <button type="button" class="chip" data-days="7">1주 뒤</button>
-            <button type="button" class="chip" data-days="30">한 달 뒤</button>
+          <div id="f-quickdue-wrap">
+            <p class="field__label">빠른 선택 <span class="muted">(날짜를 쉽게 고르는 버튼이에요)</span></p>
+            <div class="chips chips--sm" id="f-quickdue">
+              <button type="button" class="chip" data-days="0">오늘</button>
+              <button type="button" class="chip" data-days="3">3일 뒤</button>
+              <button type="button" class="chip" data-days="7">1주 뒤</button>
+              <button type="button" class="chip" data-days="30">한 달 뒤</button>
+            </div>
           </div>
         </fieldset>
         <fieldset class="field">
           <legend>얼마나 자주</legend>
-          <div class="chips" id="f-repeat" role="radiogroup"></div>
-          <div id="f-months-wrap" hidden>
-            <p class="field__label">오는 달</p>
-            <div class="chips chips--sm" id="f-months"></div>
+          <div class="repeat-auto" id="repeat-auto" hidden><span id="repeat-auto-txt">🔁 매월 자동 등록 ✓</span><button type="button" class="btn btn--sm" id="btn-repeat-change">바꾸기</button></div>
+          <div id="repeat-pick">
+            <div class="chips" id="f-repeat" role="radiogroup"></div>
+            <div id="f-months-wrap" hidden>
+              <p class="field__label">오는 달</p>
+              <div class="chips chips--sm" id="f-months"></div>
+            </div>
           </div>
           <p class="muted small" id="repeat-hint"></p>
         </fieldset>
+        <fieldset class="field" id="field-account">
+          <legend>낼 곳 <span class="muted">(선택 · 이 폰에만 저장)</span></legend>
+          <div class="alts" id="alt-accounts"></div>
+          <input type="text" id="f-account" maxlength="60" placeholder="예: 농협 790227-36-132812 (가상계좌)">
+        </fieldset>
+        <p class="usage-line" id="edit-usage" hidden></p>
         <fieldset class="field">
           <legend>메모 <span class="muted">(선택)</span></legend>
-          <input type="text" id="f-note" maxlength="60" placeholder="예: 가상계좌 농협, 독촉장 옴">
+          <input type="text" id="f-note" maxlength="60" placeholder="예: 독촉장 옴, 카드로 내기">
         </fieldset>
         <button type="submit" class="btn btn--big btn--brass btn--block" id="btn-save">저장하고 알림 받기</button>
       </form>
     </div>
+  </div>
+</div>
+
+<!-- ===== 고지서 보기 ===== -->
+<div id="viewer" class="sheet viewer" hidden role="dialog" aria-modal="true" aria-label="고지서 보기">
+  <div class="viewer__top">
+    <p class="viewer__title" id="viewer-title">고지서</p>
+    <button type="button" class="viewer__btn" data-close aria-label="닫기">✕</button>
+  </div>
+  <div class="viewer__stage" id="viewer-stage"><img id="viewer-img" alt="찍은 고지서" draggable="false"></div>
+  <div class="viewer__bar">
+    <button type="button" class="viewer__btn" id="vw-out" aria-label="작게">－</button>
+    <button type="button" class="viewer__btn" id="vw-fit" aria-label="화면에 맞추기">맞춤</button>
+    <button type="button" class="viewer__btn" id="vw-in" aria-label="크게">＋</button>
+    <button type="button" class="viewer__btn" id="vw-rot" aria-label="돌리기">⟳</button>
+  </div>
+  <p class="viewer__hint">두 손가락으로 벌려 확대 · 두 번 톡 치면 2.5배</p>
+</div>
+
+<!-- ===== 나갈 돈 ===== -->
+<div id="money-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="money-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="money-title">💰 나갈 돈</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet__scroll" id="money-body"></div>
   </div>
 </div>
 
@@ -237,8 +275,20 @@
         <p class="muted small">마감을 넘기면 다음 날 한 번 더 알려요. 캘린더 알림(.ics)은 상세 화면에서 따로 받을 수 있어요.</p>
       </section>
       <section class="card">
+        <h3>🧾 고지서 사진</h3>
+        <p class="muted small">찍은 고지서는 계좌번호를 다시 보거나 맞는지 대조할 수 있게 <b>이 폰 안에만</b> 저장해요. 서버로는 절대 안 나가요.</p>
+        <label class="field__label" for="s-photo">언제 지울까요</label>
+        <select id="s-photo">
+          <option value="paid30">냈어요 누르고 30일 뒤 (추천)</option>
+          <option value="paid0">냈어요 누르면 바로</option>
+          <option value="forever">계속 보관</option>
+          <option value="off">사진 저장 안 함</option>
+        </select>
+        <div class="row"><button type="button" class="btn btn--sm" id="btn-photo-clear">사진 모두 지우기</button><span class="muted small" id="photo-count"></span></div>
+      </section>
+      <section class="card">
         <h3>💾 백업</h3>
-        <p class="muted small"><b>폰을 바꾸거나 브라우저 데이터를 지우면 목록이 사라져요.</b> 파일로 받아 두면 다시 불러올 수 있어요.</p>
+        <p class="muted small"><b>폰을 바꾸거나 브라우저 데이터를 지우면 목록과 사진이 사라져요.</b> 파일로 받아 두면 목록은 다시 불러올 수 있어요(사진은 백업에 안 들어가요).</p>
         <div class="row">
           <button type="button" class="btn" id="btn-export">파일로 받기</button>
           <label class="btn file-btn">파일 불러오기<input type="file" id="file-import" accept="application/json,.json"></label>
@@ -267,11 +317,14 @@
 
 <div id="toast" class="toast" hidden><span id="toast-msg"></span><button type="button" id="toast-action" class="toast__act" hidden></button></div>
 
+<script src="js/db.js"></script>
 <script src="js/kinds.js"></script>
+<script src="js/guide.js"></script>
 <script src="js/store.js"></script>
 <script src="js/extract.js"></script>
 <script src="js/ocr.js"></script>
 <script src="js/push.js"></script>
+<script src="js/viewer.js"></script>
 <script src="js/share.js"></script>
 <script src="js/install.js"></script>
 <script src="js/app.js"></script>

@@ -34,7 +34,7 @@ window.BillboxStore = (function () {
     }
   }
   function settings() {
-    const def = { remindHour: (window.BILLBOX_CONFIG || {}).REMIND_HOUR_DEFAULT || 9, remindDays: [3, 0], push: 'off', deviceKey: '', introSeen: false, photoTipSeen: false };
+    const def = { remindHour: (window.BILLBOX_CONFIG || {}).REMIND_HOUR_DEFAULT || 9, remindDays: [3, 0], push: 'off', deviceKey: '', introSeen: false, photoTipSeen: false, photoKeep: 'paid30', tipsDone: [] };
     try {
       const raw = localStorage.getItem(SKEY);
       return Object.assign(def, raw ? JSON.parse(raw) : {});
@@ -138,9 +138,10 @@ window.BillboxStore = (function () {
   function markPaid(id) {
     const it = get(id);
     if (!it) return null;
-    const hist = [{ due: it.due, amount: it.amount, paidAt: new Date().toISOString() }, ...(it.history || [])].slice(0, 24);
+    const hist = [{ due: it.due, amount: it.amount, paidAt: new Date().toISOString(), usage: it.usage || null, tag: it.tag || '', estimated: !!it.estimated }, ...(it.history || [])].slice(0, 24);
     const next = nextDue(it);
-    if (next) return update(id, { history: hist, due: next, estimated: true, tag: '', paidAt: null });
+    // 다음 차례는 "예상"으로 넘김. 금액은 지난번 금액을 그대로 둬서 "지난번 약 ○○원"으로 쓴다. 사용량·독촉 표시는 새 차례라 비움
+    if (next) return update(id, { history: hist, due: next, estimated: true, tag: '', usage: null, paidAt: null });
     return update(id, { history: hist, paidAt: new Date().toISOString() });
   }
   /** 실수로 눌렀을 때 되돌리기 */
@@ -148,7 +149,7 @@ window.BillboxStore = (function () {
     const it = get(id);
     if (!it || !it.history || !it.history.length) return null;
     const [last, ...rest] = it.history;
-    return update(id, { history: rest, due: last.due, amount: last.amount, estimated: false, paidAt: null });
+    return update(id, { history: rest, due: last.due, amount: last.amount, usage: last.usage || null, tag: last.tag || '', estimated: !!last.estimated, paidAt: null });
   }
 
   /** 같은 종류의 반복 항목이 있고 마감이 ±45일 안이면 "같은 것"으로 본다(고지서를 다시 찍었을 때 중복 방지) */
@@ -202,5 +203,84 @@ window.BillboxStore = (function () {
     return n;
   }
 
-  return { load, save, settings, saveSettings, add, update, remove, get, markPaid, undoPaid, findSimilar, groups, nextDue, daysLeft, todayStr, addMonths, exportJson, importJson, uid };
+  // ---------- 나갈 돈 ----------
+  const MONEY_GROUPS = [
+    { id: 'bill', label: '공과금·세금', emoji: '🧾', kinds: ['electric', 'gas', 'water', 'health', 'pension', 'cartax', 'proptax', 'maint', 'telecom', 'fine'] },
+    { id: 'house', label: '월세·보험·학원', emoji: '🏠', kinds: ['rent', 'insurance', 'academy'] },
+    { id: 'loan', label: '대출 상환', emoji: '🏦', kinds: ['loan'] },
+    { id: 'subscribe', label: '구독', emoji: '📺', kinds: ['subscribe'] },
+    { id: 'etc', label: '자동이체·기타', emoji: '🔁', kinds: ['transfer', 'etc'] },
+  ];
+  const groupOf = (kindId) => (MONEY_GROUPS.find((g) => g.kinds.includes(kindId)) || MONEY_GROUPS[MONEY_GROUPS.length - 1]).id;
+  const ym = (due) => due.slice(0, 7);
+  function monthStr(offset) {
+    const d = new Date();
+    const t = new Date(d.getFullYear(), d.getMonth() + offset, 1);
+    return `${t.getFullYear()}-${p2(t.getMonth() + 1)}`;
+  }
+  /** 아직 안 낸 항목이 앞으로 언제·얼마 나올지(반복이면 다음 차례들까지). untilYm까지 */
+  function occurrences(item, untilYm) {
+    const out = [];
+    if (item.paidAt) return out;
+    let due = item.due;
+    let est = !!item.estimated;
+    let guard = 0;
+    while (due && ym(due) <= untilYm && guard++ < 30) {
+      out.push({ due, amount: item.amount, estimated: est });
+      due = nextDue(Object.assign({}, item, { due }));
+      est = true;
+    }
+    return out;
+  }
+  /** 매달 나가는 돈으로 환산(반복 항목만) */
+  function perMonth(item) {
+    if (!item.repeat || item.repeat === 'none' || item.amount == null) return 0;
+    if (item.months && item.months.length) return (item.amount * item.months.length) / 12;
+    const r = window.BillboxKinds.repeatById(item.repeat);
+    return r.months ? item.amount / r.months : 0;
+  }
+  function money() {
+    const items = load();
+    const cur = monthStr(0);
+    const next = monthStr(1);
+    const prev = monthStr(-1);
+    const blank = () => ({ total: 0, paid: 0, left: 0, approxAmt: 0, approx: false, unknown: 0, groups: Object.fromEntries(MONEY_GROUPS.map((g) => [g.id, 0])), count: 0 });
+    const M = { [prev]: blank(), [cur]: blank(), [next]: blank() };
+    for (const it of items) {
+      const gid = groupOf(it.kindId);
+      for (const h of it.history || []) {
+        const box = M[ym(h.due)];
+        if (!box || h.amount == null) continue;
+        box.total += h.amount;
+        box.paid += h.amount;
+        box.groups[gid] += h.amount;
+        box.count++;
+      }
+      for (const o of occurrences(it, next)) {
+        // 지난달보다 더 전에 밀린 건 이번 달 칸에 모아 보여 줌(아직 내야 하니까)
+        const target = M[ym(o.due)] || (ym(o.due) < prev ? M[cur] : null);
+        if (!target) continue;
+        target.count++;
+        if (o.amount == null) {
+          target.unknown++;
+          continue;
+        }
+        target.total += o.amount;
+        target.left += o.amount;
+        target.groups[gid] += o.amount;
+        if (o.estimated) {
+          target.approx = true;
+          target.approxAmt += o.amount;
+        }
+      }
+    }
+    const fixed = items.reduce((a, it) => a + perMonth(it), 0);
+    const fixedList = items
+      .filter((it) => perMonth(it) > 0)
+      .map((it) => ({ name: it.name || window.BillboxKinds.byId(it.kindId).label, kindId: it.kindId, perMonth: perMonth(it), repeat: it.repeat }))
+      .sort((a, b) => b.perMonth - a.perMonth);
+    return { cur, next, prev, months: M, fixed, fixedList, groups: MONEY_GROUPS };
+  }
+
+  return { money, load, save, settings, saveSettings, add, update, remove, get, markPaid, undoPaid, findSimilar, groups, nextDue, daysLeft, todayStr, addMonths, exportJson, importJson, uid };
 })();

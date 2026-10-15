@@ -3,7 +3,7 @@
 /**
  * Billbox 종류 사전
  *
- * - 고지서 종류 10종 + 직접 입력용 4종(구독·자동이체·대출·기타).
+ * - 고지서 종류 10종 + 직접 입력용 7종(구독·자동이체·대출·월세·보험료·학원비·기타).
  * - re: 읽은 글자에서 종류를 알아내는 규칙(많이 맞은 종류가 이김)
  * - repeat: 기본 반복. monthly | bimonthly | quarterly | half | yearly | none
  * - months: 반기·연 1회처럼 "정해진 달"에만 오는 것 (자동차세 6·12월, 재산세 7·9월)
@@ -24,6 +24,9 @@ window.BillboxKinds = (function () {
     { id: 'subscribe', label: '구독', emoji: '📺', repeat: 'monthly', re: /넷플릭스|Netflix|유튜브 프리미엄|쿠팡|멜론|디즈니|구독/g },
     { id: 'transfer', label: '자동이체', emoji: '🔁', repeat: 'monthly', re: /자동이체/g },
     { id: 'loan', label: '대출 상환', emoji: '🏦', repeat: 'monthly', re: /대출|상환|원리금/g },
+    { id: 'rent', label: '월세', emoji: '🔑', repeat: 'monthly', re: /월세|임대료/g },
+    { id: 'insurance', label: '보험료', emoji: '🛡️', repeat: 'monthly', re: /생명보험|손해보험|화재보험|실손|자동차보험|삼성생명|한화생명|교보생명|현대해상|DB손해|메리츠/g },
+    { id: 'academy', label: '학원비', emoji: '📚', repeat: 'monthly', re: /학원|교습비/g },
     { id: 'etc', label: '기타', emoji: '📄', repeat: 'none', re: null },
   ];
 

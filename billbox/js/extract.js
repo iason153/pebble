@@ -107,5 +107,51 @@ window.BillboxExtract = (function () {
     };
   }
 
-  return { extract, candidates };
+  // ---------- 가상계좌 · 전자납부번호 ----------
+  const BANKS = '(NH농협|농협|KB국민은행|KB국민|국민은행|국민|신한은행|신한|우리은행|우리|하나은행|하나|기업은행|IBK기업|기업|카카오뱅크|카카오|케이뱅크|토스뱅크|우체국|새마을금고|SC제일|제일은행|부산은행|대구은행|iM뱅크|경남은행|광주은행|전북은행|제주은행|수협|신협|씨티|산업은행)';
+  /** 읽은 글자에서 "은행 + 계좌번호"를 뽑는다. 사용자가 고른 것만 저장(오독 위험) */
+  function accounts(texts) {
+    const out = [];
+    const seen = new Set();
+    const re = new RegExp(BANKS + '\\s*[:.]?\\s*(\\d{2,6}(?:\\s?-\\s?\\d{1,8}){1,5})', 'g');
+    for (const t of texts) {
+      for (const raw of t.split('\n')) {
+        const ln = normLine(raw);
+        let m;
+        while ((m = re.exec(ln))) {
+          const num = m[2].replace(/\s/g, '');
+          const digits = num.replace(/-/g, '');
+          if (digits.length < 10 || digits.length > 16) continue;
+          const bank = m[1].replace(/^NH/, '').replace(/^KB국민은행$/, '국민은행').replace(/^KB국민$/, '국민은행');
+          const key = digits;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ bank, number: num });
+          if (out.length >= 12) return out;
+        }
+      }
+    }
+    return out;
+  }
+
+  // ---------- 사용량(전기 kWh · 가스/수도 m³) — 시험 기능 ----------
+  function usage(texts) {
+    const all = texts.join('\n');
+    const lines = all.split('\n').map(normLine);
+    const pick = (re) => {
+      for (const ln of lines) {
+        if (!/사용량|검침량|당월\s*사용|사용\s*전력/.test(ln)) continue;
+        const m = ln.match(re);
+        if (m) return parseFloat(m[1].replace(/,/g, ''));
+      }
+      return null;
+    };
+    const kwh = pick(/(\d{1,5}(?:,\d{3})*(?:\.\d+)?)\s*kWh/i);
+    if (kwh) return { value: kwh, unit: 'kWh' };
+    const m3 = pick(/(\d{1,5}(?:\.\d+)?)\s*(?:m³|㎥|m3|m\?|m)\b/);
+    if (m3) return { value: m3, unit: 'm³' };
+    return null;
+  }
+
+  return { extract, candidates, accounts, usage };
 })();

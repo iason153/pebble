@@ -248,6 +248,8 @@ window.BillboxOCR = (function () {
       const bmp = await fileToBitmap(file, 1400);
       const raw = toCanvas(bmp, 1400);
       if (bmp.close) bmp.close();
+      // 고지서 보기용 사본(폰 안에만 저장). 글자가 읽힐 만큼만 — 장당 200~300KB
+      const photo = await new Promise((res) => raw.toBlob(res, 'image/jpeg', 0.82));
       const w = await ready(onProgress);
 
       onProgress && onProgress(0.45, '글자를 읽고 있어요');
@@ -257,7 +259,7 @@ window.BillboxOCR = (function () {
       const confidences = [r1.data.confidence || 0];
       if (goodEnough && goodEnough(texts)) {
         onProgress && onProgress(0.97, '정리하고 있어요');
-        return { texts, confidences, passes: 1, ms: Date.now() - t0 };
+        return { texts, confidences, passes: 1, ms: Date.now() - t0, photo };
       }
       onProgress && onProgress(0.72, '자신이 없어서 한 번 더 꼼꼼히 읽어요');
       const pre = enhance(raw, 2000);
@@ -266,7 +268,7 @@ window.BillboxOCR = (function () {
       texts.push(r2.data.text || '');
       confidences.push(r2.data.confidence || 0);
       onProgress && onProgress(0.97, '정리하고 있어요');
-      return { texts, confidences, passes: 2, ms: Date.now() - t0 };
+      return { texts, confidences, passes: 2, ms: Date.now() - t0, photo };
     } finally {
       try {
         lock && lock.release();

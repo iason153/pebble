@@ -8,9 +8,15 @@
   const $ = (id) => document.getElementById(id);
   const S = window.BillboxStore;
   const K = window.BillboxKinds;
+  const G = window.BillboxGuide;
   const track = (n, p) => window.pebbleTrack && window.pebbleTrack(n, p);
   const won = (n) => (n == null || isNaN(n) ? '' : Number(n).toLocaleString('ko-KR'));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const inDays = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const fmtDate = (iso) => {
     const [y, m, d] = iso.split('-').map(Number);
     const wd = '일월화수목금토'[new Date(y, m - 1, d).getDay()];
@@ -38,10 +44,14 @@
       });
       $('about-ver').textContent = (window.BILLBOX_CONFIG || {}).VERSION || '';
       if (!S.settings().introSeen) $('intro').hidden = false;
+      this.wireMoney();
+      this.wireSwipe();
       this.render();
       this.registerSW();
       this.wirePrep();
       window.BillboxOCR.warmup();
+      this.cleanupPhotos();
+      this.checkShared();
       track('open', { items: S.load().length });
     },
 
@@ -84,6 +94,172 @@
       });
     },
 
+    /** 알림 문구용 사본을 폰 저장소에(서비스워커가 금액을 붙일 때 씀). 서버로는 안 감 */
+    mirror() {
+      const items = S.load()
+        .filter((x) => !x.paidAt)
+        .map((x) => ({ id: x.id, name: x.name || K.byId(x.kindId).label, kindId: x.kindId, emoji: K.byId(x.kindId).emoji, amount: x.amount, estimated: !!x.estimated, due: x.due, repeat: x.repeat }));
+      window.BillboxDB.putMirror(items);
+    },
+
+    /** 사진 보관 기간 정리: 낸 지 30일 지난 사진·지워진 항목의 사진 삭제 */
+    async cleanupPhotos() {
+      const keep = S.settings().photoKeep || 'paid30';
+      const all = await window.BillboxDB.allPhotos();
+      const ids = new Set(S.load().map((x) => x.id));
+      const now = Date.now();
+      let removed = 0;
+      for (const [id, rec] of all) {
+        let del = !ids.has(id) || keep === 'off';
+        if (!del && rec && rec.paidAt) {
+          if (keep === 'paid0') del = true;
+          else if (keep === 'paid30' && now - rec.paidAt > 30 * 86400000) del = true;
+        }
+        if (del) {
+          await window.BillboxDB.delPhoto(id);
+          removed++;
+        }
+      }
+      return { total: all.length - removed, removed };
+    },
+
+    /** 카톡·갤러리 "공유 → Billbox"로 들어온 사진 */
+    async checkShared() {
+      const q = new URLSearchParams(location.search);
+      if (!q.has('shared')) return;
+      try {
+        history.replaceState(history.state, '', location.pathname);
+      } catch (_) {}
+      const blob = await window.BillboxDB.takeInbox();
+      if (!blob) {
+        this.showToast('공유한 사진을 못 받았어요. 앨범에서 골라 주세요', { duration: 4000 });
+        return;
+      }
+      track('share_in');
+      this.openScan();
+      this.scan(blob, 'share');
+    },
+
+    addSamples() {
+      const add = (o) => S.add(Object.assign({ sample: true, source: 'manual' }, o));
+      add({ name: '도시가스', kindId: 'gas', amount: 48210, due: inDays(3), repeat: 'monthly' });
+      add({ name: '건강보험', kindId: 'health', amount: 44740, due: inDays(-2), repeat: 'monthly', tag: '독촉' });
+      add({ name: '넷플릭스', kindId: 'subscribe', amount: 17000, due: inDays(12), repeat: 'monthly' });
+      add({ name: '자동차세', kindId: 'cartax', amount: 129870, due: inDays(40), repeat: 'half', months: [6, 12] });
+      track('sample_add');
+      this.render();
+    },
+    removeSamples() {
+      S.save(S.load().filter((x) => !x.sample));
+      this.render();
+      window.BillboxPush.sync();
+    },
+
+    // =================================================================
+    // 나갈 돈
+    // =================================================================
+    wireMoney() {
+      $('btn-money').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openMoney('cur');
+      });
+      $('money-body').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-month]');
+        if (b) this.openMoney(b.dataset.month, true);
+      });
+    },
+    openMoney(which, refresh) {
+      const M = S.money();
+      const key = which === 'next' ? M.next : M.cur;
+      const box = M.months[key];
+      const prevBox = M.months[which === 'next' ? M.cur : M.prev];
+      const label = (ym) => `${Number(ym.slice(5))}월`;
+      const diff = box.total - prevBox.total;
+      const maxG = Math.max(1, ...M.groups.map((g) => box.groups[g.id]));
+      const overdue = S.groups().overdue;
+      const overSum = overdue.reduce((a, b) => a + (b.amount || 0), 0);
+      $('money-body').innerHTML = `
+        <div class="money-tabs">
+          <button type="button" class="chip ${which !== 'next' ? 'is-on' : ''}" data-month="cur">이번 달 (${label(M.cur)})</button>
+          <button type="button" class="chip ${which === 'next' ? 'is-on' : ''}" data-month="next">다음 달 (${label(M.next)})</button>
+        </div>
+        <div class="money-big"><small>${label(key)}에 나갈 돈${box.approx ? ' (어림 포함)' : ''}</small><b>${box.approx ? '약 ' : ''}${won(box.total)}원</b><small>${box.count}건${box.unknown ? ` · 금액 모르는 것 ${box.unknown}건` : ''}</small></div>
+        <div class="money-row2">
+          <div class="money-cell"><span>${which === 'next' ? '확정(고지서 찍은 것)' : '이미 낸 것'}</span><b>${won(which === 'next' ? box.total - box.approxAmt : box.paid)}원</b></div>
+          <div class="money-cell"><span>${which === 'next' ? '어림(지난번 금액)' : '아직 남은 것'}</span><b>${which === 'next' ? '약 ' + won(box.approxAmt) : won(box.left)}원</b></div>
+        </div>
+        ${`<p class="small" style="margin-bottom:12px">${prevBox.total > 0 ? `${label(which === 'next' ? M.cur : M.prev)}보다 <span class="${diff > 0 ? 'diff-up' : 'diff-down'}">${diff > 0 ? '+' : ''}${won(diff)}원</span>` : `${label(which === 'next' ? M.cur : M.prev)} 기록이 쌓이면 비교해 드려요`}${which !== 'next' && overdue.length ? ` · <b style="color:var(--red)">밀린 것 ${overdue.length}건 ${won(overSum)}원</b>` : ''}</p>`}
+        <h3 style="margin-bottom:8px">어디에 나가나</h3>
+        <div class="bars">${M.groups
+          .filter((g) => box.groups[g.id] > 0)
+          .map((g) => `<div><div class="bar__top"><span>${g.emoji} ${g.label}</span><span>${won(box.groups[g.id])}원</span></div><div class="bar__track"><div class="bar__fill" style="width:${Math.round((box.groups[g.id] / maxG) * 100)}%"></div></div></div>`)
+          .join('') || '<p class="muted small">아직 금액이 있는 항목이 없어요.</p>'}</div>
+        <div class="card" style="box-shadow:var(--shadow-sm)">
+          <h3>🔁 매달 나가는 돈 (고정 지출)</h3>
+          <p style="font-size:1.4rem;font-weight:900;margin:4px 0 8px">약 ${won(M.fixed)}원</p>
+          <ul class="fixed-list">${M.fixedList.map((f) => `<li><span>${K.byId(f.kindId).emoji} ${esc(f.name)}</span><span>${won(f.perMonth)}원${f.repeat !== 'monthly' ? ' <span class="muted small">(월로 환산)</span>' : ''}</span></li>`).join('') || '<li class="muted">반복 항목이 없어요</li>'}</ul>
+          <p class="muted small" style="margin-top:8px">6개월·1년마다 내는 것은 한 달 몫으로 나눠 더했어요. 금액이 바뀌면 고지서를 찍어 맞춰 주세요.</p>
+        </div>`;
+      if (!refresh) {
+        this.openSheet($('money-sheet'));
+        track('money_open');
+      }
+    },
+
+    // =================================================================
+    // 밀어서 냈어요
+    // =================================================================
+    wireSwipe() {
+      const list = $('list');
+      let st = null;
+      list.addEventListener('pointerdown', (e) => {
+        const el = e.target.closest('.item[data-item]');
+        if (!el || el.classList.contains('item--done') || e.target.closest('button')) return;
+        st = { el, x: e.clientX, y: e.clientY, dx: 0, on: false };
+      });
+      list.addEventListener('pointermove', (e) => {
+        if (!st) return;
+        const dx = e.clientX - st.x;
+        const dy = e.clientY - st.y;
+        if (!st.on) {
+          if (Math.abs(dy) > 12) return (st = null);
+          if (dx > 14 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            st.on = true;
+            st.el.classList.add('is-swiping');
+          } else return;
+        }
+        st.dx = Math.max(0, dx);
+        st.el.style.transform = `translateX(${st.dx}px) rotate(0deg)`;
+        st.el.style.background = st.dx > 100 ? 'var(--green-lt)' : '';
+      });
+      const end = () => {
+        if (!st) return;
+        const { el, dx, on } = st;
+        st = null;
+        if (!on) return;
+        el.classList.remove('is-swiping');
+        el.style.background = '';
+        if (dx > 100) {
+          el.style.transform = 'translateX(110%)';
+          this.suppressClick = true;
+          setTimeout(() => this.pay(el.dataset.item), 160);
+          track('paid_swipe');
+        } else el.style.transform = '';
+        if (dx > 10) {
+          this.suppressClick = true;
+          setTimeout(() => (this.suppressClick = false), 300);
+        }
+      };
+      list.addEventListener('pointerup', end);
+      list.addEventListener('pointercancel', end);
+      list.addEventListener('click', (e) => {
+        if (this.suppressClick) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }, true);
+    },
+
     registerSW() {
       if (!('serviceWorker' in navigator)) return;
       navigator.serviceWorker.register('service-worker.js').catch(() => {});
@@ -102,6 +278,8 @@
       $('btn-scan').addEventListener('click', () => this.openScan());
       $('btn-manual').addEventListener('click', () => this.openEdit('manual'));
       $('list').addEventListener('click', (e) => {
+        if (e.target.closest('[data-sample-add]')) return this.addSamples();
+        if (e.target.closest('[data-sample-del]')) return this.removeSamples();
         const paid = e.target.closest('[data-paid]');
         if (paid) {
           e.stopPropagation();
@@ -147,11 +325,15 @@
           cls = n > 7 ? 'dday--far' : '';
         }
         const badges = [it.tag ? `<span class="badge badge--red">${esc(it.tag)}</span>` : '', it.estimated ? '<span class="badge badge--ghost">예상</span>' : '', it.repeat && it.repeat !== 'none' ? `<span class="badge badge--mint">${esc(K.repeatById(it.repeat).label)}</span>` : ''].join('');
+        const lf = n < 0 || it.tag ? G.lateFee(it.kindId, it.amount, Math.max(0, -n)) : null;
+        const amtTxt = it.amount == null ? '금액 미정' : it.estimated ? `약 ${won(it.amount)}원` : `${won(it.amount)}원`;
         return `<div class="item ${n < 0 ? 'item--overdue' : ''}" role="button" tabindex="0" data-item="${it.id}">
           <div class="item__emoji" aria-hidden="true">${k.emoji}</div>
           <div>
             <div class="item__name">${esc(it.name || k.label)} ${badges}</div>
-            <div class="item__meta"><span class="item__amount">${it.amount != null ? won(it.amount) + '원' : '금액 미정'}</span> · ${fmtDate(it.due)}까지</div>
+            <div class="item__meta"><span class="item__amount">${amtTxt}</span> · ${fmtDate(it.due)}까지</div>
+            ${it.estimated && !it.paidAt ? '<div class="item__est">고지서 오면 찍어서 금액 맞추기</div>' : ''}
+            ${lf && lf.short ? `<div class="item__late">늦으면 ${esc(lf.short)}</div>` : ''}
           </div>
           <div class="item__right">
             <span class="dday ${cls}">${dd}</span>
@@ -163,8 +345,10 @@
 
       let html = group('🚨 마감 지남', g.overdue, 'badge--red') + group('📌 이번 주', g.week, 'badge--brass') + group('📅 다음에', g.later, '');
       if (!html) {
-        html = `<div class="empty card card--tilt"><div class="empty__pic">📬</div><p><b>아직 비어 있어요.</b></p><p class="muted">아래 <b>고지서 찍기</b>를 눌러 보세요. 넷플릭스 같은 구독은 <b>직접 입력</b>으로.</p></div>`;
+        html = `<div class="empty card card--tilt"><div class="empty__pic">📬</div><p><b>아직 비어 있어요.</b></p><p class="muted">아래 <b>고지서 찍기</b>를 눌러 보세요. 넷플릭스 같은 구독은 <b>직접 입력</b>으로.</p><button type="button" class="btn btn--sm" data-sample-add style="margin-top:10px">👀 예시 넣어 보기</button></div>`;
       }
+      if (S.load().some((x) => x.sample)) html = `<div class="sample-bar"><span>지금 보이는 건 예시예요. 마음껏 눌러 보세요.</span><button type="button" class="btn btn--sm" data-sample-del>예시 지우기</button></div>` + html;
+      html += `<p class="muted small" style="text-align:center;margin:8px 0 0">카드를 오른쪽으로 밀어도 "냈어요"가 돼요 👉</p>`;
       if (g.done.length) {
         html += `<details class="done"><summary>낸 것 ${g.done.length}건</summary>${g.done
           .map((it) => {
@@ -174,6 +358,7 @@
           .join('')}</details>`;
       }
       list.innerHTML = html;
+      this.mirror();
       list.querySelectorAll('[data-item]').forEach((el) =>
         el.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -188,6 +373,7 @@
       const before = S.get(id);
       const it = S.markPaid(id);
       if (!it) return;
+      window.BillboxDB.patchPhoto(id, { paidAt: Date.now() }).then(() => this.cleanupPhotos());
       this.render();
       window.BillboxPush.sync();
       track('paid', { kind: it.kindId, repeat: it.repeat });
@@ -198,6 +384,7 @@
         onAction: () => {
           S.undoPaid(id);
           if (before && !before.paidAt) S.update(id, { paidAt: null });
+          window.BillboxDB.patchPhoto(id, { paidAt: null });
           this.render();
           window.BillboxPush.sync();
         },
@@ -381,6 +568,9 @@
       clearInterval(tick);
       if (token !== this.scanToken) return;
       const ex = window.BillboxExtract.extract(res.texts);
+      ex.accounts = window.BillboxExtract.accounts(res.texts);
+      ex.usage = window.BillboxExtract.usage(res.texts);
+      this.pendingPhoto = res.photo || null;
       const got = (ex.amount ? 1 : 0) + (ex.due ? 1 : 0) + (ex.kind ? 1 : 0);
       track('scan_done', { got, kind: ex.kind ? ex.kind.id : 'none', ms: Math.round(res.ms / 1000), passes: res.passes, conf: Math.round(Math.max(...res.confidences)) });
       this.hideSheetNow($('scan-sheet'));
@@ -403,13 +593,16 @@
         const b = e.target.closest('[data-kind]');
         if (!b) return;
         this.setKind(b.dataset.kind, true);
+        this.setOk('kind', true);
       });
       // 반복 칩
       const rep = $('f-repeat');
       rep.innerHTML = K.REPEATS.map((r) => `<button type="button" class="chip" role="radio" aria-checked="false" data-repeat="${r.id}">${r.label}</button>`).join('');
       rep.addEventListener('click', (e) => {
         const b = e.target.closest('[data-repeat]');
-        if (b) this.setRepeat(b.dataset.repeat, null);
+        if (!b) return;
+        this.repeatTouched = true;
+        this.setRepeat(b.dataset.repeat, null);
       });
       $('f-months').innerHTML = Array.from({ length: 12 }, (_, i) => `<button type="button" class="chip" data-month="${i + 1}">${i + 1}월</button>`).join('');
       $('f-months').addEventListener('click', (e) => {
@@ -429,12 +622,16 @@
         if (!b) return;
         $('f-amount').value = Number(b.dataset.amt).toLocaleString('ko-KR');
         $('flag-amount').hidden = true;
+        $('alt-amounts').querySelectorAll('.chip').forEach((c) => c.classList.toggle('is-picked', c === b));
+        this.setOk('amount', true);
       });
       $('alt-dues').addEventListener('click', (e) => {
         const b = e.target.closest('[data-due]');
         if (!b) return;
         $('f-due').value = b.dataset.due;
         $('flag-due').hidden = true;
+        $('alt-dues').querySelectorAll('.chip').forEach((c) => c.classList.toggle('is-picked', c === b));
+        this.setOk('due', true);
         this.updateRepeatHint();
       });
       $('f-quickdue').addEventListener('click', (e) => {
@@ -445,7 +642,34 @@
         $('f-due').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         this.updateRepeatHint();
       });
-      $('f-due').addEventListener('change', () => this.updateRepeatHint());
+      $('f-due').addEventListener('change', () => {
+        this.updateRepeatHint();
+        this.setOk('due', true);
+      });
+      // ✅ 확인 버튼
+      $('edit-form').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-ok]');
+        if (!b) return;
+        this.setOk(b.dataset.ok, b.getAttribute('aria-pressed') !== 'true');
+      });
+      $('f-amount').addEventListener('change', () => this.setOk('amount', !!$('f-amount').value));
+      $('f-name').addEventListener('change', () => this.setOk('kind', true));
+      // 계좌 후보
+      $('alt-accounts').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-acct]');
+        if (!b) return;
+        $('alt-accounts').querySelectorAll('.chip').forEach((c) => c.classList.toggle('is-picked', c === b));
+        $('f-account').value = b.dataset.acct;
+      });
+      $('btn-repeat-change').addEventListener('click', () => {
+        $('repeat-auto').hidden = true;
+        $('repeat-pick').hidden = false;
+        this.repeatTouched = true;
+      });
+      $('edit-thumb').addEventListener('click', () => {
+        const blob = this.editPhoto;
+        if (blob) window.BillboxViewer.open(blob, '찍은 고지서', (sh) => this.openSheet(sh));
+      });
       $('btn-kind-change').addEventListener('click', () => this.collapseKinds(false));
       $('btn-similar-update').addEventListener('click', () => {
         if (!this.similar) return;
@@ -461,6 +685,36 @@
         e.preventDefault();
         this.save();
       });
+    },
+
+    /** ✅ 확인 상태 켜기/끄기 (사진으로 읽었을 때만 보임) */
+    setOk(key, on) {
+      const btn = document.querySelector(`[data-ok="${key}"]`);
+      if (!btn || btn.hidden) return;
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const fs = document.querySelector(`[data-check="${key}"]`);
+      if (fs) fs.classList.toggle('is-ok', on);
+      if (on && key === 'amount') $('flag-amount').hidden = true;
+      if (on && key === 'due') $('flag-due').hidden = true;
+      this.updateSaveLabel();
+    },
+    updateSaveLabel() {
+      if (this.editMode !== 'photo') return;
+      const all = ['kind', 'amount', 'due'].every((k) => (document.querySelector(`[data-ok="${k}"]`) || {}).getAttribute?.('aria-pressed') === 'true');
+      $('btn-save').textContent = all ? '✅ 모두 확인, 저장' : '맞아요, 저장';
+    },
+    /** 종류에 정해진 주기가 있으면 질문 대신 "매월 자동 등록 ✓"만 보여 줌 */
+    showRepeatAuto() {
+      const f = this.readForm();
+      const k = K.byId(f.kindId);
+      const auto = !this.repeatTouched && k.repeat && k.repeat !== 'none' && f.repeat === k.repeat;
+      $('repeat-auto').hidden = !auto;
+      $('repeat-pick').hidden = !!auto;
+      if (auto) {
+        const r = K.repeatById(k.repeat);
+        const ms = f.months && f.months.length ? ` (${f.months.join('·')}월)` : '';
+        $('repeat-auto-txt').textContent = `🔁 ${r.label}${ms} 자동 등록 ✓`;
+      }
     },
 
     /** 사진으로 읽었을 때는 종류 14개를 다 펼치지 않고 고른 것만 보여 준다(금액·기한이 먼저 보이게) */
@@ -486,6 +740,7 @@
         name.dataset.auto = '1';
       }
       if (userPicked || !this.repeatTouched) this.setRepeat(k.repeat, k.months || null);
+      this.showRepeatAuto();
     },
 
     setRepeat(id, months) {
@@ -513,7 +768,7 @@
       const repeat = ($('f-repeat').querySelector('.is-on') || { dataset: { repeat: 'none' } }).dataset.repeat;
       const months = $('f-months-wrap').hidden ? null : Array.from($('f-months').querySelectorAll('.is-on')).map((b) => Number(b.dataset.month));
       const amt = $('f-amount').value.replace(/[^\d]/g, '');
-      return { kindId, name: $('f-name').value.trim(), amount: amt ? Number(amt) : null, due: $('f-due').value, repeat, months: months && months.length ? months : null, note: $('f-note').value.trim() };
+      return { kindId, name: $('f-name').value.trim(), amount: amt ? Number(amt) : null, due: $('f-due').value, repeat, months: months && months.length ? months : null, note: $('f-note').value.trim(), account: $('f-account').value.trim() };
     },
 
     updateRepeatHint() {
@@ -547,6 +802,18 @@
       $('edit-lead').hidden = true;
       $('f-months').querySelectorAll('.is-on').forEach((b) => b.classList.remove('is-on'));
       this.collapseKinds(false);
+      $('alt-accounts').innerHTML = '';
+      $('edit-usage').hidden = true;
+      this.editUsage = null;
+      $('edit-thumb').hidden = true;
+      this.editPhoto = null;
+      document.querySelectorAll('[data-ok]').forEach((b) => {
+        b.hidden = mode !== 'photo';
+        b.setAttribute('aria-pressed', 'false');
+      });
+      document.querySelectorAll('[data-check]').forEach((f) => f.classList.remove('is-ok'));
+      $('f-quickdue-wrap').hidden = mode === 'photo';
+      if (mode !== 'photo') this.pendingPhoto = null;
 
       if (mode === 'photo') {
         $('edit-title').textContent = '읽은 내용, 맞나요?';
@@ -565,6 +832,15 @@
         if (data.altAmounts.length) $('alt-amounts').innerHTML = `<span class="alts__label">혹시 이건가요?</span>` + data.altAmounts.map((a) => `<button type="button" class="chip" data-amt="${a}">${won(a)}원</button>`).join('');
         if (data.altDues.length) $('alt-dues').innerHTML = `<span class="alts__label">혹시 이건가요?</span>` + data.altDues.map((d) => `<button type="button" class="chip" data-due="${d}">${fmtDate(d)}</button>`).join('');
         if (data.tag) $('f-note').value = data.tag + ' 고지서';
+        if (this.pendingPhoto && S.settings().photoKeep !== 'off') this.showThumb(this.pendingPhoto);
+        if (data.accounts && data.accounts.length) {
+          $('alt-accounts').innerHTML = `<span class="alts__label">읽은 계좌 — 낼 곳을 고르세요</span>` + data.accounts.map((a) => `<button type="button" class="chip" data-acct="${esc(a.bank + ' ' + a.number)}">${esc(a.bank)} ${esc(a.number)}</button>`).join('');
+        }
+        if (data.usage) {
+          this.editUsage = data.usage;
+          $('edit-usage').textContent = `📊 사용량 ${data.usage.value.toLocaleString('ko-KR')}${data.usage.unit} 읽음 — 다음 고지서와 비교해 드려요 (시험 기능)`;
+          $('edit-usage').hidden = false;
+        }
         if (data.kind) this.setRepeat(data.kind.repeat, data.kind.months || null);
         this.collapseKinds(!!data.kind);
         if (data.due) {
@@ -586,7 +862,10 @@
         $('f-amount').value = data.amount != null ? won(data.amount) : '';
         $('f-due').value = data.due;
         $('f-note').value = data.note || '';
+        $('f-account').value = data.account || '';
         this.setRepeat(data.repeat || 'none', data.months || null);
+        this.showRepeatAuto();
+        window.BillboxDB.getPhoto(data.id).then((rec) => rec && rec.blob && this.showThumb(rec.blob, true));
         $('btn-save').textContent = '저장';
       } else {
         $('edit-title').textContent = '직접 입력';
@@ -597,7 +876,17 @@
         $('btn-save').textContent = '저장하고 알림 받기';
       }
       this.updateRepeatHint();
+      this.showRepeatAuto();
+      this.updateSaveLabel();
       this.openSheet($('edit-sheet'), { focus: mode === 'manual' ? $('f-name') : null });
+    },
+
+    showThumb(blob) {
+      this.editPhoto = blob;
+      if (this.thumbUrl) URL.revokeObjectURL(this.thumbUrl);
+      this.thumbUrl = URL.createObjectURL(blob);
+      $('edit-thumb-img').src = this.thumbUrl;
+      $('edit-thumb').hidden = false;
     },
 
     save() {
@@ -611,6 +900,7 @@
       if (!f.name) f.name = K.byId(f.kindId).label;
       const id = $('f-id').value;
       const tag = ($('f-note').value.match(/독촉|압류예고/) || [''])[0];
+      if (this.editUsage) f.usage = this.editUsage;
       let item;
       if (id) {
         const prev = S.get(id) || {};
@@ -618,7 +908,13 @@
       } else {
         item = S.add(Object.assign(f, { source: this.editMode === 'photo' ? 'photo' : 'manual', tag, estimated: false }));
       }
-      track('save', { kind: f.kindId, repeat: f.repeat, source: id ? 'edit' : this.editMode, has_amount: f.amount != null ? 1 : 0 });
+      // 고지서 사진: 폰 안에만. 같은 항목의 이전 사진은 새 사진으로 교체
+      if (this.pendingPhoto && (this.editMode === 'photo' || this.similar) && S.settings().photoKeep !== 'off') {
+        window.BillboxDB.putPhoto(item.id, { blob: this.pendingPhoto, due: item.due, savedAt: Date.now(), paidAt: null });
+      }
+      this.pendingPhoto = null;
+      const oks = ['kind', 'amount', 'due'].filter((k) => (document.querySelector(`[data-ok="${k}"]`) || {}).getAttribute?.('aria-pressed') === 'true').length;
+      track('save', { kind: f.kindId, repeat: f.repeat, source: id ? 'edit' : this.editMode, has_amount: f.amount != null ? 1 : 0, checked: oks, has_account: f.account ? 1 : 0 });
       this.closeSheet($('edit-sheet'));
       this.render();
       window.BillboxPush.sync();
@@ -631,39 +927,85 @@
     // =================================================================
     // 상세
     // =================================================================
-    openDetail(id) {
+    async openDetail(id) {
       const it = S.get(id);
       if (!it) return;
+      const G = window.BillboxGuide;
       const k = K.byId(it.kindId);
       const n = S.daysLeft(it.due);
       const dd = it.paidAt ? '<span class="stamp">냄</span>' : n < 0 ? `<b style="color:var(--red)">${-n}일 지남</b>` : n === 0 ? '<b>오늘까지!</b>' : `<b>D-${n}</b>`;
+      const photo = await window.BillboxDB.getPhoto(id);
+      const photoLabel = photo ? (photo.due === it.due ? '🧾 고지서 보기' : `🧾 지난 고지서 보기 (${fmtDate(photo.due)}분)`) : '';
+      // 늦으면·단계 설명서
+      const stage = it.paidAt ? null : G.stageCard(it, n);
+      const lf = it.paidAt ? null : G.lateFee(it.kindId, it.amount, Math.max(0, -n));
+      const tips = G.saveTips(it.kindId).filter((t) => !(S.settings().tipsDone || []).includes(t.id));
+      // 사용량 비교
+      let usageTxt = '';
+      const prevU = (it.history || []).find((h) => h.usage && it.usage && h.usage.unit === it.usage.unit);
+      if (it.usage) {
+        usageTxt = `📊 사용량 ${it.usage.value.toLocaleString('ko-KR')}${it.usage.unit}`;
+        if (prevU) {
+          const d = ((it.usage.value - prevU.usage.value) / prevU.usage.value) * 100;
+          usageTxt += ` · 지난번보다 <span class="${d > 0 ? 'diff-up' : 'diff-down'}">${d > 0 ? '+' : ''}${d.toFixed(0)}%</span>`;
+        }
+      }
+      const amtBig = it.amount == null ? '금액 미정' : `${it.estimated && !it.paidAt ? '약 ' : ''}${won(it.amount)}원`;
+      const amtSub = it.paidAt ? '냈어요' : it.estimated ? '지난번 금액으로 어림 · 고지서 오면 찍어 주세요' : '낼 금액';
       $('detail-title').textContent = it.name || k.label;
       $('detail-body').innerHTML = `
         <div class="detail__top"><span class="detail__emoji">${k.emoji}</span><div><div class="detail__name">${esc(it.name || k.label)}</div><div class="muted small">${esc(k.label)}${it.tag ? ` · <span class="badge badge--red">${esc(it.tag)}</span>` : ''}${it.estimated ? ' · <span class="badge badge--ghost">예상 마감</span>' : ''}</div></div></div>
-        <div class="detail__amount">${it.amount != null ? won(it.amount) + '원' : '금액 미정'}<small>${it.paidAt ? '냈어요' : '낼 금액'}</small></div>
+        <div class="detail__amount">${amtBig}<small>${amtSub}</small></div>
         <div class="detail__grid">
           <div class="detail__cell"><b>언제까지</b>${fmtDate(it.due)}<br>${dd}</div>
           <div class="detail__cell"><b>얼마나 자주</b>${esc(K.repeatById(it.repeat || 'none').label)}${it.months && it.months.length ? `<br><span class="small">${it.months.join('·')}월</span>` : ''}</div>
         </div>
+        ${photo ? `<button type="button" class="btn btn--big photo-btn" data-act="photo" style="margin-bottom:12px">${photoLabel}</button>` : ''}
+        ${it.account ? `<div class="acct"><span>🏦 ${esc(it.account)}</span><button type="button" class="btn btn--sm btn--brass" data-act="copy">복사</button></div>` : ''}
+        ${usageTxt ? `<p class="usage-line" style="margin:0 0 12px">${usageTxt}</p>` : ''}
         ${it.note ? `<p class="small" style="margin-bottom:12px">📝 ${esc(it.note)}</p>` : ''}
+        ${stage ? `<div class="guide guide--${stage.tone}"><h3>${stage.title}</h3><ul>${stage.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${lf ? `<p style="margin-top:8px"><b>늦으면:</b> ${esc(lf.text)}</p>` : ''}<p class="guide__fine">참고용 안내예요. 고지서에 적힌 내용이 우선이에요.</p></div>` : ''}
         <div class="detail__acts">
           ${it.paidAt ? `<button type="button" class="btn" data-act="unpay">아직 안 냈어요 (되돌리기)</button>` : `<button type="button" class="btn btn--big btn--brass" data-act="pay">✅ 냈어요</button>`}
           <div class="row2">
             <button type="button" class="btn" data-act="ics">📅 캘린더 알림</button>
             <button type="button" class="btn" data-act="edit">✏️ 고치기</button>
           </div>
-          <button type="button" class="btn btn--ghost btn--sm" data-act="del">🗑 지우기</button>
         </div>
-        ${it.history && it.history.length ? `<h3>낸 기록</h3><ul class="hist">${it.history.map((h) => `<li><span>${fmtDate(h.due)}</span><span>${h.amount != null ? won(h.amount) + '원' : ''}</span></li>`).join('')}</ul>` : ''}
-        <p class="muted small" style="margin-top:12px">${it.estimated ? '지난 고지서로 예상한 마감이에요. 새 고지서를 찍으면 이 항목이 업데이트돼요.' : ''}</p>`;
+        ${!stage && lf && !it.paidAt ? `<details class="tips-box"><summary>⏰ 늦으면 어떻게 돼요?</summary><p class="small" style="padding:6px 0 4px">${esc(lf.text)}</p><p class="guide__fine">참고용 안내예요. 고지서에 적힌 내용이 우선이에요.</p></details>` : ''}
+        ${tips.length ? `<details class="tips-box"><summary>💡 이렇게 하면 깎여요 (${tips.length})</summary>${tips.map((t) => `<div class="tip"><b>${esc(t.title)}</b><p>${esc(t.text)}</p><p class="tip__where">📍 ${esc(t.where)} · ${esc(t.checked)}</p><button type="button" class="btn btn--sm" data-tip-done="${t.id}">했어요, 그만 보기</button></div>`).join('')}</details>` : ''}
+        ${it.history && it.history.length ? `<h3>낸 기록</h3><ul class="hist">${it.history.map((h) => `<li><span>${fmtDate(h.due)}</span><span>${h.amount != null ? won(h.amount) + '원' : ''}${h.usage ? ` · ${h.usage.value}${h.usage.unit}` : ''}</span></li>`).join('')}</ul>` : ''}
+        <button type="button" class="btn btn--ghost btn--sm" data-act="del" style="margin-top:12px">🗑 지우기</button>`;
       const body = $('detail-body');
-      body.onclick = (e) => {
+      body.onclick = async (e) => {
+        const td = e.target.closest('[data-tip-done]');
+        if (td) {
+          const done = new Set(S.settings().tipsDone || []);
+          done.add(td.dataset.tipDone);
+          S.saveSettings({ tipsDone: [...done] });
+          td.closest('.tip').remove();
+          track('tip_done', { tip: td.dataset.tipDone });
+          return;
+        }
         const b = e.target.closest('[data-act]');
         if (!b) return;
         const act = b.dataset.act;
         if (act === 'pay') this.pay(id);
-        else if (act === 'unpay') {
+        else if (act === 'photo') {
+          track('photo_view', { kind: it.kindId });
+          window.BillboxViewer.open(photo.blob, it.name || k.label, (sh) => this.openSheet(sh));
+        } else if (act === 'copy') {
+          const num = (it.account.match(/[\d-]{8,}/) || [it.account])[0];
+          let ok = false;
+          try {
+            await navigator.clipboard.writeText(num);
+            ok = true;
+          } catch (_) {}
+          track('account_copy', { ok: ok ? 1 : 0 });
+          this.showToast(ok ? `계좌번호를 복사했어요: ${num}` : `길게 눌러 복사해 주세요: ${num}`, { duration: 3500 });
+        } else if (act === 'unpay') {
           S.update(id, { paidAt: null });
+          window.BillboxDB.patchPhoto(id, { paidAt: null });
           this.render();
           window.BillboxPush.sync();
           this.closeSheet($('detail-sheet'));
@@ -672,8 +1014,9 @@
           this.hideSheetNow($('detail-sheet'));
           this.openEdit('edit', it);
         } else if (act === 'del') {
-          if (!confirm(`"${it.name || k.label}"을(를) 지울까요?`)) return;
+          if (!confirm(`"${it.name || k.label}"을(를) 지울까요? 저장된 고지서 사진도 같이 지워져요.`)) return;
           S.remove(id);
+          window.BillboxDB.delPhoto(id);
           track('delete', { kind: it.kindId });
           this.render();
           window.BillboxPush.sync();
@@ -778,6 +1121,18 @@
           this.showToast('시험 알림을 보내지 못했어요');
         }
       });
+      $('s-photo').addEventListener('change', async () => {
+        S.saveSettings({ photoKeep: $('s-photo').value });
+        track('settings_photo', { keep: $('s-photo').value });
+        await this.cleanupPhotos();
+        this.renderSettings();
+      });
+      $('btn-photo-clear').addEventListener('click', async () => {
+        if (!confirm('저장된 고지서 사진을 모두 지울까요? 목록은 그대로예요.')) return;
+        await window.BillboxDB.clearPhotos();
+        this.renderSettings();
+        this.showToast('사진을 모두 지웠어요');
+      });
       $('btn-export').addEventListener('click', () => {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([S.exportJson()], { type: 'application/json' }));
@@ -813,6 +1168,8 @@
     renderSettings() {
       const s = S.settings();
       $('s-hour').value = String(s.remindHour);
+      $('s-photo').value = s.photoKeep || 'paid30';
+      window.BillboxDB.allPhotos().then((a) => ($('photo-count').textContent = `지금 ${a.length}장 저장됨`));
       $('s-days').querySelectorAll('[data-day]').forEach((b) => b.classList.toggle('is-on', (s.remindDays || [3, 0]).includes(Number(b.dataset.day))));
       const sup = window.BillboxPush.supported();
       const on = s.push === 'on' && sup;
@@ -832,8 +1189,17 @@
           if (e.target === sh || e.target.closest('[data-close]')) this.closeSheet(sh);
         });
       });
+      // 뒤로가기: 맨 위 화면만 닫는다(사진 보기 → 상세로 돌아오게). 쌓인 순서는 sheetStack으로 기억
       window.addEventListener('popstate', () => {
-        document.querySelectorAll('.sheet.is-open').forEach((sh) => this.hideSheetNow(sh));
+        const keep = history.state && history.state.bbSheet;
+        const stack = this.sheetStack || [];
+        while (stack.length && stack[stack.length - 1] !== keep) {
+          const id = stack.pop();
+          const sh = $(id);
+          if (sh && !sh.hidden) this.hideSheetNow(sh);
+        }
+        // 기록에 없는데 열려 있는 화면(예: 직접 닫지 않은 것)이 있으면 함께 정리
+        if (!keep) document.querySelectorAll('.sheet.is-open').forEach((sh) => this.hideSheetNow(sh));
       });
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
@@ -842,6 +1208,8 @@
       });
     },
     openSheet(sheet, { replace = false, focus = null } = {}) {
+      this.sheetStack = (this.sheetStack || []).filter((id) => id !== sheet.id && !$(id).hidden);
+      this.sheetStack.push(sheet.id);
       sheet.hidden = false;
       this.zTop = (this.zTop || 40) + 1;
       sheet.style.zIndex = String(this.zTop);
@@ -861,6 +1229,7 @@
       this.hideSheetNow(sheet);
     },
     hideSheetNow(sheet) {
+      if (this.sheetStack) this.sheetStack = this.sheetStack.filter((id) => id !== sheet.id);
       sheet.classList.remove('is-open');
       sheet.hidden = true;
       if (!document.querySelector('.sheet.is-open')) document.body.classList.remove('has-sheet');

@@ -1,5 +1,5 @@
 'use strict';
-const { getDevice, putDevice, delDevice, send, json, readBody } = require('./_lib');
+const { getDevice, putDevice, delDevice, send, json, readBody, kstNow } = require('./_lib');
 
 /**
  * POST   /api/billbox/sync  { deviceKey, subscription, hour, days, items:[{id,name,due}] } → 저장
@@ -20,7 +20,13 @@ module.exports = async (req, res) => {
   if (b.test) {
     const dev = await getDevice(key);
     if (!dev || !dev.sub) return json(res, 404, { error: '먼저 알림을 켜 주세요' });
-    const ok = await send(dev.sub, { title: 'Billbox 시험 알림 🔔', body: '이렇게 알려 드려요. 마감 3일 전·당일 아침에 만나요!', tag: 'billbox-test' });
+    // 등록된 항목 중 가장 가까운 것 하나로 "실제로 이렇게 와요"를 보여 줌(금액은 폰이 붙임)
+    const today = kstNow().date;
+    const dayDiff = (a, b) => Math.round((Date.UTC(...a.split('-').map((v, i) => (i === 1 ? v - 1 : +v))) - Date.UTC(...b.split('-').map((v, i) => (i === 1 ? v - 1 : +v)))) / 86400000);
+    const near = (dev.items || []).filter((it) => dayDiff(it.due, today) >= -1).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
+    const payload = { title: 'Billbox 시험 알림 🔔', body: '이렇게 알려 드려요. 마감 3일 전·당일 아침에 만나요!', tag: 'billbox-test' };
+    if (near) payload.items = [{ id: near.id, name: near.name, days: Math.max(-1, dayDiff(near.due, today)) }];
+    const ok = await send(dev.sub, payload);
     return json(res, 200, { ok });
   }
 

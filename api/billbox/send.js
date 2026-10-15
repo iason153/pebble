@@ -30,11 +30,20 @@ module.exports = async (req, res) => {
     const sent = dev.sent || {};
     const lines = [];
     const stamps = [];
+    const sigs = []; // 폰이 금액을 붙여 문구를 만들 수 있게 "어느 항목·며칠 남음"만 보냄(금액은 서버에 없음)
     for (const it of dev.items || []) {
       let kind = null;
-      for (const n of days) if (addDays(now.date, n) === it.due) kind = n === 0 ? '오늘까지!' : `${n}일 남았어요`;
-      if (!kind && addDays(now.date, -1) === it.due) kind = '어제가 마감이었어요. 늦었지만 지금 내면 독촉장은 막아요';
+      let dleft = null;
+      for (const n of days) if (addDays(now.date, n) === it.due) {
+        kind = n === 0 ? '오늘까지!' : `${n}일 남았어요`;
+        dleft = n;
+      }
+      if (!kind && addDays(now.date, -1) === it.due) {
+        kind = '어제가 마감이었어요. 늦었지만 지금 내면 독촉장은 막아요';
+        dleft = -1;
+      }
       if (!kind) continue;
+      sigs.push({ id: it.id, name: it.name || '', days: dleft });
       const stamp = `${it.id}:${it.due}:${kind}`;
       if (sent[stamp]) continue;
       sent[stamp] = now.date;
@@ -47,7 +56,8 @@ module.exports = async (req, res) => {
       await putDevice(key, Object.assign(dev, { sent }));
       continue;
     }
-    const payload = { title: lines.length === 1 ? '💸 Billbox' : `💸 Billbox · ${lines.length}건`, body: lines.slice(0, 4).join('\n') + (lines.length > 4 ? `\n외 ${lines.length - 4}건` : ''), tag: 'billbox-due' };
+    // body는 예전 앱(v1.0.x)용 대체 문구. v1.1부터는 폰이 items로 금액 포함 문구를 직접 만든다
+    const payload = { title: lines.length === 1 ? '💸 Billbox' : `💸 Billbox · ${lines.length}건`, body: lines.slice(0, 4).join('\n') + (lines.length > 4 ? `\n외 ${lines.length - 4}건` : ''), tag: 'billbox-due', items: sigs };
     let ok = true;
     try {
       ok = await send(dev.sub, payload);
