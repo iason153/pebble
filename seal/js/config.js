@@ -5,6 +5,6 @@ window.SEAL_CONFIG = Object.freeze({
   /** 글자 자동 찾기(Tesseract.js, 저장소 안 vendor/tesseract/에 자체 호스팅) — "글자 찾아보기"를 누를 때만 불러온다. 폰 안에서 돌아가고 사진은 나가지 않는다. */
   OCR_BASE: 'vendor/tesseract/',
   OCR_LANG: 'eng',
-  /** 얼굴 자동 찾기(face-api.js Tiny Face Detector, vendor/faceapi/) — "얼굴 찾아보기"를 누를 때만 불러온다(약 860KB). */
-  FACE_BASE: 'vendor/faceapi/',
+  /** 얼굴 자동 찾기(MediaPipe Face Detection, vendor/mediapipe/) — "얼굴 찾아보기"를 누를 때만 불러온다(약 7MB). */
+  FACE_BASE: 'vendor/mediapipe/',
 });

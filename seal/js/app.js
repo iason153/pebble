@@ -339,6 +339,7 @@
       $('btn-restart').addEventListener('click', () => { track('protect_restart'); $('file-protect').click(); });
 
       $('btn-brush').addEventListener('click', () => this.setBrush(!this.brushOn));
+      $('btn-rect').addEventListener('click', () => this.setRect(!this.rectOn));
       document.querySelectorAll('#brush-row [data-size]').forEach((b) => b.addEventListener('click', () => {
         document.querySelectorAll('#brush-row [data-size]').forEach((x) => x.classList.toggle('is-on', x === b)); this.brushSize = b.dataset.size;
       }));
@@ -346,6 +347,7 @@
       $('ocr-banner-close').addEventListener('click', () => this.banner(''));
       document.querySelectorAll('#hide-style [data-style]').forEach((b) => b.addEventListener('click', () => {
         document.querySelectorAll('#hide-style [data-style]').forEach((x) => x.classList.toggle('is-on', x === b)); this.hideStyle = b.dataset.style; track('hide_style', { style: this.hideStyle });
+        if (this.brushOn) this.hint(this.hideStyle.startsWith('sticker:') ? '원하는 곳을 톡 누르면 스티커가 붙어요. 누른 채 끌면 자리를 잡을 수 있어요.' : '손가락으로 문지르면 가려져요.');
       }));
       $('btn-ocr').addEventListener('click', () => this.runOcr());
       $('btn-face').addEventListener('click', () => this.runFace());
@@ -385,7 +387,7 @@
     async start(file) {
       show('view-protect'); this.goStep(1);
       $('stage-busy').hidden = false; $('stage-busy').textContent = '사진을 여는 중…';
-      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); this.banner(''); $('hide-style').hidden = true; this.faceBusy = false; $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
+      this.undo = []; this.boxes = []; this.clearBoxes(); this.setBrush(false); this.setRect(false); this.banner(''); $('hide-style').hidden = false; this.faceBusy = false; $('btn-undo').disabled = true; $('ocr-note').hidden = true; $('btn-hide-all').hidden = true;
       try {
         const [c, exif] = await Promise.all([loadImage(file, MAX_EDIT), scanExif(file)]);
         this.src = c; this.exif = exif;
@@ -414,7 +416,7 @@
       this.step = n;
       document.querySelectorAll('.step').forEach((s) => { const k = +s.dataset.step; s.classList.toggle('is-on', k === n); s.classList.toggle('is-done', k < n); });
       $('panel-check').hidden = n !== 1; $('panel-stamp').hidden = n !== 2; $('panel-export').hidden = n !== 3;
-      if (n !== 1) { this.setBrush(false); this.clearBoxes(); this.banner(''); }
+      if (n !== 1) { this.setBrush(false); this.setRect(false); this.clearBoxes(); this.banner(''); } $('hide-style').hidden = n !== 1;
       if (n === 2) { track('protect_step_stamp'); this.renderStampNote(); this.renderTagPresets(); }
       window.scrollTo({ top: 0 });
     },
@@ -426,43 +428,87 @@
       return { x: (e.clientX - r.left - ox) / s, y: (e.clientY - r.top - oy) / s, s, ox: r.left - $('stage').getBoundingClientRect().left + ox, oy: r.top - $('stage').getBoundingClientRect().top + oy };
     },
 
-    // ── 손으로 가리기(모자이크 브러시)
+    // ── 손으로 가리기: 방식(모자이크·흐림)은 문지르기, 스티커는 탭해서 붙이기(끌어서 자리 잡기)
     setBrush(on) {
-      this.brushOn = on; $('btn-brush').classList.toggle('is-on', on); $('stage').classList.toggle('is-brush', on); $('brush-row').hidden = !on;
-      if (on) this.hint('손가락으로 문지르면 모자이크가 돼요. 다 했으면 다시 눌러 꺼요.');
+      this.brushOn = on; if (on) this.setRect(false);
+      $('btn-brush').classList.toggle('is-on', on); $('stage').classList.toggle('is-brush', on); $('brush-row').hidden = !on;
+      if (on) this.hint(this.hideStyle.startsWith('sticker:') ? '원하는 곳을 톡 누르면 스티커가 붙어요. 누른 채 끌면 자리를 잡을 수 있어요.' : '손가락으로 문지르면 가려져요. 다 했으면 다시 눌러 꺼요.');
+    },
+    // ── 네모 그리기: 손가락으로 네모를 그리면 가릴 영역이 생김(옮기기·크기 조절 가능)
+    setRect(on) {
+      this.rectOn = on; if (on) this.setBrush(false);
+      $('btn-rect').classList.toggle('is-on', on); $('stage').classList.toggle('is-brush', on || this.brushOn);
+      if (on) this.hint('가리고 싶은 곳에 손가락으로 네모를 그려 주세요. 그린 네모를 누르면 가려져요.');
     },
     radius() { const base = Math.max(this.canvas.width, this.canvas.height) / 40; return base * ({ s: 0.6, m: 1, l: 1.7 })[this.brushSize]; },
     pDown(e) {
-      if (!this.brushOn || this.step !== 1 || e.target.closest('.stage__box')) return;
+      if (this.step !== 1 || e.target.closest('.stage__box')) return;
+      if (!this.brushOn && !this.rectOn) return;
       e.preventDefault(); $('stage').setPointerCapture(e.pointerId);
+      const p = this.map(e); this.pStart = p; this.pLast = p;
+      if (this.rectOn || this.hideStyle.startsWith('sticker:')) { this.ghost(p, p); this.drawing = 'ghost'; return; }
       this.strokeSrc = document.createElement('canvas'); this.strokeSrc.width = this.canvas.width; this.strokeSrc.height = this.canvas.height;
       this.strokeSrc.getContext('2d').drawImage(this.canvas, 0, 0);
-      this.bbox = null; this.drawing = true; this.dab(this.map(e));
+      if (this.hideStyle === 'blur') { // 흐림 문지르기용: 미리 흐린 판
+        const W = this.canvas.width, H = this.canvas.height, sm = thumbOf(this.canvas, Math.max(W, H) / 10);
+        this.blurSrc = document.createElement('canvas'); this.blurSrc.width = W; this.blurSrc.height = H; const g = this.blurSrc.getContext('2d');
+        g.filter = 'blur(' + Math.round(Math.max(W, H) / 120) + 'px)'; g.drawImage(sm, 0, 0, W, H); g.filter = 'none';
+      }
+      this.bbox = null; this.drawing = 'stroke'; this.dab(p);
     },
-    pMove(e) { if (!this.drawing) return; e.preventDefault(); this.dab(this.map(e)); },
+    pMove(e) { if (!this.drawing) return; e.preventDefault(); const p = this.map(e); this.pLast = p; if (this.drawing === 'ghost') this.ghost(this.pStart, p); else this.dab(p); },
     pUp() {
-      if (!this.drawing) return; this.drawing = false;
+      if (!this.drawing) return; const mode = this.drawing; this.drawing = false;
+      if (mode === 'ghost') {
+        const g = $('ghost'); g.hidden = true; const W = this.canvas.width, H = this.canvas.height;
+        if (this.rectOn) { // 네모 생성
+          const x = Math.max(0, Math.min(this.pStart.x, this.pLast.x)), y = Math.max(0, Math.min(this.pStart.y, this.pLast.y));
+          const w = Math.min(W - x, Math.abs(this.pLast.x - this.pStart.x)), h = Math.min(H - y, Math.abs(this.pLast.y - this.pStart.y));
+          if (w < 12 || h < 12) { App.showToast('조금 더 크게 그려 주세요'); return; }
+          const id = this.boxes.length ? Math.max(...this.boxes.map((b) => b.id)) + 1 : 0;
+          this.boxes.push({ id, kind: 'manual', x, y, w, h }); this.renderBoxes(); $('btn-hide-all').hidden = false; track('rect_drawn');
+        } else { // 스티커 붙이기
+          const r = this.radius() * 1.3, cx = this.pLast.x, cy = this.pLast.y;
+          const u = this.hideRect(cx - r, cy - r, r * 2, r * 2, this.hideStyle); if (u) this.pushUndo(u); track('sticker_place', { size: this.brushSize });
+        }
+        return;
+      }
       if (this.bbox) {
         const b = this.bbox, sctx = this.strokeSrc.getContext('2d');
         this.pushUndo({ x: b.x, y: b.y, w: b.w, h: b.h, data: sctx.getImageData(b.x, b.y, b.w, b.h) });
-        track('mask_stroke', { size: this.brushSize });
+        track('mask_stroke', { size: this.brushSize, style: this.hideStyle });
       }
-      this.strokeSrc = null;
+      this.strokeSrc = null; this.blurSrc = null;
+    },
+    // 손가락을 따라다니는 미리보기(네모 또는 스티커 자리)
+    ghost(p0, p1) {
+      const g = $('ghost'), sc = this.boxScaleNow(); g.hidden = false;
+      if (this.rectOn) { const x = Math.min(p0.x, p1.x), y = Math.min(p0.y, p1.y), w = Math.abs(p1.x - p0.x), h = Math.abs(p1.y - p0.y);
+        g.className = 'stage__ghost'; g.textContent = ''; g.style.left = `${sc.ox + x * sc.s}px`; g.style.top = `${sc.oy + y * sc.s}px`; g.style.width = `${w * sc.s}px`; g.style.height = `${h * sc.s}px`; }
+      else { const r = this.radius() * 1.3; g.className = 'stage__ghost stage__ghost--sticker'; g.textContent = this.hideStyle.slice(8);
+        g.style.left = `${sc.ox + (p1.x - r) * sc.s}px`; g.style.top = `${sc.oy + (p1.y - r) * sc.s}px`; g.style.width = `${r * 2 * sc.s}px`; g.style.height = `${r * 2 * sc.s}px`; g.style.fontSize = `${r * 2 * sc.s * 0.98}px`; }
+    },
+    boxScaleNow() {
+      const r = this.canvas.getBoundingClientRect(), st = $('stage').getBoundingClientRect(), W = this.canvas.width, H = this.canvas.height, s = Math.min(r.width / W, r.height / H);
+      return { s, ox: r.left - st.left + (r.width - W * s) / 2, oy: r.top - st.top + (r.height - H * s) / 2 };
     },
     dab(p) {
       const r = this.radius(), W = this.canvas.width, H = this.canvas.height;
       const x0 = Math.max(0, Math.floor(p.x - r)), y0 = Math.max(0, Math.floor(p.y - r));
       const x1 = Math.min(W, Math.ceil(p.x + r)), y1 = Math.min(H, Math.ceil(p.y + r));
       if (x1 <= x0 || y1 <= y0) return;
-      const block = Math.max(8, Math.round(Math.max(W, H) / 60));
-      const bx0 = Math.floor(x0 / block) * block, by0 = Math.floor(y0 / block) * block;
-      const bw = Math.ceil((x1 - bx0) / block), bh = Math.ceil((y1 - by0) / block);
-      const tmp = this.tmp || (this.tmp = document.createElement('canvas')); tmp.width = bw; tmp.height = bh;
-      const tg = tmp.getContext('2d'); tg.imageSmoothingEnabled = true;
-      tg.drawImage(this.strokeSrc, bx0, by0, bw * block, bh * block, 0, 0, bw, bh);
       const ctx = this.ctx; ctx.save(); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.clip();
-      ctx.imageSmoothingEnabled = false; ctx.drawImage(tmp, 0, 0, bw, bh, bx0, by0, bw * block, bh * block); ctx.restore();
-      ctx.imageSmoothingEnabled = true;
+      if (this.blurSrc) { ctx.drawImage(this.blurSrc, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0); }
+      else {
+        const block = Math.max(8, Math.round(Math.max(W, H) / 60));
+        const bx0 = Math.floor(x0 / block) * block, by0 = Math.floor(y0 / block) * block;
+        const bw = Math.ceil((x1 - bx0) / block), bh = Math.ceil((y1 - by0) / block);
+        const tmp = this.tmp || (this.tmp = document.createElement('canvas')); tmp.width = bw; tmp.height = bh;
+        const tg = tmp.getContext('2d'); tg.imageSmoothingEnabled = true;
+        tg.drawImage(this.strokeSrc, bx0, by0, bw * block, bh * block, 0, 0, bw, bh);
+        ctx.imageSmoothingEnabled = false; ctx.drawImage(tmp, 0, 0, bw, bh, bx0, by0, bw * block, bh * block);
+      }
+      ctx.restore(); ctx.imageSmoothingEnabled = true;
       const nb = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       this.bbox = this.bbox ? union(this.bbox, nb) : nb;
     },
@@ -513,12 +559,15 @@
         if (!this.ocr) { this.ocr = await Tesseract.createWorker(cfg.OCR_LANG || 'eng', 1, { workerPath: base + 'worker.min.js', corePath: base, langPath: base, gzip: true, logger: (m) => { if (m.status === 'recognizing text') $('stage-busy').textContent = `글자를 찾는 중… ${Math.round((m.progress || 0) * 100)}%`; } });
           await this.ocr.setParameters({ tessedit_pageseg_mode: '11' }); }
         $('stage-busy').textContent = '글자를 찾는 중…';
-        const small = thumbOf(this.canvas, 1600), k = this.canvas.width / small.width;
-        const { data } = await this.ocr.recognize(small);
-        const words = (data.words || []).filter((w) => {
-          const t = (w.text || '').trim(), digits = (t.match(/\d/g) || []).length;
-          return (digits >= 2 && t.length >= 3 && w.confidence > 35) || (t.length >= 4 && w.confidence > 70 && /[A-Za-z]/.test(t));
-        });
+        const small = thumbOf(this.canvas, 2000), k = this.canvas.width / small.width;
+        // 2회 인식: 원본 + 대비를 강하게 올린 흑백판(번호판·간판처럼 배경이 복잡한 글자용) → 합치고 겹침 제거
+        const hc = document.createElement('canvas'); hc.width = small.width; hc.height = small.height; const hg = hc.getContext('2d');
+        hg.filter = 'grayscale(1) contrast(1.8) brightness(1.05)'; hg.drawImage(small, 0, 0); hg.filter = 'none';
+        const pick = (words) => (words || []).filter((w) => { const t = (w.text || '').trim(), digits = (t.match(/\d/g) || []).length; return (digits >= 2 && t.length >= 3 && w.confidence > 35) || (t.length >= 4 && w.confidence > 70 && /[A-Za-z]/.test(t)); });
+        const r1 = await this.ocr.recognize(small); $('stage-busy').textContent = '글자를 한 번 더 찾는 중…';
+        const r2 = await this.ocr.recognize(hc);
+        const words = pick(r1.data.words).slice();
+        pick(r2.data.words).forEach((w) => { const b = w.bbox; if (!words.some((o) => { const ob = o.bbox; const ix = Math.max(0, Math.min(b.x1, ob.x1) - Math.max(b.x0, ob.x0)), iy = Math.max(0, Math.min(b.y1, ob.y1) - Math.max(b.y0, ob.y0)); return ix * iy > 0.3 * Math.min((b.x1 - b.x0) * (b.y1 - b.y0), (ob.x1 - ob.x0) * (ob.y1 - ob.y0)); })) words.push(w); });
         const keep = this.boxes.filter((b) => b.kind === 'face'), base0 = keep.length ? Math.max(...keep.map((b) => b.id)) + 1 : 0;
         this.boxes = keep.concat(words.map((w, i) => { const b = w.bbox, pad = 6 * k; return { id: base0 + i, kind: 'text', x: b.x0 * k - pad, y: b.y0 * k - pad, w: (b.x1 - b.x0) * k + 2 * pad, h: (b.y1 - b.y0) * k + 2 * pad, text: w.text }; }));
         this.renderBoxes();
@@ -533,27 +582,31 @@
       }
       $('stage-busy').hidden = true; btn.disabled = false; this.ocrBusy = false;
     },
-    // ── 얼굴 자동 찾기 (face-api.js Tiny Face Detector, 눌렀을 때만 불러옴. 기울인·돌린 얼굴도 잡음)
+    // ── 얼굴 자동 찾기 (MediaPipe Face Detection full-range, 눌렀을 때만 약 7MB 내려받음. 기울인·돌린·먼 얼굴도 잡음)
     async runFace() {
       if (this.faceBusy) return;
       this.faceBusy = true; const btn = $('btn-face'); btn.disabled = true;
-      $('stage-busy').hidden = false; $('stage-busy').textContent = '얼굴 찾기 준비 중… (처음엔 약 1MB를 내려받아요)';
+      $('stage-busy').hidden = false; $('stage-busy').textContent = '얼굴 찾기 준비 중… (처음엔 약 7MB를 내려받아요)';
       track('face_start');
       try {
-        const base = new URL(cfg.FACE_BASE || 'vendor/faceapi/', location.href).toString();
-        if (!window.faceapi) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = base + 'face-api.min.js'; s.onload = res; s.onerror = () => rej(new Error('얼굴 찾기 파일을 내려받지 못했어요. 인터넷 연결을 확인해 주세요.')); document.head.appendChild(s); });
-        if (!faceapi.nets.tinyFaceDetector.params) await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+        const base = new URL(cfg.FACE_BASE || 'vendor/mediapipe/', location.href).toString();
+        if (!window.FaceDetection) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = base + 'face_detection.js'; s.onload = res; s.onerror = () => rej(new Error('얼굴 찾기 파일을 내려받지 못했어요. 인터넷 연결을 확인해 주세요.')); document.head.appendChild(s); });
+        if (!this.fd) {
+          const fd = new FaceDetection({ locateFile: (f) => base + f });
+          fd.setOptions({ model: 'full', minDetectionConfidence: 0.5 });
+          fd.onResults((r) => { if (this.fdResolve) { const f = this.fdResolve; this.fdResolve = null; f(r); } });
+          await fd.initialize(); this.fd = fd;
+        }
         $('stage-busy').textContent = '얼굴을 찾는 중…';
-        await new Promise((r) => setTimeout(r, 30));
-        const small = thumbOf(this.canvas, 1024), k = this.canvas.width / small.width;
-        const dets = await faceapi.detectAllFaces(small, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 }));
-        const faces = dets.map((d) => ({ x: d.box.x * k, y: d.box.y * k, w: d.box.width * k, h: d.box.height * k, q: d.score }));
+        const small = thumbOf(this.canvas, 1280), k = this.canvas.width / small.width, W = small.width, H = small.height;
+        const r = await new Promise((res, rej) => { this.fdResolve = res; setTimeout(() => { if (this.fdResolve) { this.fdResolve = null; rej(new Error('얼굴 찾기가 응답하지 않아요. 이 브라우저에서는 지원되지 않을 수 있어요.')); } }, 20000); this.fd.send({ image: small }); });
+        const faces = (r.detections || []).map((d) => { const b = d.boundingBox; return { x: (b.xCenter - b.width / 2) * W * k, y: (b.yCenter - b.height / 2) * H * k, w: b.width * W * k, h: b.height * H * k }; });
         const nextId = this.boxes.length ? Math.max(...this.boxes.map((b) => b.id)) + 1 : 0;
-        this.boxes = this.boxes.filter((b) => b.kind !== 'face').concat(faces.map((f, i) => { const pad = Math.max(f.w, f.h) * 0.12; return { id: nextId + i, kind: 'face', x: f.x - pad, y: f.y - pad * 1.6, w: f.w + pad * 2, h: f.h + pad * 2.6 }; }));
+        this.boxes = this.boxes.filter((b) => b.kind !== 'face').concat(faces.map((f, i) => { const pad = Math.max(f.w, f.h) * 0.1; return { id: nextId + i, kind: 'face', x: f.x - pad, y: f.y - pad * 1.4, w: f.w + pad * 2, h: f.h + pad * 2.4 }; }));
         this.renderBoxes();
         this.banner(faces.length ? `얼굴 ${faces.length}곳 찾음 · 네모를 눌러 가리기 · 끌어서 옮기고 모서리로 크기 조절` : '얼굴을 찾지 못함',
-          faces.length ? '가려진 얼굴·아주 작은 얼굴은 놓칠 수 있어요. 눈으로도 확인해 주세요.' : '가려진 얼굴·아주 작은 얼굴은 놓칠 수 있어요. 보이는 게 있으면 손으로 가려 주세요.');
-        $('btn-hide-all').hidden = this.boxes.length === 0; $('hide-style').hidden = faces.length === 0;
+          faces.length ? '가려진 얼굴은 놓칠 수 있고, 얼굴이 아닌 곳에 네모가 생길 수도 있어요(그냥 두면 돼요).' : '가려진 얼굴·아주 작은 얼굴은 놓칠 수 있어요. "네모 그리기"로 직접 가려 주세요.');
+        $('btn-hide-all').hidden = this.boxes.length === 0;
         track('face_done', { found: faces.length });
       } catch (err) {
         App.showToast(err.message || '얼굴 찾기에 실패했어요', { duration: 4000 }); track('face_fail');
@@ -568,8 +621,8 @@
       const ox = r.left - st.left + (r.width - W * s) / 2, oy = r.top - st.top + (r.height - H * s) / 2;
       this.boxScale = { s, ox, oy };
       this.boxes.forEach((b) => {
-        const el = document.createElement('div'); el.className = 'stage__box' + (b.kind === 'face' ? ' stage__box--face' : '');
-        el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', b.kind === 'face' ? '찾은 얼굴 가리기 (끌어서 옮기기)' : '찾은 글자 가리기');
+        const el = document.createElement('div'); el.className = 'stage__box' + (b.kind === 'face' ? ' stage__box--face' : b.kind === 'manual' ? ' stage__box--manual' : '');
+        el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', b.kind === 'face' ? '찾은 얼굴 가리기 (끌어서 옮기기)' : b.kind === 'manual' ? '그린 네모 가리기 (끌어서 옮기기)' : '찾은 글자 가리기');
         const place = () => { el.style.left = `${ox + b.x * s}px`; el.style.top = `${oy + b.y * s}px`; el.style.width = `${b.w * s}px`; el.style.height = `${b.h * s}px`; };
         place(); b._place = place;
         const handle = document.createElement('span'); handle.className = 'stage__box-handle'; handle.setAttribute('aria-hidden', 'true'); el.appendChild(handle);
@@ -587,14 +640,14 @@
           place();
         });
         const end = (ev) => { if (!mode) return; const m = mode; mode = null; try { el.releasePointerCapture(ev.pointerId); } catch (_) {}
-          if (!moved) { this.hideBox(b); track(b.kind === 'face' ? 'face_hide_one' : 'ocr_hide_one'); } else track('box_adjust', { mode: m, kind: b.kind }); };
+          if (!moved) { this.hideBox(b); track(b.kind + '_hide_one'); } else track('box_adjust', { mode: m, kind: b.kind }); };
         el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
         el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.hideBox(b); } });
         layer.appendChild(el);
       });
     },
     hideBox(b) {
-      const u = this.hideRect(b.x, b.y, b.w, b.h, b.kind === 'face' ? this.hideStyle : 'mosaic');
+      const u = this.hideRect(b.x, b.y, b.w, b.h, b.kind === 'text' ? 'mosaic' : this.hideStyle);
       this.boxes = this.boxes.filter((x) => x !== b);
       if (u) { u.box = b; this.pushUndo(u); }
       this.renderBoxes(); $('btn-hide-all').hidden = this.boxes.length === 0;

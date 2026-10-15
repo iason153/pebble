@@ -462,6 +462,10 @@ body.has-sheet .toast { bottom: auto; top: calc(12px + env(safe-area-inset-top))
 }
 .stage__box::after { content: "가리기"; position: absolute; left: 0; top: -22px; padding: 1px 6px; border-radius: 6px; background: var(--gold-hi); color: var(--rose-deep); font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
 .stage__box { touch-action: none; cursor: move; }
+.stage__box--manual { border-style: dashed; }
+.stage__box--manual::after { content: "가리기"; }
+.stage__ghost { position: absolute; pointer-events: none; border: 2px dashed #fff; border-radius: 6px; background: rgba(255,255,255,0.15); box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
+.stage__ghost--sticker { border: none; background: none; box-shadow: none; display: grid; place-items: center; line-height: 1; opacity: 0.85; }
 .stage__box-handle { position: absolute; right: -10px; bottom: -10px; width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 2px solid var(--rose-deep); box-shadow: 0 2px 6px rgba(0,0,0,0.3); cursor: nwse-resize; }
 .stage__box-handle::after { content: ""; position: absolute; left: 7px; top: 7px; width: 8px; height: 8px; border-right: 2px solid var(--rose-deep); border-bottom: 2px solid var(--rose-deep); }
 .stage__box--face { border-radius: 40%; border-color: #fff; background: rgba(255, 255, 255, 0.12); }
