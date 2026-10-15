@@ -111,15 +111,15 @@
           </details>
         </div>
         <div class="notice card" id="scan-lost" hidden>
-          <p><b>사진이 사라졌어요.</b> 폰 메모리가 모자라 크롬이 잠깐 꺼졌던 것 같아요. 아래 <b>앱 안 카메라</b>로 찍거나 <b>앨범에서 고르기</b>를 써 주세요. 다른 탭을 닫으면 더 좋아요.</p>
+          <p><b>사진이 사라졌어요.</b> 폰 메모리가 모자라 크롬이 잠깐 꺼졌던 것 같아요. 방금 찍은 사진은 앨범에 있으니 <b>앨범에서 고르기</b>를 눌러 주세요. 계속 그러면 아래 <b>앱 안 카메라</b>를 써 보세요. 다른 탭을 닫으면 더 좋아요.</p>
+          <div class="notice__btns"><button type="button" class="btn btn--sm" id="btn-cam-open">📷 앱 안 카메라로 찍기 (비상용)</button></div>
         </div>
         <div class="notice card" id="scan-retry" hidden style="background:var(--orange-lt)">
           <p id="scan-retry-msg"><b>금액·기한을 못 읽었어요.</b></p>
-          <p class="small" style="margin-top:4px">금액·납부기한 부분이 화면에 크게 보이게, 그림자 없이 찍으면 잘 읽어요. 그래도 안 되면 <b>카메라 앱으로 찍기</b>가 화질이 더 좋아요.</p>
+          <p class="small" style="margin-top:4px">금액·납부기한 부분이 화면에 크게 보이게, 그림자 없이 찍으면 잘 읽어요. 그래도 안 되면 아래 <b>📍 콕 찍기</b>로 숫자를 직접 눌러 주세요.</p>
           <div class="notice__btns"><button type="button" class="btn btn--sm btn--brass" id="btn-retry-tap" hidden>📍 사진에서 직접 콕 찍기</button><button type="button" class="btn btn--sm" id="btn-retry-manual">✏️ 그냥 직접 입력</button></div>
         </div>
-        <button type="button" class="btn btn--big btn--brass btn--block" id="btn-cam-open">📷 바로 찍기 (앱 안)</button>
-        <label class="btn btn--big btn--block file-btn" id="lbl-camera-app">📸 카메라 앱으로 찍기 <span class="small" style="font-weight:600">· 화질 최고</span><input type="file" id="file-camera" accept="image/*" capture="environment"></label>
+        <label class="btn btn--big btn--brass btn--block file-btn" id="lbl-camera-app">📸 고지서 찍기<input type="file" id="file-camera" accept="image/*" capture="environment"></label>
         <label class="btn btn--big btn--block file-btn">🖼️ 앨범·캡처에서 고르기<input type="file" id="file-album" accept="image/*"></label>
         <button type="button" class="btn btn--big btn--block" id="btn-paste-open" aria-expanded="false">📋 카톡·문자 글 붙여넣기</button>
         <div class="paste card" id="paste-box" hidden>

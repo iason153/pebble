@@ -581,7 +581,7 @@
         this.stopCam();
         $('scan-cam').hidden = true;
         $('scan-pick').hidden = false;
-        this.showToast(err && err.name === 'NotAllowedError' ? '카메라 권한이 꺼져 있어요. "카메라 앱으로 찍기"나 앨범을 써 주세요' : '앱 안 카메라를 못 열었어요. "카메라 앱으로 찍기"를 써 주세요', { duration: 4500 });
+        this.showToast(err && err.name === 'NotAllowedError' ? '카메라 권한이 꺼져 있어요. "📸 고지서 찍기"나 앨범을 써 주세요' : '앱 안 카메라를 못 열었어요. "📸 고지서 찍기"를 써 주세요', { duration: 4500 });
       }
     },
 
