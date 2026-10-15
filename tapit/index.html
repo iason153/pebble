@@ -71,7 +71,10 @@ svg{display:block;flex:none}
 /* 상단 */
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .logo{margin:0;font-size:24px;font-weight:700;letter-spacing:-.6px;line-height:1.2}
-.logo span{background:linear-gradient(transparent 58%,var(--hl) 58%);padding:0 2px}
+.logo{display:flex;align-items:center;gap:8px}
+.logo img{width:32px;height:32px;display:block}
+.inst,.tlink{white-space:nowrap}
+@media (max-width:380px){.tlink{padding:0 6px}.logo{font-size:22px;gap:6px}.logo img{width:28px;height:28px}.inst{padding:0 12px}}
 .top-acts{display:flex;align-items:center;gap:6px}
 .top-acts{gap:2px}
 .tlink{height:36px;padding:0 9px;border-radius:999px;font-size:14px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:5px}
@@ -231,7 +234,7 @@ td.v{font-weight:600}
 <body>
 <div class="wrap">
   <header class="top">
-    <h1 class="logo">Tap<span>it</span></h1>
+    <h1 class="logo"><img src="icons/icon-192.png" alt="" width="32" height="32">Tapit</h1>
     <div class="top-acts">
       <button class="tlink" type="button" id="btnGuide">사용법</button>
       <button class="tlink" type="button" id="btnShare"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7l7.4-4.3M8.3 13.3l7.4 4.3"/></svg>공유</button>

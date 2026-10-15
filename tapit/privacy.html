@@ -16,7 +16,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans K
 .wrap{max-width:680px;margin:0 auto;padding-inline:20px;padding-block:24px 64px}
 a{color:inherit}
 .logo{font-size:22px;font-weight:700;letter-spacing:-.6px;text-decoration:none}
-.logo span{background:linear-gradient(transparent 58%,var(--hl) 58%);padding:0 2px}
+.logo{display:inline-flex;align-items:center;gap:7px}
+.logo img{width:28px;height:28px;display:block}
 h1{margin:28px 0 6px;font-size:26px;letter-spacing:-.5px}
 .date{color:var(--muted);margin:0 0 24px}
 h2{margin:32px 0 8px;font-size:18px}
@@ -27,7 +28,7 @@ ul{padding-left:20px;margin:0 0 8px}
 </head>
 <body>
 <div class="wrap">
-  <a class="logo" href="./">Tap<span>it</span></a>
+  <a class="logo" href="./"><img src="icons/icon-192.png" alt="" width="28" height="28">Tapit</a>
   <h1>개인정보처리방침</h1>
   <p class="date">시행일: 2026년 10월 15일</p>
 

@@ -49,7 +49,8 @@ a{color:inherit}
 .wrap{max-width:680px;margin:0 auto;padding-inline:20px;padding-block:20px 64px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .logo{font-size:22px;font-weight:700;letter-spacing:-.6px;text-decoration:none}
-.logo span{background:linear-gradient(transparent 58%,var(--hl) 58%);padding:0 2px}
+.logo{display:inline-flex;align-items:center;gap:7px}
+.logo img{width:28px;height:28px;display:block}
 .open{height:38px;padding:0 16px;border-radius:999px;background:var(--ink);color:var(--bg);text-decoration:none;font-size:14px;font-weight:600;display:inline-flex;align-items:center}
 h1{margin:36px 0 10px;font-size:28px;line-height:1.35;letter-spacing:-.6px;text-wrap:balance}
 .lead{margin:0;color:var(--muted);font-size:16.5px}
@@ -90,7 +91,7 @@ footer a{text-decoration:none;color:var(--ink);font-weight:500}
 <body>
 <div class="wrap">
   <header class="top">
-    <a class="logo" href="./">Tap<span>it</span></a>
+    <a class="logo" href="./"><img src="icons/icon-192.png" alt="" width="28" height="28">Tapit</a>
     <a class="open" href="./?utm_source=pebble&amp;utm_medium=referral&amp;utm_campaign=tapit_guide">Tapit 열기</a>
   </header>
 
