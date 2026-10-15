@@ -11,7 +11,7 @@
  */
 window.BillboxKinds = (function () {
   const KINDS = [
-    { id: 'electric', label: '전기요금', emoji: '💡', repeat: 'monthly', re: /한국전력|한전|전기요금|전기 요금/g },
+    { id: 'electric', label: '전기요금', emoji: '💡', repeat: 'monthly', re: /한국전력|국전력|한전|전기요금|전기 요금|전기사용|주택용전력|전력량|kWh/g },
     { id: 'gas', label: '도시가스', emoji: '🔥', repeat: 'monthly', re: /도시가스|가스요금|가스 요금/g },
     { id: 'water', label: '수도요금', emoji: '🚰', repeat: 'monthly', re: /수도요금|상수도|수도 요금|수도사업/g },
     { id: 'health', label: '건강보험', emoji: '🏥', repeat: 'monthly', re: /국민건강보험|건강보험공단|건강보험료|건강 보험/g },

@@ -12,6 +12,8 @@ window.BillboxViewer = (function () {
   let pinch = null;
   let lastTap = 0;
   let url = null;
+  let pick = null; // { onPick(nx, ny) } — 콕 찍기 모드
+  let downAt = null;
 
   function apply() {
     // 회전은 가운데 기준, 확대·이동은 왼쪽 위 기준
@@ -67,11 +69,14 @@ window.BillboxViewer = (function () {
     stage.addEventListener('pointerdown', (e) => {
       stage.setPointerCapture(e.pointerId);
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) downAt = { x: e.clientX, y: e.clientY, t: Date.now(), moved: false };
+      else downAt = null;
       if (pts.size === 2) {
         const [a, b] = [...pts.values()];
         pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s };
       }
       const now = Date.now();
+      if (pick) return; // 콕 찍기 모드에선 두 번 톡 확대를 끔(톡 = 고르기)
       if (pts.size === 1 && now - lastTap < 300) {
         zoomAt(s > fit * 1.3 ? fit : fit * 2.5, e.clientX, e.clientY);
         if (s === fit) center();
@@ -82,6 +87,7 @@ window.BillboxViewer = (function () {
       if (!pts.has(e.pointerId)) return;
       const prev = pts.get(e.pointerId);
       const cur = { x: e.clientX, y: e.clientY };
+      if (downAt && Math.hypot(cur.x - downAt.x, cur.y - downAt.y) > 10) downAt.moved = true;
       pts.set(e.pointerId, cur);
       if (pts.size === 2 && pinch) {
         const [a, b] = [...pts.values()];
@@ -94,8 +100,17 @@ window.BillboxViewer = (function () {
       }
     });
     const up = (e) => {
+      const wasSingle = pts.size === 1;
       pts.delete(e.pointerId);
       if (pts.size < 2) pinch = null;
+      if (pick && wasSingle && downAt && !downAt.moved && Date.now() - downAt.t < 600 && e.type === 'pointerup') {
+        const p = toImage(e.clientX, e.clientY);
+        if (p) {
+          showMark(e.clientX, e.clientY);
+          pick.onPick(p.nx, p.ny);
+        }
+      }
+      downAt = null;
     };
     stage.addEventListener('pointerup', up);
     stage.addEventListener('pointercancel', up);
@@ -115,9 +130,40 @@ window.BillboxViewer = (function () {
     });
   }
 
+  /** 화면 좌표 → 사진 좌표(0~1). 확대·이동·회전을 거꾸로 풀어서 계산 */
+  function toImage(cx, cy) {
+    const r = stage.getBoundingClientRect();
+    const qx = cx - r.left - r.width / 2 - x;
+    const qy = cy - r.top - r.height / 2 - y;
+    const ux = qx / s;
+    const uy = qy / s;
+    const th = (-rot * Math.PI) / 180;
+    const ix = ux * Math.cos(th) - uy * Math.sin(th);
+    const iy = ux * Math.sin(th) + uy * Math.cos(th);
+    const nx = ix / img.naturalWidth;
+    const ny = iy / img.naturalHeight;
+    if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return null;
+    return { nx, ny };
+  }
+  function showMark(cx, cy) {
+    const r = stage.getBoundingClientRect();
+    const m = $('viewer-mark');
+    m.style.left = cx - r.left + 'px';
+    m.style.top = cy - r.top + 'px';
+    m.hidden = false;
+  }
+  function setBusy(msg) {
+    $('viewer-pick-msg').textContent = msg;
+  }
+
   /** blob 사진 보기. openSheet/closeSheet는 앱의 것을 써서 뒤로가기로 닫히게 */
-  function open(blob, title, openSheet) {
+  function open(blob, title, openSheet, opts) {
     wire();
+    pick = opts && opts.onPick ? opts : null;
+    $('viewer').classList.toggle('is-pick', !!pick);
+    $('viewer-pick').hidden = !pick;
+    $('viewer-mark').hidden = true;
+    if (pick) $('viewer-pick-msg').textContent = opts.hint || '읽을 곳을 손가락으로 톡 누르세요';
     if (url) URL.revokeObjectURL(url);
     url = URL.createObjectURL(blob);
     $('viewer-title').textContent = title || '고지서';
@@ -126,5 +172,5 @@ window.BillboxViewer = (function () {
     if (img.complete && img.naturalWidth) requestAnimationFrame(doFit);
   }
 
-  return { open };
+  return { open, setBusy, hideMark: () => ($('viewer-mark').hidden = true) };
 })();

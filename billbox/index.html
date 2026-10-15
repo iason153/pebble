@@ -116,12 +116,19 @@
         <div class="notice card" id="scan-retry" hidden style="background:var(--orange-lt)">
           <p id="scan-retry-msg"><b>금액·기한을 못 읽었어요.</b></p>
           <p class="small" style="margin-top:4px">금액·납부기한 부분이 화면에 크게 보이게, 그림자 없이 찍으면 잘 읽어요. 그래도 안 되면 <b>카메라 앱으로 찍기</b>가 화질이 더 좋아요.</p>
-          <div class="notice__btns"><button type="button" class="btn btn--sm" id="btn-retry-manual">✏️ 그냥 직접 입력</button></div>
+          <div class="notice__btns"><button type="button" class="btn btn--sm btn--brass" id="btn-retry-tap" hidden>📍 사진에서 직접 콕 찍기</button><button type="button" class="btn btn--sm" id="btn-retry-manual">✏️ 그냥 직접 입력</button></div>
         </div>
         <button type="button" class="btn btn--big btn--brass btn--block" id="btn-cam-open">📷 바로 찍기 (앱 안)</button>
         <label class="btn btn--big btn--block file-btn" id="lbl-camera-app">📸 카메라 앱으로 찍기 <span class="small" style="font-weight:600">· 화질 최고</span><input type="file" id="file-camera" accept="image/*" capture="environment"></label>
         <label class="btn btn--big btn--block file-btn">🖼️ 앨범·캡처에서 고르기<input type="file" id="file-album" accept="image/*"></label>
-        <p class="muted small">사진은 읽은 뒤 바로 버려요. 어디에도 저장하지 않아요.</p>
+        <button type="button" class="btn btn--big btn--block" id="btn-paste-open" aria-expanded="false">📋 카톡·문자 글 붙여넣기</button>
+        <div class="paste card" id="paste-box" hidden>
+          <p class="small"><b>카톡·문자로 온 고지서</b>는 글을 길게 눌러 <b>복사</b>한 뒤 여기에 붙여 넣으세요. 사진보다 훨씬 정확해요. (카톡에서 <b>공유 → Billbox</b>로 보내도 돼요)</p>
+          <label class="sr-only" for="paste-text">고지서 글</label>
+          <textarea id="paste-text" rows="6" placeholder="예) [Web발신] 3월 수도요금 23,450원 / 납기 3/31 / 농협 123-45-678901"></textarea>
+          <div class="paste__btns"><button type="button" class="btn" id="btn-paste-clip">📥 붙여넣기</button><button type="button" class="btn btn--brass" id="btn-paste-read">이 글 읽기</button></div>
+        </div>
+        <p class="muted small">사진은 폰 밖으로 나가지 않아요. 서버에도 올리지 않아요.</p>
       </div>
       <div id="scan-cam" hidden>
         <div class="cam">
@@ -180,11 +187,13 @@
             <span class="amount-unit">원</span>
           </div>
           <div class="alts" id="alt-amounts"></div>
+          <button type="button" class="btn btn--sm tapbtn" data-tap="amount" hidden>📍 사진에서 금액 콕 찍기</button>
         </fieldset>
         <fieldset class="field" id="field-due" data-check="due">
           <legend>언제까지 <span class="flag" id="flag-due" hidden>확인!</span> <button type="button" class="ok" data-ok="due" aria-pressed="false" aria-label="날짜 맞아요" hidden>✓</button></legend>
           <input type="date" id="f-due" aria-label="납부기한">
           <div class="alts" id="alt-dues"></div>
+          <button type="button" class="btn btn--sm tapbtn" data-tap="due" hidden>📍 사진에서 날짜 콕 찍기</button>
           <div id="f-quickdue-wrap">
             <p class="field__label">빠른 선택 <span class="muted">(날짜를 쉽게 고르는 버튼이에요)</span></p>
             <div class="chips chips--sm" id="f-quickdue">
@@ -212,6 +221,7 @@
           <input type="text" id="f-account" maxlength="60" placeholder="예: 농협 790227-36-132812 (가상계좌)" aria-describedby="acct-help">
           <p class="muted small" id="acct-help">이 폰에만 저장돼요. 숫자 하나만 틀려도 다른 곳으로 가니 <b>고지서와 한 자리씩 맞춰 보고 ✓</b>를 눌러 주세요. 틀리면 위 칸을 직접 고친 뒤 ✓.</p>
           <div class="alts" id="alt-accounts"></div>
+          <button type="button" class="btn btn--sm tapbtn" data-tap="account" hidden>📍 사진에서 계좌 콕 찍기</button>
         </fieldset>
         <p class="usage-line" id="edit-usage" hidden></p>
         <fieldset class="field">
@@ -230,7 +240,8 @@
     <p class="viewer__title" id="viewer-title">고지서</p>
     <button type="button" class="viewer__btn" data-close aria-label="닫기">✕</button>
   </div>
-  <div class="viewer__stage" id="viewer-stage"><img id="viewer-img" alt="찍은 고지서" draggable="false"></div>
+  <div class="viewer__pick" id="viewer-pick" hidden><span id="viewer-pick-msg">읽을 곳을 손가락으로 톡 누르세요</span></div>
+  <div class="viewer__stage" id="viewer-stage"><img id="viewer-img" alt="찍은 고지서" draggable="false"><span class="viewer__mark" id="viewer-mark" hidden></span></div>
   <div class="viewer__bar">
     <button type="button" class="viewer__btn" id="vw-out" aria-label="작게">－</button>
     <button type="button" class="viewer__btn" id="vw-fit" aria-label="화면에 맞추기">맞춤</button>

@@ -135,6 +135,11 @@
         history.replaceState(history.state, '', location.pathname);
       } catch (_) {}
       const blob = await window.BillboxDB.takeInbox();
+      if (blob && /^text\//.test(blob.type || '')) {
+        track('share_in', { type: 'text' });
+        this.readText(await blob.text(), 'share');
+        return;
+      }
       if (!blob) {
         this.showToast('공유한 사진을 못 받았어요. 앨범에서 골라 주세요', { duration: 4000 });
         return;
@@ -469,6 +474,41 @@
         $('scan-pick').hidden = false;
       });
       $('btn-cam-shot').addEventListener('click', () => this.shot());
+      $('btn-retry-tap').addEventListener('click', () => {
+        const f = this.lastFailed;
+        if (!f) return;
+        this.hideSheetNow($('scan-sheet'));
+        this.pendingPhoto = f.photo;
+        this.pendingSource = f.source;
+        this.openEdit('photo', f.ex);
+        track('tap_from_fail');
+      });
+      // 카톡·문자 고지서: 글을 붙여 넣으면 사진보다 정확(같은 읽기 규칙 사용)
+      $('btn-paste-open').addEventListener('click', () => {
+        const box = $('paste-box');
+        box.hidden = !box.hidden;
+        $('btn-paste-open').setAttribute('aria-expanded', String(!box.hidden));
+        if (!box.hidden) $('paste-text').focus();
+      });
+      $('btn-paste-clip').addEventListener('click', async () => {
+        try {
+          const t = await navigator.clipboard.readText();
+          if (t) $('paste-text').value = t;
+          else this.showToast('복사한 글이 없어요');
+        } catch (_) {
+          this.showToast('글 칸을 길게 눌러 "붙여넣기"를 골라 주세요', { duration: 3500 });
+          $('paste-text').focus();
+        }
+      });
+      $('btn-paste-read').addEventListener('click', () => {
+        const t = $('paste-text').value.trim();
+        if (!t) {
+          this.showToast('먼저 고지서 글을 붙여 넣어 주세요');
+          return;
+        }
+        this.hideSheetNow($('scan-sheet'));
+        this.readText(t, 'paste');
+      });
       $('btn-retry-manual').addEventListener('click', () => {
         this.hideSheetNow($('scan-sheet'));
         this.openEdit('manual');
@@ -613,6 +653,7 @@
     },
 
     openScan() {
+      if ($('btn-retry-tap')) $('btn-retry-tap').hidden = true;
       const st = window.BillboxOCR.getState();
       if (st.state !== 'ready') this.showToast(st.state === 'error' ? '읽기 도구가 아직 준비 안 됐어요. 홈의 [다시 받기]를 눌러 주세요' : '아직 사전을 받는 중이에요. 찍으면 받은 뒤 이어서 읽어요', { duration: 4000 });
       $('scan-pick').hidden = false;
@@ -663,17 +704,36 @@
       ex.accounts = window.BillboxExtract.accounts(res.texts);
       ex.usage = window.BillboxExtract.usage(res.texts);
       this.pendingPhoto = res.photo || null;
+      this.pendingSource = res.source || res.photo || null; // 콕 찍기는 원본(큰 사진)에서 읽어야 정확
       const got = (ex.amount ? 1 : 0) + (ex.due ? 1 : 0) + (ex.kind ? 1 : 0);
+      this.lastFailed = null;
       track('scan_done', { got, kind: ex.kind ? ex.kind.id : 'none', ms: Math.round(res.ms / 1000), passes: res.passes, conf: Math.round(Math.max(...res.confidences)) });
       this.hideSheetNow($('scan-sheet'));
       if (got === 0 || (!ex.amount && !ex.due)) {
         // 금액·기한을 하나도 못 읽음 → 바로 직접 입력으로 보내지 말고 다시 찍을 기회를 줌
         this.openScan();
         $('scan-retry').hidden = false;
+        // 자동으로 못 읽어도, 사진은 그대로 두고 손가락으로 금액·날짜를 콕 찍어 읽게
+        this.lastFailed = { ex, photo: this.pendingPhoto, source: this.pendingSource };
+        $('btn-retry-tap').hidden = !this.pendingSource;
         $('scan-retry-msg').textContent = from === 'album' || from === 'share' ? '이 사진에서는 금액·기한을 못 읽었어요.' : '금액·기한을 못 읽었어요. 조금 더 가까이, 밝은 곳에서 다시 찍어 볼까요?';
         return;
       }
       this.openEdit('photo', ex);
+    },
+
+    /** 카톡·문자 고지서 글 읽기(사진 없이). 줄 단위로 사진 읽기와 같은 규칙 */
+    readText(text, from) {
+      const lines = String(text).replace(/\r/g, '').split('\n');
+      const texts = [lines.join('\n')];
+      const ex = window.BillboxExtract.extract(texts);
+      ex.accounts = window.BillboxExtract.accounts(texts);
+      ex.usage = window.BillboxExtract.usage(texts);
+      this.pendingPhoto = null;
+      this.pendingSource = null;
+      track('text_done', { from, got: (ex.amount ? 1 : 0) + (ex.due ? 1 : 0) + (ex.kind ? 1 : 0) });
+      this.openEdit('photo', ex);
+      if (!ex.amount && !ex.due) $('edit-lead').textContent = '글에서 금액·기한을 못 찾았어요. 직접 적어 주세요.';
     },
 
     // =================================================================
@@ -762,6 +822,10 @@
         $('repeat-auto').hidden = true;
         $('repeat-pick').hidden = false;
         this.repeatTouched = true;
+      });
+      $('edit-form').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-tap]');
+        if (b) this.tapRead(b.dataset.tap);
       });
       $('edit-thumb').addEventListener('click', () => {
         const blob = this.editPhoto;
@@ -915,16 +979,27 @@
       });
       document.querySelectorAll('[data-check]').forEach((f) => f.classList.remove('is-ok'));
       $('f-quickdue-wrap').hidden = mode === 'photo';
-      if (mode !== 'photo') this.pendingPhoto = null;
+      document.querySelectorAll('[data-tap]').forEach((b) => (b.hidden = true));
+      if (mode !== 'photo') {
+        this.pendingPhoto = null;
+        this.pendingSource = null;
+      }
 
+      this.tapHints = null;
       if (mode === 'photo') {
+        // 콕 찍기 때 참고할 후보(전체 읽기에서 나온 값들)
+        this.tapHints = {
+          amount: [data.amount, ...(data.altAmounts || [])].filter((x) => x != null),
+          due: [data.due, ...(data.altDues || [])].filter(Boolean),
+          account: (data.accounts || []).map((a) => a.number),
+        };
         $('edit-title').textContent = '읽은 내용, 맞나요?';
         const lead = $('edit-lead');
         const miss = [];
         if (!data.amount) miss.push('금액');
         if (!data.due) miss.push('기한');
         if (!data.kind) miss.push('종류');
-        lead.textContent = miss.length ? `${miss.join('·')}은(는) 못 읽었어요. 직접 적어 주세요.` : '빨간 "확인!"이 붙은 칸은 자신이 없어요. 고지서랑 한 번 맞춰 보세요.';
+        lead.textContent = miss.length ? `${miss.join('·')}은(는) 못 읽었어요. ${this.pendingSource ? '칸 아래 📍 콕 찍기로 사진에서 그 숫자를 누르거나, ' : ''}직접 적어 주세요.` : '빨간 "확인!"이 붙은 칸은 자신이 없어요. 고지서랑 한 번 맞춰 보세요.';
         lead.hidden = false;
         this.setKind(data.kind ? data.kind.id : 'etc', false);
         if (data.amount) $('f-amount').value = won(data.amount);
@@ -935,12 +1010,13 @@
         if (data.altDues.length) $('alt-dues').innerHTML = `<span class="alts__label">혹시 이건가요?</span>` + data.altDues.map((d) => `<button type="button" class="chip" data-due="${d}">${fmtDate(d)}</button>`).join('');
         if (data.tag) $('f-note').value = data.tag + ' 고지서';
         if (this.pendingPhoto && S.settings().photoKeep !== 'off') this.showThumb(this.pendingPhoto);
+        if (this.pendingSource) document.querySelectorAll('[data-tap]').forEach((b) => (b.hidden = false));
         if (data.accounts && data.accounts.length) {
           // 제일 잘 읽힌 계좌 하나를 칸에 넣고, 나머지는 "다른 계좌" 후보로
           const [best, ...rest] = data.accounts;
-          $('f-account').value = `${best.bank} ${best.number}`;
+          $('f-account').value = `${best.bank ? best.bank + ' ' : ''}${best.number}`;
           $('flag-account').hidden = false;
-          if (rest.length) $('alt-accounts').innerHTML = `<span class="alts__label">다른 계좌</span>` + rest.map((a) => `<button type="button" class="chip" data-acct="${esc(a.bank + ' ' + a.number)}">${esc(a.bank)} ${esc(a.number)}</button>`).join('');
+          if (rest.length) $('alt-accounts').innerHTML = `<span class="alts__label">다른 계좌</span>` + rest.map((a) => `<button type="button" class="chip" data-acct="${esc((a.bank ? a.bank + ' ' : '') + a.number)}">${esc((a.bank ? a.bank + ' ' : '') + a.number)}</button>`).join('');
         }
         if (data.usage) {
           this.editUsage = data.usage;
@@ -997,8 +1073,54 @@
       this.openSheet($('edit-sheet'), { focus: mode === 'manual' ? $('f-name') : null });
     },
 
+    /** 사진에서 콕 찍어 읽기: 사진을 크게 띄우고, 누른 곳만 확대해 숫자 전용으로 다시 읽어 칸에 넣는다 */
+    tapRead(field) {
+      const src = this.pendingSource || this.editPhoto;
+      if (!src) return;
+      const label = { amount: '금액', due: '납부기한(날짜)', account: '계좌번호' }[field];
+      track('tap_open', { field });
+      window.BillboxViewer.open(this.editPhoto || this.pendingPhoto || src, `${label} 콕 찍기`, (sh) => this.openSheet(sh), {
+        hint: `${label}이 적힌 곳을 손가락으로 톡 누르세요 · 두 손가락으로 키울 수 있어요`,
+        onPick: async (nx, ny) => {
+          if (this.tapBusy) return;
+          this.tapBusy = true;
+          window.BillboxViewer.setBusy('읽는 중… 잠깐만요');
+          let r = null;
+          try {
+            r = await window.BillboxOCR.readRegion(src, nx, ny, field, this.tapHints && this.tapHints[field]);
+          } catch (_) {}
+          this.tapBusy = false;
+          const v = r && r.value;
+          track('tap_read', { field, ok: v != null ? 1 : 0 });
+          if (v == null) {
+            window.BillboxViewer.setBusy('못 읽었어요. 숫자 한가운데를 다시 톡 눌러 보세요');
+            window.BillboxViewer.hideMark();
+            return;
+          }
+          if (field === 'amount') {
+            $('f-amount').value = Number(v).toLocaleString('ko-KR');
+            this.setOk('amount', false);
+            $('flag-amount').hidden = false;
+          } else if (field === 'due') {
+            $('f-due').value = v;
+            this.setOk('due', false);
+            $('flag-due').hidden = false;
+            this.updateRepeatHint();
+          } else {
+            const bank = ($('f-account').value.match(/^[^\d]+/) || [''])[0].trim();
+            $('f-account').value = (bank ? bank + ' ' : '') + v;
+            this.setOk('account', false);
+          }
+          this.closeSheet($('viewer'));
+          const shown = field === 'amount' ? `${Number(v).toLocaleString('ko-KR')}원` : field === 'due' ? fmtDate(v) : v;
+          this.showToast(`읽었어요: ${shown} — 맞으면 ✓를 눌러 주세요`, { duration: 4000 });
+        },
+      });
+    },
+
     showThumb(blob) {
       this.editPhoto = blob;
+      document.querySelectorAll('[data-tap]').forEach((b) => (b.hidden = false));
       if (this.thumbUrl) URL.revokeObjectURL(this.thumbUrl);
       this.thumbUrl = URL.createObjectURL(blob);
       $('edit-thumb-img').src = this.thumbUrl;

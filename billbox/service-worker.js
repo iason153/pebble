@@ -9,7 +9,7 @@
 
 importScripts('js/db.js'); // 폰 저장소(알림 문구에 금액 붙이기, 공유로 받은 사진)
 
-const CACHE_NAME = 'billbox-shell-v9';
+const CACHE_NAME = 'billbox-shell-v10';
 const ENGINE_CACHE = 'billbox-engine-r2'; // 읽기 엔진·사전(약 12MB). 앱 버전이 바뀌어도 그대로 둠, REV 바뀔 때만 새로
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/billbox/
 
@@ -60,8 +60,11 @@ self.addEventListener('fetch', (event) => {
       (async () => {
         try {
           const fd = await req.formData();
-          const f = fd.getAll('image').find((x) => x && x.size) || fd.get('image');
+          const f = fd.getAll('image').find((x) => x && x.size);
+          const text = [fd.get('title'), fd.get('text'), fd.get('url')].filter((x) => typeof x === 'string' && x.trim()).join('\n');
+          // 사진이 있으면 사진, 없고 글만 왔으면(카톡·문자 고지서 글) 글을 맡겨 둔다
           if (f) await self.BillboxDB.putInbox(f);
+          else if (text) await self.BillboxDB.putInbox(new Blob([text], { type: 'text/plain' }));
         } catch (_) {}
         return Response.redirect(new URL('./?shared=1', SCOPE).toString(), 303);
       })()
