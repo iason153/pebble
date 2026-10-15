@@ -378,3 +378,4 @@ details.tips-box summary::-webkit-details-marker { display: none; }
 .viewer__stage img { position: absolute; left: 50%; top: 50%; max-width: none; user-select: none; -webkit-user-drag: none; transform-origin: 0 0; will-change: transform; }
 .viewer__bar { display: flex; justify-content: center; gap: 10px; padding: 10px 12px 4px; }
 .viewer__hint { text-align: center; color: rgba(245,241,232,.7); font-size: .85rem; padding: 0 12px calc(12px + env(safe-area-inset-bottom)); }
+.btn--stack { flex-direction: column; gap: 2px; }

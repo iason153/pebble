@@ -46,6 +46,8 @@
       if (!S.settings().introSeen) $('intro').hidden = false;
       this.wireMoney();
       this.wireSwipe();
+      this.wireDelete();
+      S.fixTaggedRepeat();
       this.render();
       this.registerSW();
       this.wirePrep();
@@ -260,6 +262,50 @@
       }, true);
     },
 
+    /** 지우기: 반복 항목이면 "이번 차례만 건너뛰기 / 반복까지 모두 지우기" 중 고르게 */
+    wireDelete() {
+      $('del-sheet').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-del]');
+        if (!b || !this.delTarget) return;
+        const it = this.delTarget;
+        const k = K.byId(it.kindId);
+        if (b.dataset.del === 'skip') {
+          const nx = S.skip(it.id);
+          window.BillboxDB.delPhoto(it.id);
+          track('skip_once', { kind: it.kindId });
+          this.showToast(nx ? `이번 것은 지웠어요. 다음은 ${fmtDate(nx.due)} 예상으로 남겨 뒀어요` : '지웠어요', { duration: 4000 });
+        } else if (b.dataset.del === 'all') {
+          S.remove(it.id);
+          window.BillboxDB.delPhoto(it.id);
+          track('delete', { kind: it.kindId, all: 1 });
+          this.showToast(`"${it.name || k.label}"을(를) 반복까지 모두 지웠어요`, { duration: 3500 });
+        } else return this.closeSheet($('del-sheet'));
+        this.delTarget = null;
+        this.render();
+        window.BillboxPush.sync();
+        this.hideSheetNow($('del-sheet'));
+        this.hideSheetNow($('detail-sheet'));
+        try {
+          history.go(-2);
+        } catch (_) {}
+      });
+    },
+    askDelete(it) {
+      this.delTarget = it;
+      const k = K.byId(it.kindId);
+      const rep = it.repeat && it.repeat !== 'none' && !it.paidAt;
+      $('del-title').textContent = `"${it.name || k.label}" 지우기`;
+      $('del-body').innerHTML = rep
+        ? `<p style="margin-bottom:12px">${esc(K.repeatById(it.repeat).label)} 나가는 항목이에요. 어떻게 지울까요?</p>
+           <button type="button" class="btn btn--big btn--block btn--stack" data-del="skip" style="margin-bottom:10px">이번 것만 지우기<span class="small muted" style="font-weight:600">다음 차례(${fmtDate(S.nextDue(it) || it.due)})는 남겨요</span></button>
+           <button type="button" class="btn btn--big btn--block btn--danger btn--stack" data-del="all" style="margin-bottom:10px">반복까지 모두 지우기<span class="small muted" style="font-weight:600">이 항목·사진·낸 기록이 다 없어져요</span></button>
+           <button type="button" class="btn btn--block btn--ghost" data-del="cancel">그만두기</button>`
+        : `<p style="margin-bottom:12px">이 항목과 저장된 고지서 사진이 지워져요.</p>
+           <button type="button" class="btn btn--big btn--block btn--danger" data-del="all" style="margin-bottom:10px">지우기</button>
+           <button type="button" class="btn btn--block btn--ghost" data-del="cancel">그만두기</button>`;
+      this.openSheet($('del-sheet'));
+    },
+
     registerSW() {
       if (!('serviceWorker' in navigator)) return;
       navigator.serviceWorker.register('service-worker.js').catch(() => {});
@@ -348,7 +394,7 @@
         html = `<div class="empty card card--tilt"><div class="empty__pic">📬</div><p><b>아직 비어 있어요.</b></p><p class="muted">아래 <b>고지서 찍기</b>를 눌러 보세요. 넷플릭스 같은 구독은 <b>직접 입력</b>으로.</p><button type="button" class="btn btn--sm" data-sample-add style="margin-top:10px">👀 예시 넣어 보기</button></div>`;
       }
       if (S.load().some((x) => x.sample)) html = `<div class="sample-bar"><span>지금 보이는 건 예시예요. 마음껏 눌러 보세요.</span><button type="button" class="btn btn--sm" data-sample-del>예시 지우기</button></div>` + html;
-      html += `<p class="muted small" style="text-align:center;margin:8px 0 0">카드를 오른쪽으로 밀어도 "냈어요"가 돼요 👉</p>`;
+      html += `<p class="muted small" style="text-align:center;margin:8px 0 0">카드를 오른쪽으로 밀면 <b>냈어요</b>예요(지우기 아님) 👉 지우기는 카드를 눌러 맨 아래에서</p>`;
       if (g.done.length) {
         html += `<details class="done"><summary>낸 것 ${g.done.length}건</summary>${g.done
           .map((it) => {
@@ -775,7 +821,8 @@
       const f = this.readForm();
       const hint = $('repeat-hint');
       if (!f.due || f.repeat === 'none') {
-        hint.textContent = f.repeat === 'none' ? '한 번 내면 끝. 반복 알림은 없어요.' : '';
+        const tagged = /독촉|압류예고/.test($('f-note').value);
+        hint.textContent = f.repeat === 'none' ? (tagged ? '독촉·압류예고는 밀린 돈을 한 번 내는 고지서라 반복하지 않아요. 매달 오는 고지서는 따로 찍어 주세요.' : '한 번 내면 끝. 반복 알림은 없어요.') : '';
         return;
       }
       const next = S.nextDue({ due: f.due, repeat: f.repeat, months: f.months });
@@ -841,10 +888,14 @@
           $('edit-usage').textContent = `📊 사용량 ${data.usage.value.toLocaleString('ko-KR')}${data.usage.unit} 읽음 — 다음 고지서와 비교해 드려요 (시험 기능)`;
           $('edit-usage').hidden = false;
         }
-        if (data.kind) this.setRepeat(data.kind.repeat, data.kind.months || null);
+        if (data.tag) {
+          // 독촉·압류예고 = 밀린 돈을 한 번 내는 고지서. 매달 오는 정기 고지서와 따로, 반복 없이
+          this.setRepeat('none', null);
+          this.repeatTouched = true;
+        } else if (data.kind) this.setRepeat(data.kind.repeat, data.kind.months || null);
         this.collapseKinds(!!data.kind);
         if (data.due) {
-          const sim = S.findSimilar(data.kind ? data.kind.id : null, data.due);
+          const sim = S.findSimilar(data.kind ? data.kind.id : null, data.due, data.tag || '');
           if (sim) {
             this.similar = sim;
             $('similar-name').textContent = sim.name || K.byId(sim.kindId).label;
@@ -975,7 +1026,10 @@
         ${!stage && lf && !it.paidAt ? `<details class="tips-box"><summary>⏰ 늦으면 어떻게 돼요?</summary><p class="small" style="padding:6px 0 4px">${esc(lf.text)}</p><p class="guide__fine">참고용 안내예요. 고지서에 적힌 내용이 우선이에요.</p></details>` : ''}
         ${tips.length ? `<details class="tips-box"><summary>💡 이렇게 하면 깎여요 (${tips.length})</summary>${tips.map((t) => `<div class="tip"><b>${esc(t.title)}</b><p>${esc(t.text)}</p><p class="tip__where">📍 ${esc(t.where)} · ${esc(t.checked)}</p><button type="button" class="btn btn--sm" data-tip-done="${t.id}">했어요, 그만 보기</button></div>`).join('')}</details>` : ''}
         ${it.history && it.history.length ? `<h3>낸 기록</h3><ul class="hist">${it.history.map((h) => `<li><span>${fmtDate(h.due)}</span><span>${h.amount != null ? won(h.amount) + '원' : ''}${h.usage ? ` · ${h.usage.value}${h.usage.unit}` : ''}</span></li>`).join('')}</ul>` : ''}
-        <button type="button" class="btn btn--ghost btn--sm" data-act="del" style="margin-top:12px">🗑 지우기</button>`;
+        <div class="row" style="margin-top:12px">
+          ${it.repeat && it.repeat !== 'none' && !it.paidAt ? `<button type="button" class="btn btn--ghost btn--sm" data-act="stoprepeat">🔁 반복 그만하기</button>` : ''}
+          <button type="button" class="btn btn--ghost btn--sm" data-act="del">🗑 지우기</button>
+        </div>`;
       const body = $('detail-body');
       body.onclick = async (e) => {
         const td = e.target.closest('[data-tip-done]');
@@ -1014,14 +1068,21 @@
           this.hideSheetNow($('detail-sheet'));
           this.openEdit('edit', it);
         } else if (act === 'del') {
-          if (!confirm(`"${it.name || k.label}"을(를) 지울까요? 저장된 고지서 사진도 같이 지워져요.`)) return;
-          S.remove(id);
-          window.BillboxDB.delPhoto(id);
-          track('delete', { kind: it.kindId });
+          this.askDelete(it);
+        } else if (act === 'stoprepeat') {
+          if (it.estimated) {
+            if (!confirm(`"${it.name || k.label}" 반복을 그만할까요? 다음 차례로 잡아 둔 이 예상 카드도 없어져요. 낸 기록은 지워지지 않아요.`)) return;
+            S.remove(id);
+            window.BillboxDB.delPhoto(id);
+          } else {
+            if (!confirm(`"${it.name || k.label}" 반복을 그만할까요? 이번 것만 남고 다음 달부터는 안 생겨요.`)) return;
+            S.update(id, { repeat: 'none', months: null });
+          }
+          track('repeat_stop', { kind: it.kindId });
           this.render();
           window.BillboxPush.sync();
           this.closeSheet($('detail-sheet'));
-          this.showToast('지웠어요');
+          this.showToast('반복을 그만했어요');
         }
       };
       this.openSheet($('detail-sheet'));

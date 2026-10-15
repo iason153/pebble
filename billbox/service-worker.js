@@ -9,7 +9,7 @@
 
 importScripts('js/db.js'); // 폰 저장소(알림 문구에 금액 붙이기, 공유로 받은 사진)
 
-const CACHE_NAME = 'billbox-shell-v5';
+const CACHE_NAME = 'billbox-shell-v6';
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/billbox/
 
 const APP_SHELL = [

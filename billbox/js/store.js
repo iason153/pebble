@@ -144,6 +144,32 @@ window.BillboxStore = (function () {
     if (next) return update(id, { history: hist, due: next, estimated: true, tag: '', usage: null, paidAt: null });
     return update(id, { history: hist, paidAt: new Date().toISOString() });
   }
+  /** 이번 차례만 건너뛰기: 기록 없이 다음 차례(예상)로 넘김. 반복이 아니면 지움 */
+  function skip(id) {
+    const it = get(id);
+    if (!it) return null;
+    const next = nextDue(it);
+    if (!next) {
+      remove(id);
+      return null;
+    }
+    return update(id, { due: next, estimated: true, tag: '', usage: null, paidAt: null });
+  }
+  /** 독촉·압류예고는 밀린 돈을 한 번 내는 고지서 → 반복하지 않게 고침(v1.1.1 이전에 매월로 저장된 것) */
+  function fixTaggedRepeat() {
+    const items = load();
+    let n = 0;
+    for (const x of items) {
+      if ((x.tag === '독촉' || x.tag === '압류예고') && x.repeat && x.repeat !== 'none') {
+        x.repeat = 'none';
+        x.months = null;
+        n++;
+      }
+    }
+    if (n) save(items);
+    return n;
+  }
+
   /** 실수로 눌렀을 때 되돌리기 */
   function undoPaid(id) {
     const it = get(id);
@@ -153,12 +179,13 @@ window.BillboxStore = (function () {
   }
 
   /** 같은 종류의 반복 항목이 있고 마감이 ±45일 안이면 "같은 것"으로 본다(고지서를 다시 찍었을 때 중복 방지) */
-  function findSimilar(kindId, due) {
+  function findSimilar(kindId, due, tag) {
     if (!kindId || kindId === 'etc') return null;
     const a = parse(due);
     return (
       load().find((x) => {
-        if (x.kindId !== kindId || x.paidAt) return false;
+        // 독촉·압류예고(밀린 돈)와 매달 오는 정기 고지서는 서로 다른 것으로 본다
+        if (x.kindId !== kindId || x.paidAt || (x.tag || '') !== (tag || '')) return false;
         const b = parse(x.due);
         const diff = Math.abs(Date.UTC(a.y, a.m - 1, a.d) - Date.UTC(b.y, b.m - 1, b.d)) / 86400000;
         return diff <= 45;
@@ -282,5 +309,5 @@ window.BillboxStore = (function () {
     return { cur, next, prev, months: M, fixed, fixedList, groups: MONEY_GROUPS };
   }
 
-  return { money, load, save, settings, saveSettings, add, update, remove, get, markPaid, undoPaid, findSimilar, groups, nextDue, daysLeft, todayStr, addMonths, exportJson, importJson, uid };
+  return { skip, fixTaggedRepeat, money, load, save, settings, saveSettings, add, update, remove, get, markPaid, undoPaid, findSimilar, groups, nextDue, daysLeft, todayStr, addMonths, exportJson, importJson, uid };
 })();
