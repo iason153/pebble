@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tapit 사용법 — 무료 링크 메모장으로 자주 쓰는 링크 정리하기</title>
+<meta name="description" content="카톡 나에게 보내기나 메모장에 링크를 모아 두고 계신가요? 무료 링크 메모장 Tapit으로 링크를 저장하고, 탭 한 번으로 복사하고, 카페·카카오톡·밴드 등 채널별 UTM 링크를 자동으로 만드는 방법을 안내합니다.">
+<link rel="canonical" href="https://pebbleitgo.com/tapit/guide.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Pebble">
+<meta property="og:title" content="Tapit 사용법 — 무료 링크 메모장">
+<meta property="og:description" content="자주 쓰는 링크를 모아 두고 탭 한 번으로 복사하는 방법">
+<meta property="og:url" content="https://pebbleitgo.com/tapit/guide.html">
+<meta property="og:image" content="https://pebbleitgo.com/tapit/og.png?v=3">
+<meta name="theme-color" content="#F4F5F7">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<script type="application/ld+json">
+[
+{"@context":"https://schema.org","@type":"WebApplication","name":"Tapit","alternateName":"탭잇","url":"https://pebbleitgo.com/tapit/","applicationCategory":"UtilitiesApplication","operatingSystem":"Web, Android, iOS","inLanguage":"ko","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}},
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Tapit은 무료인가요?","acceptedAnswer":{"@type":"Answer","text":"네. 모든 기능을 무료로 쓸 수 있고 회원가입이나 로그인도 필요 없습니다."}},
+{"@type":"Question","name":"저장한 링크는 어디에 보관되나요?","acceptedAnswer":{"@type":"Answer","text":"사용하는 기기의 브라우저 안에만 저장됩니다. 서버로 보내지 않으므로 다른 사람이 볼 수 없습니다."}},
+{"@type":"Question","name":"폰을 바꾸면 링크가 사라지나요?","acceptedAnswer":{"@type":"Answer","text":"기기에만 저장되므로, 화면 맨 아래 백업에서 내보내기로 파일을 저장해 두세요. 새 폰에서 가져오기를 누르면 그대로 옮겨집니다."}},
+{"@type":"Question","name":"채널 공유로 복사한 링크는 무엇이 다른가요?","acceptedAnswer":{"@type":"Answer","text":"같은 페이지로 가지만 주소 뒤에 어느 채널에서 눌렀는지 알려 주는 UTM 표시가 붙습니다. Google Analytics를 쓰는 사이트라면 채널별 방문 수를 확인할 수 있습니다."}},
+{"@type":"Question","name":"PC에서도 쓸 수 있나요?","acceptedAnswer":{"@type":"Answer","text":"네. PC 브라우저에서도 같은 주소로 쓸 수 있습니다. 다만 지금은 기기마다 따로 저장되므로, 백업 파일로 옮겨 쓰세요."}},
+{"@type":"Question","name":"원하는 채널이 목록에 없어요.","acceptedAnswer":{"@type":"Answer","text":"채널 줄 끝의 + 버튼을 누르고 채널 관리에서 원하는 채널을 직접 추가할 수 있습니다."}}
+]}
+]
+</script>
+<style>
+/* 배치: 한 줄 기둥의 읽는 페이지. Tapit 앱과 같은 메모장 톤, 그림은 실제 화면을 작게 그린 것 */
+:root{
+  --bg:#F4F5F7; --surface:#FFFFFF; --ink:#17181C; --muted:#70747F; --faint:#A4A8B3; --line:#E6E8EC;
+  --hl:#FFE066; --hl-ink:#17181C; --chip:#F1F2F5;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#121316; --surface:#1C1E23; --ink:#ECEDEF; --muted:#9A9EAA; --faint:#6C707C; --line:#2C2F36; --hl:#F5CF47; --chip:#282B32; color-scheme:dark}
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.75;letter-spacing:-.01em;word-break:keep-all}
+a{color:inherit}
+.wrap{max-width:680px;margin:0 auto;padding-inline:20px;padding-block:20px 64px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.logo{font-size:22px;font-weight:700;letter-spacing:-.6px;text-decoration:none}
+.logo span{background:linear-gradient(transparent 58%,var(--hl) 58%);padding:0 2px}
+.open{height:38px;padding:0 16px;border-radius:999px;background:var(--ink);color:var(--bg);text-decoration:none;font-size:14px;font-weight:600;display:inline-flex;align-items:center}
+h1{margin:36px 0 10px;font-size:28px;line-height:1.35;letter-spacing:-.6px;text-wrap:balance}
+.lead{margin:0;color:var(--muted);font-size:16.5px}
+h2{margin:48px 0 12px;font-size:21px;letter-spacing:-.4px;line-height:1.4}
+h3{margin:28px 0 8px;font-size:17px;display:flex;gap:10px;align-items:center}
+h3 i{font-style:normal;flex:none;width:26px;height:26px;border-radius:50%;background:var(--hl);color:var(--hl-ink);font-size:13px;font-weight:700;display:grid;place-items:center}
+p{margin:0 0 12px}
+ul{margin:0 0 12px;padding-left:20px}
+li{margin:4px 0}
+code{font-family:var(--f-mono);font-size:13px;background:var(--chip);padding:2px 6px;border-radius:6px;overflow-wrap:anywhere}
+.pic{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;font-size:14px;margin:4px 0 12px;line-height:1.5}
+.line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.m-in{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-btn{flex:none;background:var(--ink);color:var(--bg);border-radius:10px;padding:9px 15px;font-weight:600}
+.m-btn.o{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.m-chip{background:var(--chip);border-radius:999px;padding:6px 12px;font-weight:500}
+.m-chip b{color:var(--muted);margin-left:5px}
+.m-chip.hit{background:var(--hl);color:var(--hl-ink)}
+.m-say{align-self:flex-start;background:var(--hl);color:var(--hl-ink);border-radius:12px 12px 12px 2px;padding:7px 11px;font-weight:500}
+.who{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:10px;margin:8px 0 12px}
+.who div{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.who b{display:block;margin-bottom:2px}
+.who span{color:var(--muted);font-size:14.5px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin:8px 0;padding:0 16px}
+summary{cursor:pointer;font-weight:600;padding:14px 0;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--muted);font-weight:400}
+details[open] summary::after{content:"–"}
+details p{color:var(--muted);padding-bottom:6px}
+.cta{margin-top:48px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:24px 20px;text-align:center}
+.cta p{color:var(--muted)}
+.cta .open{height:46px;padding:0 24px;font-size:15px}
+footer{margin-top:40px;font-size:14px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+footer a{text-decoration:none;color:var(--ink);font-weight:500}
+@media (min-width:720px){h1{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="logo" href="./">Tap<span>it</span></a>
+    <a class="open" href="./?utm_source=pebble&amp;utm_medium=referral&amp;utm_campaign=tapit_guide">Tapit 열기</a>
+  </header>
+
+  <main>
+    <h1>자주 쓰는 링크, 메모장 대신 Tapit에 두세요</h1>
+    <p class="lead">Tapit(탭잇)은 무료 링크 메모장입니다. 자주 보내는 링크를 한 번 넣어 두면, 다음부터는 찾지 않고 탭 한 번으로 복사합니다. 회원가입도 설치비도 없습니다.</p>
+
+    <h2>이런 분께 맞습니다</h2>
+    <p>링크를 카톡 '나에게 보내기'나 메모장에 모아 두고, 쓸 때마다 찾아서 길게 눌러 복사하고 계신다면 Tapit이 그 과정을 줄여 줍니다.</p>
+    <div class="who">
+      <div><b>가게 사장님</b><span>예약 링크, 지도 링크, 메뉴 링크를 손님에게 자주 보내는 분</span></div>
+      <div><b>카페·블로그 운영자</b><span>글 주소와 공지 링크를 여러 커뮤니티에 올리는 분</span></div>
+      <div><b>공동구매·제휴 링크</b><span>같은 링크를 단톡방, 밴드, 인스타에 반복해서 올리는 분</span></div>
+      <div><b>그냥 링크를 모아 두고 싶은 분</b><span>자주 여는 사이트를 한곳에서 바로 꺼내 쓰고 싶은 분</span></div>
+    </div>
+
+    <h2>시작하기: 세 단계면 됩니다</h2>
+
+    <h3><i>1</i>링크를 붙여넣고 추가를 누릅니다</h3>
+    <div class="pic" aria-hidden="true"><div class="line"><span class="m-in">https://daebugame.com/games/hello-swing/</span><span class="m-btn">추가</span></div></div>
+    <p>보관할 주소를 복사해서 Tapit 맨 위 입력란에 붙여넣으세요. 안드로이드에서 Tapit을 설치했다면, 다른 앱의 <b>공유</b> 메뉴에서 Tapit을 골라 바로 넣을 수도 있습니다.</p>
+
+    <h3><i>2</i>알아보기 쉬운 이름을 붙입니다</h3>
+    <div class="pic" aria-hidden="true"><span class="m-in" style="font-family:var(--f-body);font-size:14px;color:var(--ink)">헬로 스윙 게임</span><div class="line" style="justify-content:space-between"><span class="m-chip">카테고리: 오락실</span><span class="m-btn">저장</span></div></div>
+    <p>긴 주소 대신 이름으로 찾을 수 있습니다. 링크가 많아지면 카테고리로 나눠 두세요. 화면 위쪽에서 카테고리를 누르면 그 링크만 모아 보입니다.</p>
+
+    <h3><i>3</i>필요할 때 복사를 누릅니다</h3>
+    <div class="pic" aria-hidden="true"><b>헬로 스윙 게임</b><div class="line"><span class="m-btn" style="flex:1;text-align:center">복사</span><span class="m-btn o" style="flex:1;text-align:center">채널 공유</span></div><span class="m-say">복사 끝. 붙여넣기만 하면 됩니다.</span></div>
+    <p>여기까지만 알아도 충분합니다. 메모장에서 링크를 찾아 범위를 잡던 일이 버튼 하나로 끝납니다.</p>
+
+    <h2>어디에 몇 번 공유했는지 기록하기</h2>
+    <p>같은 링크를 여러 곳에 올린다면 <b>채널 공유</b>를 쓰세요. 올릴 곳(네이버 카페, 카카오톡, 밴드, 인스타그램 등)을 고르면 그곳 전용 링크가 복사되고, 공유 횟수가 카드에 숫자로 남습니다.</p>
+    <div class="pic" aria-hidden="true"><b>헬로 스윙 게임</b><div class="line"><span class="m-chip hit">네이버 카페<b>3</b></span><span class="m-chip">카카오톡<b>2</b></span><span class="m-chip">밴드<b>1</b></span></div><span style="color:var(--muted)">공유 6회 · 최근 10.12</span></div>
+    <p>목록에 없는 채널은 채널 관리에서 직접 추가할 수 있습니다. 잘못 눌렀다면 복사 직후 아래에 뜨는 <b>실행 취소</b>를 누르세요.</p>
+
+    <h2>UTM 링크를 자동으로 만드는 방법</h2>
+    <p>Google Analytics로 방문자를 분석하는 분이라면, 채널 공유가 곧 무료 UTM 링크 생성기입니다. 채널을 고르면 Tapit이 주소 뒤에 아래 같은 꼬리표를 붙여 줍니다.</p>
+    <p><code>?utm_source=cafe&amp;utm_medium=community&amp;utm_campaign=hello_swing_1015</code></p>
+    <ul>
+      <li><b>utm_source</b>: 고른 채널 (cafe, kakaotalk, band, instagram …)</li>
+      <li><b>utm_medium</b>: 채널 종류 (community, messenger, social …)</li>
+      <li><b>utm_campaign</b>: 링크 주소와 오늘 날짜로 자동 생성. 링크 편집의 고급 설정에서 직접 정할 수 있습니다.</li>
+    </ul>
+    <p>매번 구글 캠페인 URL 빌더에 값을 입력하고 결과를 메모장에 붙여 두던 일을 줄일 수 있습니다. Google Analytics의 트래픽 획득 보고서에서 채널별 방문을 바로 확인하세요.</p>
+
+    <h2>홈 화면에 설치하기</h2>
+    <p>Tapit 상단의 <b>앱 설치</b>를 누르면 기기에 맞는 방법이 나옵니다. 설치하면 홈 화면 아이콘으로 앱처럼 열 수 있습니다.</p>
+    <ul>
+      <li><b>안드로이드 크롬</b>: 앱 설치 → 설치 버튼 한 번</li>
+      <li><b>아이폰 사파리</b>: 공유 버튼 → 홈 화면에 추가 → 추가</li>
+      <li><b>카카오톡에서 열었을 때</b>: 카카오톡 안에서는 설치가 안 됩니다. 안내에 따라 크롬(아이폰은 사파리)으로 연 뒤 설치하세요.</li>
+    </ul>
+
+    <h2>백업하기</h2>
+    <p>Tapit은 링크를 서버가 아닌 <b>내 기기</b>에 저장합니다. 그래서 다른 사람이 볼 수 없지만, 브라우저 기록을 지우거나 폰을 바꾸면 사라질 수 있습니다. 링크가 쌓이면 화면 맨 아래 <b>백업 → 내보내기</b>로 파일을 저장해 두세요. 새 기기에서 <b>가져오기</b>를 누르면 그대로 옮겨지고, 이미 있는 링크는 겹치지 않게 건너뜁니다.</p>
+
+    <h2>자주 묻는 질문</h2>
+    <details><summary>Tapit은 무료인가요?</summary><p>네. 모든 기능을 무료로 쓸 수 있고 회원가입이나 로그인도 필요 없습니다.</p></details>
+    <details><summary>저장한 링크는 어디에 보관되나요?</summary><p>사용하는 기기의 브라우저 안에만 저장됩니다. 서버로 보내지 않으므로 다른 사람이 볼 수 없습니다.</p></details>
+    <details><summary>폰을 바꾸면 링크가 사라지나요?</summary><p>기기에만 저장되므로, 화면 맨 아래 백업에서 내보내기로 파일을 저장해 두세요. 새 폰에서 가져오기를 누르면 그대로 옮겨집니다.</p></details>
+    <details><summary>채널 공유로 복사한 링크는 무엇이 다른가요?</summary><p>같은 페이지로 가지만 주소 뒤에 어느 채널에서 눌렀는지 알려 주는 UTM 표시가 붙습니다. Google Analytics를 쓰는 사이트라면 채널별 방문 수를 확인할 수 있습니다.</p></details>
+    <details><summary>PC에서도 쓸 수 있나요?</summary><p>네. PC 브라우저에서도 같은 주소로 쓸 수 있습니다. 다만 지금은 기기마다 따로 저장되므로, 백업 파일로 옮겨 쓰세요.</p></details>
+    <details><summary>원하는 채널이 목록에 없어요.</summary><p>채널 줄 끝의 + 버튼을 누르고 채널 관리에서 원하는 채널을 직접 추가할 수 있습니다.</p></details>
+
+    <section class="cta">
+      <h2 style="margin:0 0 6px">지금 바로 써 보세요</h2>
+      <p>설치 없이 브라우저에서 바로 열립니다.</p>
+      <a class="open" href="./?utm_source=pebble&amp;utm_medium=referral&amp;utm_campaign=tapit_guide">Tapit 열기</a>
+    </section>
+  </main>
+
+  <footer>
+    <a href="./">Tapit</a>
+    <a href="https://open.kakao.com/o/s6jWLxuh" target="_blank" rel="noopener">의견 보내기</a>
+    <a href="/">Pebble 다른 도구</a>
+    <span>© Pebble · pebbleitgo.com</span>
+  </footer>
+</div>
+<script>
+(function(){var id='G-4Q8F4E2J61';window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}
+var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+id;document.head.appendChild(s);
+gtag('js',new Date());gtag('config',id,{tool:'tapit'});})();
+</script>
+</body>
+</html>

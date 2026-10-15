@@ -3,13 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tapit — 탭 한 번으로 링크 복사</title>
-<meta name="description" content="자주 보내는 링크를 모아 두고 한 번 눌러 복사하는 링크 메모장. 카페·카카오톡 등 어디에 몇 번 공유했는지도 기록합니다. 로그인 없이 무료.">
+<title>Tapit 탭잇 — 무료 링크 메모장, 탭 한 번으로 링크 복사</title>
+<meta name="description" content="자주 보내는 링크를 모아 두고 탭 한 번으로 복사하는 무료 링크 메모장. 카톡 나에게 보내기나 메모장 대신 쓰세요. 카페·카카오톡·밴드 등 채널별 링크를 자동으로 만들고 공유 횟수도 기록합니다. 회원가입 없이 무료.">
 <link rel="canonical" href="https://pebbleitgo.com/tapit/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Tapit — 탭 한 번으로 링크 복사">
 <meta property="og:description" content="자주 보내는 링크를 모아 두고 한 번 눌러 복사하는 링크 메모장">
 <meta property="og:url" content="https://pebbleitgo.com/tapit/">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"Tapit","alternateName":"탭잇","url":"https://pebbleitgo.com/tapit/","description":"자주 보내는 링크를 모아 두고 탭 한 번으로 복사하는 무료 링크 메모장. 채널별 공유 링크를 자동으로 만들고 공유 횟수를 기록합니다.","applicationCategory":"UtilitiesApplication","operatingSystem":"Web, Android, iOS","inLanguage":"ko","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"},"publisher":{"@type":"Organization","name":"Pebble","url":"https://pebbleitgo.com/"}}
+</script>
 <meta property="og:image" content="https://pebbleitgo.com/tapit/og.png?v=3">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -153,6 +156,20 @@ svg{display:block;flex:none}
 .meta{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
 .meta button{color:var(--ink);font-weight:500;font-size:13px;padding:2px 0;display:flex;align-items:center;gap:2px}
 
+.foot-area{margin-top:20px;border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direction:column;gap:16px;max-width:620px}
+.backup{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 12px 12px 16px}
+.backup .bt{display:flex;flex-direction:column;gap:1px;min-width:0}
+.backup b{font-size:15px;font-weight:600}
+.backup span{font-size:13px;color:var(--muted)}
+.backup span.warn{color:var(--danger)}
+.backup .bb{display:flex;gap:6px}
+.backup .btn{padding:8px 13px;font-size:14px}
+.flinks{display:flex;gap:4px 16px;flex-wrap:wrap;font-size:14px}
+.flinks a{color:var(--ink);text-decoration:none;font-weight:500;padding:4px 0}
+.flinks a:active{opacity:.6}
+.about{margin:0;font-size:13px;line-height:1.65;color:var(--faint)}
+.gmore{display:flex;gap:8px;flex-wrap:wrap}
+.gmore a{flex:1;min-width:140px;text-align:center;text-decoration:none;color:var(--ink)}
 .empty{border:1px dashed var(--line);border-radius:18px;padding:32px 18px;text-align:center;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 
@@ -228,6 +245,16 @@ td.v{font-weight:600}
   <div class="demo" id="demo" hidden><span>샘플 링크가 표시되어 있습니다.</span><button type="button" id="clearDemo">샘플 삭제 후 시작</button></div>
 
   <main class="list" id="list"></main>
+
+  <footer class="foot-area">
+    <section class="backup" aria-label="백업">
+      <div class="bt"><b>백업</b><span id="bkInfo">링크는 이 기기에만 저장됩니다.</span></div>
+      <div class="bb"><button class="btn" type="button" id="bkExport">내보내기</button><button class="btn" type="button" id="bkImport">가져오기</button></div>
+      <input type="file" id="bkFile" accept="application/json,.json" hidden>
+    </section>
+    <nav class="flinks" aria-label="더 보기"><a href="guide.html">자세한 사용법</a><a href="https://open.kakao.com/o/s6jWLxuh" target="_blank" rel="noopener" id="fbLink">의견 보내기</a><a href="/">Pebble 다른 도구</a></nav>
+    <p class="about">Tapit(탭잇)은 무료 링크 메모장입니다. 자주 보내는 링크를 모아 두고 탭 한 번으로 복사합니다. 네이버 카페, 카카오톡, 밴드, 인스타그램 등 채널마다 전용 링크를 만들어 어디에 몇 번 공유했는지도 기록합니다. 회원가입 없이 쓰며, 링크는 내 기기에만 저장됩니다.</p>
+  </footer>
 </div>
 
 <!-- 링크 추가 / 편집 -->
@@ -294,7 +321,9 @@ td.v{font-weight:600}
       <p><b style="color:var(--ink)">채널 전용 링크는 뭐가 다른가요?</b><br>같은 페이지로 가지만, 어디에서 눌렀는지 알 수 있는 표시가 뒤에 붙습니다. Google Analytics를 쓰는 분은 채널별 방문 수를 확인할 수 있습니다.</p>
       <p><b style="color:var(--ink)">잘못 눌렀어요.</b><br>복사 직후 아래에 뜨는 실행 취소를 누르면 횟수에서 빠집니다.</p>
       <p><b style="color:var(--ink)">원하는 채널이 없어요.</b><br>채널 줄 끝의 + 를 누르고 채널 관리에서 추가하세요.</p>
+      <p><b style="color:var(--ink)">폰을 바꾸면 링크가 사라지나요?</b><br>링크는 이 기기에만 저장됩니다. 화면 맨 아래 백업에서 내보내기로 파일을 저장해 두고, 새 폰에서 가져오기를 누르세요.</p>
     </div></details>
+    <div class="gmore"><a class="btn" href="guide.html">자세한 사용법 보기</a><a class="btn" href="https://open.kakao.com/o/s6jWLxuh" target="_blank" rel="noopener">의견 보내기</a></div>
   </div>
 </div>
 
@@ -657,6 +686,48 @@ $('addForm').addEventListener('submit',function(e){
   try{if(seg)nm=host+' · '+decodeURIComponent(seg)}catch(x){}
   openLink({id:null,url:u.toString(),name:nm,group:filter==='전체'?'':filter,camp:'',kind:''});
 });
+/* 백업: 내보내기 · 가져오기 */
+function renderBackup(){
+  var el=$('bkInfo'); if(!el)return;
+  if(S.lastBackup){var d=new Date(S.lastBackup);el.textContent='마지막 백업 '+d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate();el.className=''}
+  else if(S.links.length>=5){el.textContent='아직 백업하지 않았습니다. 폰을 바꾸면 링크가 사라집니다.';el.className='warn'}
+  else{el.textContent='링크는 이 기기에만 저장됩니다.';el.className=''}
+}
+$('bkExport').addEventListener('click',function(){
+  if(!S.links.length){toast('<span class="msg">저장된 링크가 없습니다</span>');return}
+  var now=new Date(), ymd=now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2);
+  var data={app:'tapit',version:1,exported:now.toISOString(),links:S.links,channels:S.channels};
+  try{
+    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='tapit-backup-'+ymd+'.json';document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);
+    S.lastBackup=Date.now();save();renderBackup();track('backup_export',{count:S.links.length});
+    toast('<span class="msg">백업 파일을 저장했습니다<small>tapit-backup-'+ymd+'.json · 다운로드 폴더를 확인하세요</small></span>',4500);
+  }catch(x){toast('<span class="msg">이 화면에서는 파일을 저장할 수 없습니다. 크롬에서 열어 다시 시도하세요</span>',4500)}
+});
+$('bkImport').addEventListener('click',function(){$('bkFile').value='';$('bkFile').click()});
+$('bkFile').addEventListener('change',function(){
+  var f=this.files&&this.files[0]; if(!f)return;
+  var r=new FileReader();
+  r.onload=function(){
+    var d; try{d=JSON.parse(r.result)}catch(x){d=null}
+    if(!d||d.app!=='tapit'||!Array.isArray(d.links)){toast('<span class="msg">Tapit 백업 파일이 아닙니다</span>',3500);return}
+    var added=0, skipped=0, have={};
+    S.links.forEach(function(l){have[l.url]=1});
+    d.links.forEach(function(l,i){
+      if(!l||!l.url||have[l.url]){skipped++;return}
+      var n={id:'l'+Date.now()+'_'+i,url:String(l.url),name:String(l.name||l.url),group:String(l.group||''),open:false,camp:l.camp||'',kind:l.kind||'',log:Array.isArray(l.log)?l.log:[]};
+      S.links.push(n);have[n.url]=1;added++;
+    });
+    (d.channels||[]).forEach(function(c){if(c&&c.id&&!chan(c.id))S.channels.push({id:String(c.id),name:String(c.name||c.id),medium:String(c.medium||'referral')})});
+    save();render();renderBackup();track('backup_import',{added:added,skipped:skipped});
+    toast('<span class="msg">'+added+'개 링크를 가져왔습니다'+(skipped?'<small>이미 있는 링크 '+skipped+'개는 건너뛰었습니다</small>':'')+'</span>',4000);
+  };
+  r.readAsText(f);
+});
+[].forEach.call(document.querySelectorAll('a[href*="open.kakao.com"]'),function(a){a.addEventListener('click',function(){track('feedback_click')})});
+var _render=render; render=function(){_render();renderBackup()};
+
 render();
 var Q=new URLSearchParams(location.search);
 if(Q.get('pwa')==='install'&&!env.standalone){setTimeout(openInst,700)}
