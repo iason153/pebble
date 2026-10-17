@@ -37,7 +37,7 @@ module.exports = async (req, res) => {
   const items = (Array.isArray(b.items) ? b.items : [])
     .slice(0, 200)
     .filter((it) => it && typeof it.id === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(String(it.due)))
-    .map((it) => ({ id: String(it.id).slice(0, 40), name: String(it.name || '').slice(0, 40), due: it.due }));
+    .map((it) => ({ id: String(it.id).slice(0, 40), name: String(it.name || '').slice(0, 40), due: it.due, auto: it.auto ? 1 : 0 }));
   const prev = (await getDevice(key)) || {};
   await putDevice(key, { sub, hour, days: days.length ? days : [3, 0], items, sent: prev.sent || {}, updatedAt: Date.now() });
   json(res, 200, { ok: true, items: items.length });

@@ -11,7 +11,7 @@
  */
 (function (root) {
   const NAME = 'billbox';
-  const VER = 1;
+  const VER = 2; // v2: stack(정리함) 추가
   let dbp = null;
 
   function open() {
@@ -23,6 +23,7 @@
         if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos');
         if (!db.objectStoreNames.contains('mirror')) db.createObjectStore('mirror');
         if (!db.objectStoreNames.contains('inbox')) db.createObjectStore('inbox');
+        if (!db.objectStoreNames.contains('stack')) db.createObjectStore('stack'); // 정리함: 찍은 고지서가 확인 전까지 있는 곳
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => {
@@ -68,6 +69,27 @@
     // ---- 알림용 사본 ----
     putMirror: (items) => tx('mirror', 'readwrite', (s) => s.put(items, 'items')).catch(() => {}),
     getMirror: () => tx('mirror', 'readonly', (s) => req2p(s.get('items'))).catch(() => null),
+
+    // ---- 정리함(stack): 찍기 = 여기 넣기. 종이는 버려도 됨. 읽기·확인은 나중에 ----
+    // rec = { blob, addedAt, status:'new'|'read'|'fail', ex(읽은 결과), from, source:'ai'|'local' }
+    stackAdd(blob, from) {
+      const id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      return tx('stack', 'readwrite', (s) => s.put({ blob, addedAt: Date.now(), status: 'new', ex: null, from: from || '' }, id)).then(() => id).catch(() => null);
+    },
+    stackGet: (id) => tx('stack', 'readonly', (s) => req2p(s.get(id))).catch(() => null),
+    async stackAll() {
+      try {
+        const rows = await tx('stack', 'readonly', (s) => Promise.all([req2p(s.getAllKeys()), req2p(s.getAll())]).then(([k, v]) => k.map((key, i) => [key, v[i]])));
+        return rows.sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0));
+      } catch (_) {
+        return [];
+      }
+    },
+    async stackPatch(id, patch) {
+      const rec = await api.stackGet(id);
+      if (rec) await tx('stack', 'readwrite', (s) => s.put(Object.assign(rec, patch), id)).catch(() => {});
+    },
+    stackDel: (id) => tx('stack', 'readwrite', (s) => s.delete(id)).catch(() => {}),
 
     // ---- 공유로 받은 사진 ----
     putInbox: (blob) => tx('inbox', 'readwrite', (s) => s.put({ blob, at: Date.now() }, 'shared')),

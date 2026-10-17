@@ -9,7 +9,7 @@
 
 importScripts('js/db.js'); // 폰 저장소(알림 문구에 금액 붙이기, 공유로 받은 사진)
 
-const CACHE_NAME = 'billbox-shell-v11';
+const CACHE_NAME = 'billbox-shell-v12';
 const ENGINE_CACHE = 'billbox-engine-r2'; // 읽기 엔진·사전(약 12MB). 앱 버전이 바뀌어도 그대로 둠, REV 바뀔 때만 새로
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/billbox/
 
@@ -26,6 +26,7 @@ const APP_SHELL = [
   'js/store.js',
   'js/extract.js',
   'js/ocr.js',
+  'js/ai.js',
   'js/push.js',
   'js/viewer.js',
   'js/share.js',
@@ -60,11 +61,11 @@ self.addEventListener('fetch', (event) => {
       (async () => {
         try {
           const fd = await req.formData();
-          const f = fd.getAll('image').find((x) => x && x.size);
+          const files = fd.getAll('image').filter((x) => x && x.size);
           const text = [fd.get('title'), fd.get('text'), fd.get('url')].filter((x) => typeof x === 'string' && x.trim()).join('\n');
-          // 사진이 있으면 사진, 없고 글만 왔으면(카톡·문자 고지서 글) 글을 맡겨 둔다
-          if (f) await self.BillboxDB.putInbox(f);
-          else if (text) await self.BillboxDB.putInbox(new Blob([text], { type: 'text/plain' }));
+          // 사진은 몇 장이든 정리함에, 글만 왔으면(카톡·문자 고지서 글) 글을 맡겨 둔다
+          for (const f of files) await self.BillboxDB.stackAdd(f, 'share');
+          if (!files.length && text) await self.BillboxDB.putInbox(new Blob([text], { type: 'text/plain' }));
         } catch (_) {}
         return Response.redirect(new URL('./?shared=1', SCOPE).toString(), 303);
       })()
@@ -133,6 +134,12 @@ function whenText(days) {
 function lineFor(sig, m) {
   const name = (m && m.name) || sig.name || '낼 것';
   const emoji = (m && m.emoji) || '💸';
+  if (sig.auto || (m && m.auto)) {
+    // 자동이체: 직접 낼 게 아니라 통장 잔액이 걱정
+    const w = sig.days === 0 ? '오늘' : '내일';
+    const amt = m && m.amount != null ? ` 약 ${won(m.amount)}원` : '';
+    return `🏦 ${name}${amt} · ${w} 자동이체 — 통장 잔액 확인!`;
+  }
   const when = whenText(sig.days);
   if (!m || m.amount == null) return `${emoji} ${name} · ${when}`;
   if (m.estimated) return `${emoji} ${name} 납부를 준비하세요 · ${when} · 지난번 약 ${won(m.amount)}원`;

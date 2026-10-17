@@ -48,7 +48,7 @@ window.BillboxPush = (function () {
     return S()
       .load()
       .filter((x) => !x.paidAt)
-      .map((x) => ({ id: x.id, name: x.name || window.BillboxKinds.byId(x.kindId).label, due: x.due }));
+      .map((x) => ({ id: x.id, name: x.name || window.BillboxKinds.byId(x.kindId).label, due: x.due, auto: x.auto ? 1 : 0 }));
   }
 
   async function enable() {

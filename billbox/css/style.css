@@ -394,3 +394,27 @@ details.tips-box summary::-webkit-details-marker { display: none; }
 .paste__btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .paste__btns .btn { flex: 1 1 140px; }
 .notice__btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ===== v2: 정리함·AI·고정지출 ===== */
+.stackbar { display: block; width: 100%; margin: 0 0 12px; background: var(--brass-lt); color: var(--ink); border: var(--line) solid var(--ink); border-radius: var(--r); box-shadow: var(--shadow); padding: 12px 14px; font-weight: 900; font-size: 1.02rem; text-align: left; }
+.stackbar small { display: block; font-weight: 700; font-size: .85rem; margin-top: 2px; }
+.stackbar:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+
+.srow { display: flex; gap: 10px; align-items: center; background: #fff; border: var(--line) solid var(--ink); border-radius: var(--r); box-shadow: var(--shadow-sm); padding: 10px; margin-bottom: 10px; }
+.srow__thumb { width: 54px; height: 54px; object-fit: cover; border: 2px solid var(--ink); border-radius: 8px; flex: none; background: var(--mint); }
+.srow__txt { flex: 1; min-width: 0; }
+.srow__name { font-weight: 900; }
+.srow__meta { font-size: .88rem; color: #555; word-break: keep-all; }
+.srow__btns { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.srow--reading { background: var(--mint); }
+.srow--fail { background: var(--orange-lt, #ffe9d6); }
+
+.autopay { display: block; margin-top: 10px; font-weight: 800; }
+.autopay small { font-weight: 600; color: #555; }
+.autopay input { width: 20px; height: 20px; accent-color: var(--green); vertical-align: -4px; margin-right: 4px; }
+
+.item--fixed { background: var(--paper, #faf7ef); border-style: dashed; }
+.item--fixed .item__meta { color: #555; }
+.group__cap { font-size: .85rem; color: #666; margin: -2px 0 10px 2px; word-break: keep-all; }
+.aichoice { margin-bottom: 10px; }
+#s-ai { width: 100%; }

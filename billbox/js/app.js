@@ -48,12 +48,16 @@
       this.wireSwipe();
       this.wireDelete();
       S.fixTaggedRepeat();
+      this.autopayRoll();
       this.render();
       this.registerSW();
       this.wirePrep();
-      window.BillboxOCR.warmup();
+      this.wireStack();
+      if (window.BillboxAI.mode() === 'off') window.BillboxOCR.warmup(); // AI로 읽으면 폰 사전은 폴백용 — 필요할 때만 받음
       this.cleanupPhotos();
       this.checkShared();
+      this.renderStackBadge();
+      this.pumpStack();
       track('open', { items: S.load().length });
     },
 
@@ -102,7 +106,7 @@
     mirror() {
       const items = S.load()
         .filter((x) => !x.paidAt)
-        .map((x) => ({ id: x.id, name: x.name || K.byId(x.kindId).label, kindId: x.kindId, emoji: K.byId(x.kindId).emoji, amount: x.amount, estimated: !!x.estimated, due: x.due, repeat: x.repeat }));
+        .map((x) => ({ id: x.id, name: x.name || K.byId(x.kindId).label, kindId: x.kindId, emoji: K.byId(x.kindId).emoji, amount: x.amount, estimated: !!x.estimated, due: x.due, repeat: x.repeat, auto: x.auto ? 1 : 0 }));
       window.BillboxDB.putMirror(items);
     },
 
@@ -140,13 +144,18 @@
         this.readText(await blob.text(), 'share');
         return;
       }
-      if (!blob) {
-        this.showToast('공유한 사진을 못 받았어요. 앨범에서 골라 주세요', { duration: 4000 });
+      if (blob) {
+        // 옛 서비스워커가 사진을 inbox에 둔 경우
+        track('share_in');
+        this.stackAdd([blob], 'share');
         return;
       }
-      track('share_in');
-      this.openScan();
-      this.scan(blob, 'share');
+      const rows = await window.BillboxDB.stackAll();
+      if (rows.length) {
+        track('share_in', { n: rows.length });
+        this.openStack();
+        this.pumpStack();
+      } else this.showToast('공유한 사진을 못 받았어요. 앨범에서 골라 주세요', { duration: 4000 });
     },
 
     addSamples() {
@@ -223,7 +232,7 @@
       let st = null;
       list.addEventListener('pointerdown', (e) => {
         const el = e.target.closest('.item[data-item]');
-        if (!el || el.classList.contains('item--done') || e.target.closest('button')) return;
+        if (!el || el.classList.contains('item--done') || el.classList.contains('item--fixed') || el.classList.contains('item--auto') || e.target.closest('button')) return;
         st = { el, x: e.clientX, y: e.clientY, dx: 0, on: false };
       });
       list.addEventListener('pointermove', (e) => {
@@ -346,6 +355,11 @@
 
     render() {
       const g = S.groups();
+      // v2: 반복 항목의 "예상" 차례는 고지서가 아니라 고정지출 → 아래 따로 보여 준다(마감 지난 건 그대로 잔소리)
+      const isFixedRow = (it) => it.estimated && it.repeat && it.repeat !== 'none' && !it.tag && S.daysLeft(it.due) >= 0;
+      const fixedUp = [...g.week, ...g.later].filter(isFixedRow);
+      g.week = g.week.filter((it) => !isFixedRow(it));
+      g.later = g.later.filter((it) => !isFixedRow(it));
       const list = $('list');
       const total = g.overdue.length + g.week.length;
       const sumAmt = [...g.overdue, ...g.week].reduce((a, b) => a + (b.amount || 0), 0);
@@ -377,10 +391,10 @@
           dd = `D-${n}`;
           cls = n > 7 ? 'dday--far' : '';
         }
-        const badges = [it.tag ? `<span class="badge badge--red">${esc(it.tag)}</span>` : '', it.estimated ? '<span class="badge badge--ghost">예상</span>' : '', it.repeat && it.repeat !== 'none' ? `<span class="badge badge--mint">${esc(K.repeatById(it.repeat).label)}</span>` : ''].join('');
+        const badges = [it.tag ? `<span class="badge badge--red">${esc(it.tag)}</span>` : '', it.auto ? '<span class="badge badge--mint">🏦 자동이체</span>' : '', it.estimated ? '<span class="badge badge--ghost">예상</span>' : '', it.repeat && it.repeat !== 'none' ? `<span class="badge badge--mint">${esc(K.repeatById(it.repeat).label)}</span>` : ''].join('');
         const lf = n < 0 || it.tag ? G.lateFee(it.kindId, it.amount, Math.max(0, -n)) : null;
         const amtTxt = it.amount == null ? '금액 미정' : it.estimated ? `약 ${won(it.amount)}원` : `${won(it.amount)}원`;
-        return `<div class="item ${n < 0 ? 'item--overdue' : ''}" role="button" tabindex="0" data-item="${it.id}">
+        return `<div class="item ${n < 0 ? 'item--overdue' : ''} ${it.auto ? 'item--auto' : ''}" role="button" tabindex="0" data-item="${it.id}">
           <div class="item__emoji" aria-hidden="true">${k.emoji}</div>
           <div>
             <div class="item__name">${esc(it.name || k.label)} ${badges}</div>
@@ -390,13 +404,27 @@
           </div>
           <div class="item__right">
             <span class="dday ${cls}">${dd}</span>
-            <button type="button" class="btn btn--sm item__paid" data-paid="${it.id}">냈어요</button>
+            ${it.auto ? '<span class="badge badge--ghost">자동 완료</span>' : `<button type="button" class="btn btn--sm item__paid" data-paid="${it.id}">냈어요</button>`}
           </div>
         </div>`;
       };
       const group = (title, items, badgeCls) => (items.length ? `<section class="group"><div class="group__head">${title}<span class="badge ${badgeCls}">${items.length}</span></div>${items.map(card).join('')}</section>` : '');
 
       let html = group('🚨 마감 지남', g.overdue, 'badge--red') + group('📌 이번 주', g.week, 'badge--brass') + group('📅 다음에', g.later, '');
+      const fixedRow = (it) => {
+        const k = K.byId(it.kindId);
+        const n = S.daysLeft(it.due);
+        const day = it.day || Number(it.due.slice(8, 10));
+        return `<div class="item item--fixed" role="button" tabindex="0" data-item="${it.id}">
+          <div class="item__emoji" aria-hidden="true">${k.emoji}</div>
+          <div>
+            <div class="item__name">${esc(it.name || k.label)} ${it.auto ? '<span class="badge badge--mint">🏦 자동이체</span>' : ''}</div>
+            <div class="item__meta">${esc(K.repeatById(it.repeat).label)} · ${day}일쯤 · ${it.amount != null ? `지난번 약 ${won(it.amount)}원` : '금액은 고지서 오면'}</div>
+          </div>
+          <div class="item__right"><span class="dday dday--far">D-${n}</span></div>
+        </div>`;
+      };
+      if (fixedUp.length) html += `<section class="group"><div class="group__head">📌 고정지출 · 때 되면 알려 드려요<span class="badge">${fixedUp.length}</span></div><p class="group__cap">고지서를 찍으면 실제 금액으로 채워져요. 자동이체는 전날 "잔액 확인" 알림이 와요.</p>${fixedUp.map(fixedRow).join('')}</section>`;
       if (!html) {
         html = `<div class="empty card card--tilt"><div class="empty__pic">📬</div><p><b>아직 비어 있어요.</b></p><p class="muted">아래 <b>고지서 찍기</b>를 눌러 보세요. 넷플릭스 같은 구독은 <b>직접 입력</b>으로.</p><button type="button" class="btn btn--sm" data-sample-add style="margin-top:10px">👀 예시 넣어 보기</button></div>`;
       }
@@ -462,9 +490,9 @@
           try {
             sessionStorage.removeItem('billbox:picking');
           } catch (_) {}
-          const f = e.target.files && e.target.files[0];
+          const files = Array.from(e.target.files || []);
           e.target.value = '';
-          if (f) this.scan(f, id === 'file-camera' ? 'camera_app' : 'album');
+          if (files.length) this.stackAdd(files, id === 'file-camera' ? 'camera_app' : 'album');
         });
       });
       $('btn-cam-open').addEventListener('click', () => this.openCam());
@@ -649,13 +677,15 @@
       this.stopCam();
       this.shooting = false;
       $('scan-cam').hidden = true;
-      if (blob) this.scan(blob, method === 'photo' ? 'camera' : 'camera_frame');
+      if (blob) this.stackAdd([blob], method === 'photo' ? 'camera' : 'camera_frame');
     },
 
     openScan() {
       if ($('btn-retry-tap')) $('btn-retry-tap').hidden = true;
-      const st = window.BillboxOCR.getState();
-      if (st.state !== 'ready') this.showToast(st.state === 'error' ? '읽기 도구가 아직 준비 안 됐어요. 홈의 [다시 받기]를 눌러 주세요' : '아직 사전을 받는 중이에요. 찍으면 받은 뒤 이어서 읽어요', { duration: 4000 });
+      if (!window.BillboxAI.available()) {
+        const st = window.BillboxOCR.getState();
+        if (st.state !== 'ready') this.showToast(st.state === 'error' ? '읽기 도구가 아직 준비 안 됐어요. 홈의 [다시 받기]를 눌러 주세요' : '아직 사전을 받는 중이에요. 찍으면 받은 뒤 이어서 읽어요', { duration: 4000 });
+      }
       $('scan-pick').hidden = false;
       $('scan-cam').hidden = true;
       $('scan-progress').hidden = true;
@@ -663,6 +693,265 @@
       $('scan-retry').hidden = true;
       this.openSheet($('scan-sheet'));
       track('scan_open');
+    },
+
+    // =================================================================
+    // 정리함 — 찍기=담기(1초), 읽기는 뒤에서, 확인은 나중에 톡톡
+    // =================================================================
+    /** 사진 여러 장을 정리함에. 담는 즉시 종이는 버려도 됨(사진은 폰 저장소에) */
+    async stackAdd(files, from) {
+      let n = 0;
+      for (const f of files) {
+        if (!f || !f.size) continue;
+        const id = await window.BillboxDB.stackAdd(f, from);
+        if (id) n++;
+      }
+      if (!n) {
+        this.showToast('사진을 담지 못했어요. 다시 골라 주세요');
+        return;
+      }
+      track('stack_add', { n, from });
+      this.hideSheetNow($('scan-sheet'));
+      this.showToast(`${n}장 담았어요 — 종이는 버리셔도 돼요 🗑️`, { duration: 3000 });
+      await this.openStack();
+      this.renderStackBadge();
+      this.pumpStack();
+    },
+
+    wireStack() {
+      $('btn-stack').addEventListener('click', () => this.openStack());
+      $('btn-stack-go').addEventListener('click', () => this.nextConfirm());
+      $('stack-list').addEventListener('click', (e) => {
+        const del = e.target.closest('[data-sdel]');
+        if (del) {
+          window.BillboxDB.stackDel(del.dataset.sdel).then(() => {
+            this.renderStack(true);
+            this.renderStackBadge();
+          });
+          return;
+        }
+        const go = e.target.closest('[data-sconfirm]');
+        if (go) this.openConfirm(go.dataset.sconfirm);
+      });
+      $('btn-ai-on').addEventListener('click', () => this.aiChoose('on'));
+      $('btn-ai-off').addEventListener('click', () => this.aiChoose('off'));
+      // 고르지 않고 닫으면: 이번만 폰 읽기(저장 안 함 → 다음에 다시 물어봄)
+      new MutationObserver(() => {
+        if ($('ai-sheet').hidden && this.aiResolve) {
+          const r = this.aiResolve;
+          this.aiResolve = null;
+          r(S.settings().aiRead === 'on' ? 'on' : 'off');
+        }
+      }).observe($('ai-sheet'), { attributes: true, attributeFilter: ['hidden'] });
+    },
+    aiChoose(v) {
+      S.saveSettings({ aiRead: v });
+      track('ai_choice', { on: v === 'on' ? 1 : 0 });
+      if (v === 'off') window.BillboxOCR.warmup();
+      const r = this.aiResolve;
+      this.aiResolve = null;
+      this.closeSheet($('ai-sheet'));
+      if (r) r(v);
+    },
+    /** 처음 한 번: 사진을 AI로 읽을지 묻는다 */
+    ensureAiChoice() {
+      const m = S.settings().aiRead;
+      if (m === 'on' || m === 'off') return Promise.resolve(m);
+      return new Promise((res) => {
+        this.aiResolve = res;
+        this.openSheet($('ai-sheet'));
+      });
+    },
+
+    async openStack() {
+      await this.renderStack(true);
+      if ($('stack-sheet').hidden) this.openSheet($('stack-sheet'));
+    },
+    async renderStackBadge() {
+      const rows = await window.BillboxDB.stackAll();
+      const b = $('btn-stack');
+      b.hidden = !rows.length;
+      if (!rows.length) return;
+      const done = rows.filter(([, r]) => r.status === 'read' || r.status === 'fail').length;
+      b.innerHTML = `🗂️ 정리함 ${rows.length}장 <small>${done === rows.length ? '모두 읽었어요 — 눌러서 확인하세요' : done ? `${done}장 읽음 · 마저 읽는 중…` : '읽는 중… 다른 걸 하셔도 돼요'}</small>`;
+    },
+    async renderStack(force) {
+      if ($('stack-sheet').hidden && !force) return;
+      const rows = await window.BillboxDB.stackAll();
+      (this.stackUrls || []).forEach((u) => URL.revokeObjectURL(u));
+      this.stackUrls = [];
+      const row = ([id, r]) => {
+        const url = URL.createObjectURL(r.blob);
+        this.stackUrls.push(url);
+        let name = '';
+        let meta = '';
+        let cls = '';
+        let btns = '';
+        if (r.status === 'read' && r.ex) {
+          const k = r.ex.kindId ? K.byId(r.ex.kindId) : null;
+          name = `${k ? k.emoji + ' ' : ''}${esc(r.ex.name || (k ? k.label : '읽었어요'))}`;
+          meta = [r.ex.amount != null ? won(r.ex.amount) + '원' : null, r.ex.due ? fmtDate(r.ex.due) + '까지' : null].filter(Boolean).join(' · ') || '내용을 확인해 주세요';
+          btns = `<button type="button" class="btn btn--sm btn--brass" data-sconfirm="${id}">확인</button>`;
+        } else if (r.status === 'fail') {
+          cls = 'srow--fail';
+          name = '🤔 못 읽었어요';
+          meta = r.note === 'notbill' ? '고지서가 아닌 것 같아요' : '사진을 보며 직접 적을 수 있어요';
+          btns = `<button type="button" class="btn btn--sm" data-sconfirm="${id}">직접 확인</button><button type="button" class="btn btn--sm btn--ghost" data-sdel="${id}">지우기</button>`;
+        } else {
+          cls = 'srow--reading';
+          name = '📥 읽는 중…';
+          meta = '잠깐이면 돼요';
+        }
+        return `<div class="srow ${cls}"><img class="srow__thumb" src="${url}" alt=""><div class="srow__txt"><div class="srow__name">${name}</div><div class="srow__meta">${meta}</div></div><div class="srow__btns">${btns}</div></div>`;
+      };
+      $('stack-list').innerHTML = rows.length ? rows.map(row).join('') : '<p class="muted" style="text-align:center;padding:20px 0">비어 있어요. 고지서를 찍으면 여기 쌓여요 📬</p>';
+      const ready = rows.filter(([, r]) => r.status === 'read' || r.status === 'fail').length;
+      $('btn-stack-go').hidden = ready === 0;
+      if (ready) $('btn-stack-go').textContent = `✅ 하나씩 확인하기 (${ready}장)`;
+    },
+
+    /** 정리함의 안 읽은 사진을 한 장씩 읽는다(AI 먼저, 안 되면 폰에서) */
+    async pumpStack() {
+      if (this.pumping) return;
+      this.pumping = true;
+      try {
+        const rows = await window.BillboxDB.stackAll();
+        const todo = rows.filter(([, r]) => r.status === 'new' || r.status === 'reading');
+        if (!todo.length) return;
+        const choice = await this.ensureAiChoice();
+        for (const [id] of todo) {
+          const rec = await window.BillboxDB.stackGet(id);
+          if (!rec || (rec.status !== 'new' && rec.status !== 'reading')) continue;
+          await window.BillboxDB.stackPatch(id, { status: 'reading' });
+          this.renderStack();
+          let plain = null;
+          let src = 'ai';
+          if (choice === 'on') {
+            try {
+              const r = await window.BillboxAI.read(rec.blob);
+              if (r.notBill) plain = { notBill: true };
+              else if (!r.fallback) plain = this.exToPlain(r);
+              else track('ai_fallback', { reason: r.reason });
+            } catch (_) {}
+          }
+          if (!plain) {
+            src = 'local';
+            try {
+              plain = await this.readLocalPlain(rec.blob);
+            } catch (_) {
+              plain = null;
+            }
+          }
+          if (plain && !plain.notBill && (plain.amount != null || plain.due || plain.kindId)) {
+            await window.BillboxDB.stackPatch(id, { status: 'read', ex: plain, source: src });
+            track('stack_read', { ok: 1, src });
+          } else {
+            await window.BillboxDB.stackPatch(id, { status: 'fail', ex: plain && !plain.notBill ? plain : null, note: plain && plain.notBill ? 'notbill' : '' });
+            track('stack_read', { ok: 0, src });
+          }
+          this.renderStack();
+          this.renderStackBadge();
+        }
+        // 다 읽었고 정리함을 보고 있으면 바로 확인 시작(톡톡 리듬)
+        if (!$('stack-sheet').hidden && $('edit-sheet').hidden) this.nextConfirm();
+      } finally {
+        this.pumping = false;
+      }
+    },
+
+    /** 폰 안 읽기(AI 끔·실패·한도 초과일 때) */
+    async readLocalPlain(blob) {
+      const res = await window.BillboxOCR.readBill(blob, () => {}, (texts) => {
+        const ex = window.BillboxExtract.extract(texts);
+        return !!(ex.amount && ex.due && ex.sure.amount && ex.sure.due);
+      });
+      const ex = window.BillboxExtract.extract(res.texts);
+      ex.accounts = window.BillboxExtract.accounts(res.texts);
+      ex.usage = window.BillboxExtract.usage(res.texts);
+      ex.source = 'local';
+      return this.exToPlain(ex);
+    },
+    exToPlain(ex) {
+      return {
+        source: ex.source || 'ai',
+        kindId: ex.kind ? ex.kind.id : null,
+        name: ex.name || '',
+        tag: ex.tag || '',
+        amount: ex.amount != null ? ex.amount : null,
+        due: ex.due || null,
+        altAmounts: ex.altAmounts || [],
+        altDues: ex.altDues || [],
+        sure: ex.sure || { amount: false, due: false },
+        accounts: ex.accounts || [],
+        usage: ex.usage || null,
+        amountLate: ex.amountLate || null,
+      };
+    },
+    plainToEx(p) {
+      return Object.assign({}, p, { kind: p.kindId ? K.byId(p.kindId) : null, altAmounts: p.altAmounts || [], altDues: p.altDues || [], sure: p.sure || { amount: false, due: false }, accounts: p.accounts || [] });
+    },
+    /** 저장용 사진(1700px)으로 줄이기 */
+    async shrinkPhoto(blob) {
+      const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      const sc = Math.min(1, 1700 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(bmp.width * sc));
+      c.height = Math.max(1, Math.round(bmp.height * sc));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      const out = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+      c.width = c.height = 0;
+      return out || blob;
+    },
+
+    /** 정리함 카드 1장 → 확인 화면(사진 썸네일 + 읽은 값, 맞으면 저장 → 다음 장) */
+    async openConfirm(stackId) {
+      const rec = await window.BillboxDB.stackGet(stackId);
+      if (!rec) return this.renderStack(true);
+      const ex = this.plainToEx(rec.ex || { sure: { amount: false, due: false }, altAmounts: [], altDues: [], accounts: [] });
+      this.pendingSource = rec.blob;
+      this.pendingPhoto = await this.shrinkPhoto(rec.blob).catch(() => rec.blob);
+      this.hideSheetNow($('stack-sheet'));
+      this.openEdit('photo', ex);
+      this.confirmStack = stackId;
+      if (ex.name) {
+        $('f-name').value = ex.name;
+        $('f-name').dataset.auto = '0';
+      }
+      const rows = await window.BillboxDB.stackAll();
+      const left = rows.filter(([i]) => i !== stackId).length;
+      if (left > 0) $('edit-title').textContent = `읽은 내용, 맞나요? (남은 ${left}장)`;
+    },
+    async nextConfirm() {
+      this.renderStackBadge();
+      const rows = await window.BillboxDB.stackAll();
+      const next = rows.find(([, r]) => r.status === 'read') || rows.find(([, r]) => r.status === 'fail');
+      if (next) return this.openConfirm(next[0]);
+      if (!rows.length) {
+        if (!$('stack-sheet').hidden) this.closeSheet($('stack-sheet'));
+        this.showToast('정리 끝! 📬 마감은 알림이 챙길게요', { duration: 3500 });
+      } else this.openStack();
+    },
+
+    /** 자동이체는 날짜가 지나면 자동 "냈어요"(통장에서 알아서 나가니까 누를 필요 없음) */
+    autopayRoll() {
+      let n = 0;
+      for (const b of S.load()) {
+        if (!b.auto) continue;
+        let cur = S.get(b.id);
+        let guard = 0;
+        while (cur && !cur.paidAt && S.daysLeft(cur.due) < 0 && guard++ < 12) {
+          S.markPaid(cur.id);
+          cur = S.get(b.id);
+          n++;
+        }
+      }
+      if (n) {
+        this.mirror();
+        window.BillboxPush.sync();
+        track('autopay_roll', { n });
+      }
+      return n;
     },
 
     async scan(file, from) {
@@ -796,6 +1085,7 @@
         $('f-due').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         this.updateRepeatHint();
       });
+      $('f-auto').addEventListener('change', () => this.updateRepeatHint());
       $('f-due').addEventListener('change', () => {
         this.updateRepeatHint();
         this.setOk('due', true);
@@ -932,7 +1222,7 @@
       const repeat = ($('f-repeat').querySelector('.is-on') || { dataset: { repeat: 'none' } }).dataset.repeat;
       const months = $('f-months-wrap').hidden ? null : Array.from($('f-months').querySelectorAll('.is-on')).map((b) => Number(b.dataset.month));
       const amt = $('f-amount').value.replace(/[^\d]/g, '');
-      return { kindId, name: $('f-name').value.trim(), amount: amt ? Number(amt) : null, due: $('f-due').value, repeat, months: months && months.length ? months : null, note: $('f-note').value.trim(), account: $('f-account').value.trim() };
+      return { kindId, name: $('f-name').value.trim(), amount: amt ? Number(amt) : null, due: $('f-due').value, repeat, months: months && months.length ? months : null, note: $('f-note').value.trim(), account: $('f-account').value.trim(), auto: $('f-auto').checked };
     },
 
     updateRepeatHint() {
@@ -944,7 +1234,11 @@
         return;
       }
       const next = S.nextDue({ due: f.due, repeat: f.repeat, months: f.months });
-      hint.textContent = next ? `냈어요를 누르면 다음 마감 ${fmtDate(next)}을 미리 잡아 둬요. 고지서를 안 찍어도 알려 드려요.` : '';
+      hint.textContent = f.auto
+        ? `자동이체라 전날 "잔액 확인" 알림만 오고, 날짜가 지나면 자동 완료돼요. 다음은 ${next ? fmtDate(next) : '-'}.`
+        : next
+          ? `냈어요를 누르면 다음 마감 ${fmtDate(next)}을 미리 잡아 둬요. 고지서를 안 찍어도 알려 드려요.`
+          : '';
     },
 
     /**
@@ -955,6 +1249,7 @@
       this.editMode = mode;
       this.repeatTouched = false;
       this.similar = null;
+      this.confirmStack = null;
       const form = $('edit-form');
       form.reset();
       $('f-id').value = '';
@@ -970,6 +1265,7 @@
       $('alt-accounts').innerHTML = '';
       $('flag-account').hidden = true;
       $('edit-usage').hidden = true;
+      $('f-auto').checked = false;
       this.editUsage = null;
       $('edit-thumb').hidden = true;
       this.editPhoto = null;
@@ -1049,6 +1345,7 @@
         $('f-due').value = data.due;
         $('f-note').value = data.note || '';
         $('f-account').value = data.account || '';
+        $('f-auto').checked = !!data.auto;
         if (data.account && !data.accountChecked) {
           // 확인 안 한 계좌는 고치기 화면에서도 ✓로 확인할 수 있게
           const ab = document.querySelector('[data-ok="account"]');
@@ -1166,6 +1463,12 @@
       this.closeSheet($('edit-sheet'));
       this.render();
       window.BillboxPush.sync();
+      if (this.confirmStack) {
+        // 정리함에서 온 장이면: 그 장은 끝 → 다음 장으로 톡톡
+        const sid = this.confirmStack;
+        this.confirmStack = null;
+        window.BillboxDB.stackDel(sid).then(() => this.nextConfirm());
+      }
       const n = S.daysLeft(item.due);
       const when = n < 0 ? '이미 지났어요! 서둘러요' : n === 0 ? '오늘까지예요!' : `${n}일 남았어요`;
       const pushOn = S.settings().push === 'on';
@@ -1379,6 +1682,13 @@
           this.showToast('시험 알림을 보내지 못했어요');
         }
       });
+      $('s-ai').addEventListener('change', () => {
+        const v = $('s-ai').value === 'off' ? 'off' : 'on';
+        S.saveSettings({ aiRead: v });
+        track('settings_ai', { on: v === 'on' ? 1 : 0 });
+        if (v === 'off') window.BillboxOCR.warmup();
+        this.showToast(v === 'on' ? 'AI 읽기를 켰어요 — 빠르고 정확해요' : '껐어요. 사진은 폰 밖으로 안 나가요(읽기는 느려져요)', { duration: 3500 });
+      });
       $('s-photo').addEventListener('change', async () => {
         S.saveSettings({ photoKeep: $('s-photo').value });
         track('settings_photo', { keep: $('s-photo').value });
@@ -1425,6 +1735,7 @@
 
     renderSettings() {
       const s = S.settings();
+      $('s-ai').value = s.aiRead === 'off' ? 'off' : 'on';
       $('s-hour').value = String(s.remindHour);
       $('s-photo').value = s.photoKeep || 'paid30';
       window.BillboxDB.allPhotos().then((a) => ($('photo-count').textContent = `지금 ${a.length}장 저장됨`));

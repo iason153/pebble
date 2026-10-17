@@ -34,16 +34,18 @@ module.exports = async (req, res) => {
     for (const it of dev.items || []) {
       let kind = null;
       let dleft = null;
-      for (const n of days) if (addDays(now.date, n) === it.due) {
-        kind = n === 0 ? '오늘까지!' : `${n}일 남았어요`;
+      // 자동이체는 직접 낼 게 아니라 "통장에 돈이 있나"가 걱정 → 전날·당일만, 늦음 잔소리 없음
+      const itDays = it.auto ? [1, 0] : days;
+      for (const n of itDays) if (addDays(now.date, n) === it.due) {
+        kind = it.auto ? (n === 0 ? '오늘 자동이체 · 잔액 확인' : '내일 자동이체 · 잔액 확인') : n === 0 ? '오늘까지!' : `${n}일 남았어요`;
         dleft = n;
       }
-      if (!kind && addDays(now.date, -1) === it.due) {
+      if (!kind && !it.auto && addDays(now.date, -1) === it.due) {
         kind = '어제가 마감이었어요. 늦었지만 지금 내면 독촉장은 막아요';
         dleft = -1;
       }
       if (!kind) continue;
-      sigs.push({ id: it.id, name: it.name || '', days: dleft });
+      sigs.push({ id: it.id, name: it.name || '', days: dleft, auto: it.auto ? 1 : 0 });
       const stamp = `${it.id}:${it.due}:${kind}`;
       if (sent[stamp]) continue;
       sent[stamp] = now.date;

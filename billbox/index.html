@@ -67,15 +67,18 @@
     <button type="button" class="summary__more" id="btn-money">💰 이번 달 나갈 돈 ›</button>
   </section>
 
+  <!-- 정리함(찍어 둔 고지서) 배지 -->
+  <button type="button" class="stackbar" id="btn-stack" hidden>🗂️ 정리함</button>
+
   <!-- 첫 안내 -->
   <section class="intro card card--tilt" id="intro" hidden>
     <h2>고지서, 찍기만 하세요</h2>
     <ol class="intro__steps">
-      <li><b>📷 찍기</b> 종이 고지서도, 카톡 고지서 캡처도</li>
+      <li><b>📷 찍기</b> 몇 장이든 찰칵찰칵 — 종이는 바로 버리세요</li>
       <li><b>👀 확인</b> 무엇을·얼마·언제까지, 읽은 걸 한 번 확인</li>
       <li><b>🔔 알림</b> 마감 3일 전·당일에 톡 — 독촉장 안 받게</li>
     </ol>
-    <p class="intro__note">사진은 폰 밖으로 나가지 않아요. 저장도 이 폰에만 돼요 — <b>폰을 바꾸면 사라지니</b> 설정의 <b>백업</b>을 써 주세요.</p>
+    <p class="intro__note">사진은 AI가 읽는 순간에만 암호화되어 서버를 거치고 <b>읽는 즉시 삭제</b>돼요(설정에서 끄면 폰 안에서만 읽어요). 저장은 이 폰에만 돼요 — <b>폰을 바꾸면 사라지니</b> 설정의 <b>백업</b>을 써 주세요.</p>
     <button type="button" class="btn btn--block" id="btn-intro-ok">알겠어요</button>
   </section>
 
@@ -105,7 +108,7 @@
             <ul>
               <li>고지서 전체가 아니라 <b>금액과 납부기한이 있는 부분</b>만 크게 찍어도 돼요.</li>
               <li>카톡·앱 고지서는 <b>화면 캡처</b>를 앨범에서 고르면 돼요.</li>
-              <li>보통 5~15초 걸려요. <b>처음 한 번</b>은 한글 사전(약 10MB)을 내려받아 1분쯤 더 걸려요. 읽는 동안 화면을 켜 두세요.</li>
+              <li>보통 2~5초면 읽어요. (설정에서 AI 읽기를 끄면 폰에서 읽어 5~15초 걸리고, 처음 한 번 한글 사전 10MB를 받아요)</li>
               <li>잘못 읽으면 다음 화면에서 바로 고칠 수 있어요. 못 읽어도 직접 입력하면 돼요.</li>
             </ul>
           </details>
@@ -120,7 +123,7 @@
           <div class="notice__btns"><button type="button" class="btn btn--sm btn--brass" id="btn-retry-tap" hidden>📍 사진에서 직접 콕 찍기</button><button type="button" class="btn btn--sm" id="btn-retry-manual">✏️ 그냥 직접 입력</button></div>
         </div>
         <label class="btn btn--big btn--brass btn--block file-btn" id="lbl-camera-app">📸 고지서 찍기<input type="file" id="file-camera" accept="image/*" capture="environment"></label>
-        <label class="btn btn--big btn--block file-btn">🖼️ 앨범·캡처에서 고르기<input type="file" id="file-album" accept="image/*"></label>
+        <label class="btn btn--big btn--block file-btn">🖼️ 앨범·캡처에서 고르기<input type="file" id="file-album" accept="image/*" multiple></label>
         <button type="button" class="btn btn--big btn--block" id="btn-paste-open" aria-expanded="false">📋 카톡·문자 글 붙여넣기</button>
         <div class="paste card" id="paste-box" hidden>
           <p class="small"><b>카톡·문자로 온 고지서</b>는 글을 길게 눌러 <b>복사</b>한 뒤 여기에 붙여 넣으세요. 사진보다 훨씬 정확해요. (카톡에서 <b>공유 → Billbox</b>로 보내도 돼요)</p>
@@ -128,7 +131,7 @@
           <textarea id="paste-text" rows="6" placeholder="예) [Web발신] 3월 수도요금 23,450원 / 납기 3/31 / 농협 123-45-678901"></textarea>
           <div class="paste__btns"><button type="button" class="btn" id="btn-paste-clip">📥 붙여넣기</button><button type="button" class="btn btn--brass" id="btn-paste-read">이 글 읽기</button></div>
         </div>
-        <p class="muted small">사진은 폰 밖으로 나가지 않아요. 서버에도 올리지 않아요.</p>
+        <p class="muted small">사진은 AI가 읽는 순간에만 서버를 거치고 <b>읽는 즉시 삭제</b>돼요. 저장은 이 폰에만.</p>
       </div>
       <div id="scan-cam" hidden>
         <div class="cam">
@@ -153,6 +156,38 @@
         </div>
         <button type="button" class="btn btn--block btn--ghost" id="btn-scan-cancel">그만두고 직접 입력</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 정리함(찍어 둔 고지서) ===== -->
+<div id="stack-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="stack-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="stack-title">🗂️ 정리함</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet__scroll">
+      <p class="muted small">찍은 사진은 전부 여기 있어요 — <b>종이는 버리셔도 돼요.</b> 읽기가 끝나면 하나씩 확인해 주세요.</p>
+      <div id="stack-list"></div>
+      <button type="button" id="btn-stack-go" class="btn btn--big btn--brass btn--block" hidden>✅ 하나씩 확인하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== AI 읽기 동의(처음 한 번) ===== -->
+<div id="ai-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="ai-title">
+  <div class="sheet__panel">
+    <div class="sheet__head"><h2 id="ai-title">사진, 어떻게 읽을까요?</h2></div>
+    <div class="sheet__scroll">
+      <div class="card aichoice">
+        <p><b>🚀 AI 읽기 (권장)</b></p>
+        <p class="small">사진을 암호화 연결로 보내 AI(Claude)가 읽어요. 사진은 <b>읽는 즉시 삭제</b>되고 어디에도 저장되지 않아요. 읽은 금액·이름도 서버에 남지 않아요. 2~5초, 색칸 고지서도 잘 읽어요.</p>
+      </div>
+      <div class="card aichoice">
+        <p><b>📵 폰에서만 읽기</b></p>
+        <p class="small">사진이 폰 밖으로 전혀 안 나가요. 대신 5~15초 걸리고, 색칸·작은 글씨 고지서는 잘 못 읽어요.</p>
+      </div>
+      <button type="button" id="btn-ai-on" class="btn btn--big btn--brass btn--block">🚀 AI로 읽기 (권장)</button>
+      <button type="button" id="btn-ai-off" class="btn btn--block">📵 폰에서만 읽기</button>
+      <p class="muted small" style="text-align:center">설정에서 언제든 바꿀 수 있어요.</p>
     </div>
   </div>
 </div>
@@ -214,6 +249,7 @@
               <div class="chips chips--sm" id="f-months"></div>
             </div>
           </div>
+          <label class="autopay"><input type="checkbox" id="f-auto"> 🏦 자동이체로 나가요 <small>— 전날 "잔액 확인" 알림만, 날짜가 지나면 자동 완료</small></label>
           <p class="muted small" id="repeat-hint"></p>
         </fieldset>
         <fieldset class="field" id="field-account" data-check="account">
@@ -280,6 +316,12 @@
   <div class="sheet__panel">
     <div class="sheet__head"><h2 id="settings-title">설정</h2><button type="button" class="btn btn--sm btn--ghost" data-close aria-label="닫기">✕</button></div>
     <div class="sheet__scroll">
+      <section class="card">
+        <h3>🤖 AI 읽기</h3>
+        <p class="muted small">사진을 암호화 연결로 보내 AI가 읽어요(2~5초). 사진은 읽는 즉시 삭제되고 어디에도 저장되지 않아요. 끄면 폰 안에서만 읽어요(5~15초, 색칸 고지서에 약함).</p>
+        <select id="s-ai"><option value="on">켬 (권장)</option><option value="off">끔 — 사진을 폰 밖으로 안 보냄</option></select>
+      </section>
+
       <section class="card">
         <h3>🔔 푸시 알림</h3>
         <p class="muted small" id="push-desc">마감 3일 전·당일 아침에 이 폰으로 알림이 와요. 서버에는 <b>이름과 마감일만</b> 올라가고 금액은 폰에만 있어요.</p>
@@ -353,6 +395,7 @@
 <script src="js/viewer.js"></script>
 <script src="js/share.js"></script>
 <script src="js/install.js"></script>
+<script src="js/ai.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
