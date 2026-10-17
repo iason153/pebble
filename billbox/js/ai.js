@@ -103,8 +103,56 @@ window.BillboxAI = (function () {
       accounts,
       usage: d.usage && d.usage.value ? { value: d.usage.value, unit: d.usage.unit || '' } : null,
       amountLate: d.amountLate || null,
+      autopay: d.autopay === true,
     };
   }
 
-  return { available, mode, read };
+  /** 콕 찍기: 누른 곳 주변을 잘라 AI에게 그 값 하나만 묻는다 */
+  async function readField(blob, nx, ny, field) {
+    if (!available() || mode() !== 'on') return { fallback: true, reason: 'off' };
+    let image;
+    try {
+      const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      const W = bmp.width;
+      const H = bmp.height;
+      // 누른 곳을 가운데로, 너비 70%·높이(짧은 변의 24%) 조각 — 이름표까지 같이 보이게 넉넉히
+      const bw = Math.min(W, Math.max(W * 0.7, 800));
+      const bh = Math.min(H, Math.max(Math.min(W, H) * 0.24, 420));
+      const x0 = Math.max(0, Math.min(W - bw, nx * W - bw / 2));
+      const y0 = Math.max(0, Math.min(H - bh, ny * H - bh / 2));
+      const c = document.createElement('canvas');
+      const sc = Math.min(1, 1568 / Math.max(bw, bh));
+      c.width = Math.round(bw * sc);
+      c.height = Math.round(bh * sc);
+      c.getContext('2d').drawImage(bmp, x0, y0, bw, bh, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      const out = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.9));
+      c.width = c.height = 0;
+      const buf = await out.arrayBuffer();
+      let bin = '';
+      const u8 = new Uint8Array(buf);
+      for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+      image = btoa(bin);
+    } catch (_) {
+      return { fallback: true, reason: 'encode' };
+    }
+    try {
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 30000);
+      const res = await fetch(cfg().API_BASE + '/read', {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceKey: window.BillboxPush.deviceKey(), image, mediaType: 'image/jpeg', field }),
+      });
+      clearTimeout(to);
+      if (!res.ok) return { fallback: true, reason: res.status === 429 ? 'limit' : 'server' };
+      const j = await res.json();
+      return { value: j.value != null ? j.value : null };
+    } catch (_) {
+      return { fallback: true, reason: 'network' };
+    }
+  }
+
+  return { available, mode, read, readField };
 })();

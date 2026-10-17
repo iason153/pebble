@@ -413,8 +413,17 @@ details.tips-box summary::-webkit-details-marker { display: none; }
 .autopay small { font-weight: 600; color: #555; }
 .autopay input { width: 20px; height: 20px; accent-color: var(--green); vertical-align: -4px; margin-right: 4px; }
 
-.item--fixed { background: var(--paper, #faf7ef); border-style: dashed; }
-.item--fixed .item__meta { color: #555; }
-.group__cap { font-size: .85rem; color: #666; margin: -2px 0 10px 2px; word-break: keep-all; }
+/* 고정지출 장부: 고지서 카드와 완전히 다른 납작한 목록 */
+.fixedbox { margin: 18px 0 8px; background: var(--mint); border: 2px solid rgba(31,77,58,.35); border-radius: 12px; padding: 0 12px; }
+.fixedbox summary { list-style: none; cursor: pointer; padding: 12px 2px; font-weight: 900; color: var(--pine, #1F4D3A); display: flex; align-items: center; gap: 6px; }
+.fixedbox summary::-webkit-details-marker { display: none; }
+.fixedbox__arrow { margin-left: auto; transition: transform .15s; }
+.fixedbox[open] .fixedbox__arrow { transform: rotate(180deg); }
+.fixedbox__cap { font-size: .84rem; color: #4a5a50; margin: 0 2px 8px; word-break: keep-all; }
+.frow { display: flex; align-items: center; gap: 8px; padding: 9px 2px; border-top: 1px dashed rgba(31,77,58,.3); font-size: .95rem; cursor: pointer; }
+.frow__emoji { flex: none; font-size: 1rem; }
+.frow__name { font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow__meta { color: #5a6a60; font-size: .82rem; flex: none; }
+.frow__amt { margin-left: auto; font-weight: 800; color: #2c4a3c; flex: none; }
 .aichoice { margin-bottom: 10px; }
 #s-ai { width: 100%; }

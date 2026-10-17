@@ -58,6 +58,13 @@
       this.checkShared();
       this.renderStackBadge();
       this.pumpStack();
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          // 화면을 껐다 켜거나 다른 앱에 갔다 오면, 그 순간부터 이어서 읽는다
+          this.pumpStack();
+          this.renderStackBadge();
+        }
+      });
       track('open', { items: S.load().length });
     },
 
@@ -231,7 +238,8 @@
       const list = $('list');
       let st = null;
       list.addEventListener('pointerdown', (e) => {
-        const el = e.target.closest('.item[data-item]');
+        const el = e.target.closest('.item[data-item], .frow[data-item]');
+        if (el && el.classList.contains('frow')) return (st = null);
         if (!el || el.classList.contains('item--done') || el.classList.contains('item--fixed') || el.classList.contains('item--auto') || e.target.closest('button')) return;
         st = { el, x: e.clientX, y: e.clientY, dx: 0, on: false };
       });
@@ -289,12 +297,12 @@
           const nx = S.skip(it.id);
           window.BillboxDB.delPhoto(it.id);
           track('skip_once', { kind: it.kindId });
-          this.showToast(nx ? `이번 것은 지웠어요. 다음은 ${fmtDate(nx.due)} 예상으로 남겨 뒀어요` : '지웠어요', { duration: 4000 });
+          this.showToast(nx ? '이번 고지서만 지웠어요. 고정지출 장부에는 남아 있어요' : '지웠어요', { duration: 4000 });
         } else if (b.dataset.del === 'all') {
           S.remove(it.id);
           window.BillboxDB.delPhoto(it.id);
           track('delete', { kind: it.kindId, all: 1 });
-          this.showToast(`"${it.name || k.label}"을(를) 반복까지 모두 지웠어요`, { duration: 3500 });
+          this.showToast(`"${it.name || k.label}" 고정지출을 통째로 없앴어요`, { duration: 3500 });
         } else return this.closeSheet($('del-sheet'));
         this.delTarget = null;
         this.render();
@@ -312,9 +320,9 @@
       const rep = it.repeat && it.repeat !== 'none' && !it.paidAt;
       $('del-title').textContent = `"${it.name || k.label}" 지우기`;
       $('del-body').innerHTML = rep
-        ? `<p style="margin-bottom:12px">${esc(K.repeatById(it.repeat).label)} 나가는 항목이에요. 어떻게 지울까요?</p>
-           <button type="button" class="btn btn--big btn--block btn--stack" data-del="skip" style="margin-bottom:10px">이번 것만 지우기<span class="small muted" style="font-weight:600">다음 차례(${fmtDate(S.nextDue(it) || it.due)})는 남겨요</span></button>
-           <button type="button" class="btn btn--big btn--block btn--danger btn--stack" data-del="all" style="margin-bottom:10px">반복까지 모두 지우기<span class="small muted" style="font-weight:600">이 항목·사진·낸 기록이 다 없어져요</span></button>
+        ? `<p style="margin-bottom:12px">${esc(K.repeatById(it.repeat).label)} 나가는 고정지출이에요. 어떻게 할까요?</p>
+           <button type="button" class="btn btn--big btn--block btn--stack" data-del="skip" style="margin-bottom:10px">이번 고지서만 지우기<span class="small muted" style="font-weight:600">고정지출 장부에는 남아요 · 다음 알림 ${fmtDate(S.nextDue(it) || it.due)}</span></button>
+           <button type="button" class="btn btn--big btn--block btn--danger btn--stack" data-del="all" style="margin-bottom:10px">고정지출 자체를 없애기<span class="small muted" style="font-weight:600">알림·사진·낸 기록까지 전부 끝</span></button>
            <button type="button" class="btn btn--block btn--ghost" data-del="cancel">그만두기</button>`
         : `<p style="margin-bottom:12px">이 항목과 저장된 고지서 사진이 지워져요.</p>
            <button type="button" class="btn btn--big btn--block btn--danger" data-del="all" style="margin-bottom:10px">지우기</button>
@@ -411,25 +419,30 @@
       const group = (title, items, badgeCls) => (items.length ? `<section class="group"><div class="group__head">${title}<span class="badge ${badgeCls}">${items.length}</span></div>${items.map(card).join('')}</section>` : '');
 
       let html = group('🚨 마감 지남', g.overdue, 'badge--red') + group('📌 이번 주', g.week, 'badge--brass') + group('📅 다음에', g.later, '');
+      // 고정지출: 고지서 카드와 헷갈리지 않게, 접히는 "장부" 모양(한 줄짜리)
       const fixedRow = (it) => {
         const k = K.byId(it.kindId);
-        const n = S.daysLeft(it.due);
         const day = it.day || Number(it.due.slice(8, 10));
-        return `<div class="item item--fixed" role="button" tabindex="0" data-item="${it.id}">
-          <div class="item__emoji" aria-hidden="true">${k.emoji}</div>
-          <div>
-            <div class="item__name">${esc(it.name || k.label)} ${it.auto ? '<span class="badge badge--mint">🏦 자동이체</span>' : ''}</div>
-            <div class="item__meta">${esc(K.repeatById(it.repeat).label)} · ${day}일쯤 · ${it.amount != null ? `지난번 약 ${won(it.amount)}원` : '금액은 고지서 오면'}</div>
-          </div>
-          <div class="item__right"><span class="dday dday--far">D-${n}</span></div>
+        return `<div class="frow" role="button" tabindex="0" data-item="${it.id}">
+          <span class="frow__emoji">${k.emoji}</span>
+          <span class="frow__name">${esc(it.name || k.label)}</span>
+          <span class="frow__meta">${esc(K.repeatById(it.repeat).label)} ${day}일쯤${it.auto ? ' · 🏦자동' : ''}</span>
+          <span class="frow__amt">${it.amount != null ? `약 ${won(it.amount)}원` : '-'}</span>
         </div>`;
       };
-      if (fixedUp.length) html += `<section class="group"><div class="group__head">📌 고정지출 · 때 되면 알려 드려요<span class="badge">${fixedUp.length}</span></div><p class="group__cap">고지서를 찍으면 실제 금액으로 채워져요. 자동이체는 전날 "잔액 확인" 알림이 와요.</p>${fixedUp.map(fixedRow).join('')}</section>`;
+      if (fixedUp.length) {
+        const sum = fixedUp.reduce((a, b) => a + (b.amount || 0), 0);
+        html += `<details class="fixedbox" id="fixedbox"${this.fixedOpen ? ' open' : ''}>
+          <summary>📌 고정지출 장부 <b>${fixedUp.length}건</b>${sum ? ` · 약 ${won(sum)}원` : ''}<span class="fixedbox__arrow">▾</span></summary>
+          <p class="fixedbox__cap">여기는 고지서가 아니라 <b>등록된 반복 지출 목록</b>이에요. 때 되면 알림이 가고, 고지서를 찍으면 위에 실제 금액으로 올라와요.</p>
+          ${fixedUp.map(fixedRow).join('')}
+        </details>`;
+      }
       if (!html) {
         html = `<div class="empty card card--tilt"><div class="empty__pic">📬</div><p><b>아직 비어 있어요.</b></p><p class="muted">아래 <b>고지서 찍기</b>를 눌러 보세요. 넷플릭스 같은 구독은 <b>직접 입력</b>으로.</p><button type="button" class="btn btn--sm" data-sample-add style="margin-top:10px">👀 예시 넣어 보기</button></div>`;
       }
       if (S.load().some((x) => x.sample)) html = `<div class="sample-bar"><span>지금 보이는 건 예시예요. 마음껏 눌러 보세요.</span><button type="button" class="btn btn--sm" data-sample-del>예시 지우기</button></div>` + html;
-      html += `<p class="muted small" style="text-align:center;margin:8px 0 0">카드를 오른쪽으로 밀면 <b>냈어요</b>예요(지우기 아님) 👉 지우기는 카드를 눌러 맨 아래에서</p>`;
+      if (g.overdue.length + g.week.length + g.later.length) html += `<p class="muted small" style="text-align:center;margin:8px 0 0">카드를 오른쪽으로 밀면 <b>냈어요</b>예요(지우기 아님) 👉 지우기는 카드를 눌러 맨 아래에서</p>`;
       if (g.done.length) {
         html += `<details class="done"><summary>낸 것 ${g.done.length}건</summary>${g.done
           .map((it) => {
@@ -439,6 +452,8 @@
           .join('')}</details>`;
       }
       list.innerHTML = html;
+      const fb = $('fixedbox');
+      if (fb) fb.addEventListener('toggle', () => (this.fixedOpen = fb.open));
       this.mirror();
       list.querySelectorAll('[data-item]').forEach((el) =>
         el.addEventListener('keydown', (e) => {
@@ -458,7 +473,7 @@
       this.render();
       window.BillboxPush.sync();
       track('paid', { kind: it.kindId, repeat: it.repeat });
-      const msg = it.paidAt ? '냈어요! 🎉' : `냈어요! 다음은 ${fmtDate(it.due)}로 잡아 뒀어요`;
+      const msg = it.paidAt ? '냈어요! 🎉' : it.repeat && it.repeat !== 'none' ? `냈어요! 다음 차례는 고정지출 장부에 있어요 (${fmtDate(it.due)}쯤 알림)` : '냈어요! 🎉';
       this.showToast(msg, {
         actionLabel: '되돌리기',
         duration: 5000,
@@ -869,6 +884,7 @@
       ex.accounts = window.BillboxExtract.accounts(res.texts);
       ex.usage = window.BillboxExtract.usage(res.texts);
       ex.source = 'local';
+      ex.autopay = /자동\s*이체|자동\s*납부|출금\s*예정|인출\s*예정/.test(res.texts.join(' '));
       return this.exToPlain(ex);
     },
     exToPlain(ex) {
@@ -885,6 +901,7 @@
         accounts: ex.accounts || [],
         usage: ex.usage || null,
         amountLate: ex.amountLate || null,
+        autopay: !!ex.autopay,
       };
     },
     plainToEx(p) {
@@ -1319,6 +1336,10 @@
           $('edit-usage').textContent = `📊 사용량 ${data.usage.value.toLocaleString('ko-KR')}${data.usage.unit} 읽음 — 다음 고지서와 비교해 드려요 (시험 기능)`;
           $('edit-usage').hidden = false;
         }
+        if (data.autopay) {
+          // 고지서에 "자동이체·출금예정" 표시가 있으면 자동이체로 미리 체크(사용자가 끌 수 있음)
+          $('f-auto').checked = true;
+        }
         if (data.tag) {
           // 독촉·압류예고 = 밀린 돈을 한 번 내는 고지서. 매달 오는 정기 고지서와 따로, 반복 없이
           this.setRepeat('none', null);
@@ -1383,9 +1404,18 @@
           this.tapBusy = true;
           window.BillboxViewer.setBusy('읽는 중… 잠깐만요');
           let r = null;
-          try {
-            r = await window.BillboxOCR.readRegion(src, nx, ny, field, this.tapHints && this.tapHints[field]);
-          } catch (_) {}
+          // AI가 켜져 있으면 누른 곳 조각을 AI로(수도요금 같은 색칸도 읽힘). 안 되면 폰 엔진으로
+          if (window.BillboxAI.mode() === 'on') {
+            try {
+              const a = await window.BillboxAI.readField(src, nx, ny, field);
+              if (!a.fallback) r = a;
+            } catch (_) {}
+          }
+          if (!r || r.value == null) {
+            try {
+              r = await window.BillboxOCR.readRegion(src, nx, ny, field, this.tapHints && this.tapHints[field]);
+            } catch (_) {}
+          }
           this.tapBusy = false;
           const v = r && r.value;
           track('tap_read', { field, ok: v != null ? 1 : 0 });
