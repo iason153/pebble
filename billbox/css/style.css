@@ -427,3 +427,7 @@ details.tips-box summary::-webkit-details-marker { display: none; }
 .frow__amt { margin-left: auto; font-weight: 800; color: #2c4a3c; flex: none; }
 .aichoice { margin-bottom: 10px; }
 #s-ai { width: 100%; }
+
+/* 메모 표시 */
+.item__note { font-size: .84rem; color: #6b5b3e; background: var(--brass-lt); display: inline-block; padding: 1px 8px; border-radius: 8px; margin-top: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow__note { font-weight: 700; color: #6b5b3e; font-size: .8rem; }

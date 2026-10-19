@@ -178,19 +178,32 @@ window.BillboxStore = (function () {
     return update(id, { history: rest, due: last.due, amount: last.amount, usage: last.usage || null, tag: last.tag || '', estimated: !!last.estimated, paidAt: null });
   }
 
-  /** 같은 종류의 반복 항목이 있고 마감이 ±45일 안이면 "같은 것"으로 본다(고지서를 다시 찍었을 때 중복 방지) */
-  function findSimilar(kindId, due, tag) {
+  /** 같은 종류의 반복 항목이 있고 마감이 ±45일 안이면 "같은 것"으로 본다(고지서를 다시 찍었을 때 중복 방지).
+   *  같은 종류 고지서가 여러 집으로 오는 경우(두 세대 등)를 위해 계좌·메모(호수)로 구분한다. */
+  function findSimilar(kindId, due, tag, opts) {
     if (!kindId || kindId === 'etc') return null;
     const a = parse(due);
-    return (
-      load().find((x) => {
-        // 독촉·압류예고(밀린 돈)와 매달 오는 정기 고지서는 서로 다른 것으로 본다
-        if (x.kindId !== kindId || x.paidAt || (x.tag || '') !== (tag || '')) return false;
-        const b = parse(x.due);
-        const diff = Math.abs(Date.UTC(a.y, a.m - 1, a.d) - Date.UTC(b.y, b.m - 1, b.d)) / 86400000;
-        return diff <= 45;
-      }) || null
-    );
+    const o = opts || {};
+    const digits = (v) => String(v || '').replace(/[^\d]/g, '');
+    const cands = load().filter((x) => {
+      // 독촉·압류예고(밀린 돈)와 매달 오는 정기 고지서는 서로 다른 것으로 본다
+      if (x.kindId !== kindId || x.paidAt || (x.tag || '') !== (tag || '')) return false;
+      const b = parse(x.due);
+      const diff = Math.abs(Date.UTC(a.y, a.m - 1, a.d) - Date.UTC(b.y, b.m - 1, b.d)) / 86400000;
+      if (diff > 45) return false;
+      // 납부 계좌가 둘 다 있는데 다르면 다른 집 고지서
+      if (o.account && x.account && digits(o.account) !== digits(x.account)) return false;
+      // 메모(호수·지번)가 둘 다 있는데 서로 안 맞으면 다른 집
+      if (o.unit && x.note && !x.note.includes(o.unit) && !String(o.unit).includes(x.note.trim())) return false;
+      return true;
+    });
+    if (cands.length <= 1) return cands[0] || null;
+    // 여럿이면: 메모가 맞는 것 > 계좌가 맞는 것 > 마감이 가까운 것
+    const byUnit = o.unit ? cands.find((x) => x.note && x.note.includes(o.unit)) : null;
+    if (byUnit) return byUnit;
+    const byAcct = o.account ? cands.find((x) => x.account && digits(x.account) === digits(o.account)) : null;
+    if (byAcct) return byAcct;
+    return cands.sort((x, y) => (x.due < y.due ? -1 : 1))[0];
   }
 
   /** 홈 화면용 묶음 */

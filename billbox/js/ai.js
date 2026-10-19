@@ -21,19 +21,16 @@ window.BillboxAI = (function () {
     return !!cfg().API_BASE && mode() !== 'off' && navigator.onLine !== false;
   }
 
-  /** 사진을 긴 변 1568px JPEG로 줄여 base64로 (AI가 보기 좋은 크기 = 비용·속도 최적) */
-  async function toB64(blob) {
-    const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-    const max = 1568;
-    const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  /** 비트맵의 (x0,y0,w,h) 조각을 긴 변 1568px JPEG base64로 */
+  async function cropB64(bmp, x0, y0, w, h) {
+    const sc = Math.min(1, 1568 / Math.max(w, h));
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(bmp.width * sc));
-    c.height = Math.max(1, Math.round(bmp.height * sc));
+    c.width = Math.max(1, Math.round(w * sc));
+    c.height = Math.max(1, Math.round(h * sc));
     const ctx = c.getContext('2d');
     ctx.imageSmoothingQuality = 'medium';
-    ctx.drawImage(bmp, 0, 0, c.width, c.height);
-    if (bmp.close) bmp.close();
-    const out = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
+    ctx.drawImage(bmp, x0, y0, w, h, 0, 0, c.width, c.height);
+    const out = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.87));
     c.width = c.height = 0;
     if (!out) throw new Error('이미지 변환 실패');
     const buf = await out.arrayBuffer();
@@ -42,6 +39,21 @@ window.BillboxAI = (function () {
     for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
     return btoa(bin);
   }
+  async function post(body, timeout) {
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), timeout || 45000);
+    try {
+      const res = await fetch(cfg().API_BASE + '/read', {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ deviceKey: window.BillboxPush.deviceKey(), mediaType: 'image/jpeg' }, body)),
+      });
+      return res;
+    } finally {
+      clearTimeout(to);
+    }
+  }
 
   /**
    * 사진 1장을 AI로 읽기 → extract()와 같은 모양의 결과로 바꿔 돌려줌.
@@ -49,35 +61,56 @@ window.BillboxAI = (function () {
    */
   async function read(blob) {
     if (!available()) return { fallback: true, reason: mode() === 'off' ? 'off' : 'offline' };
+    let bmp;
     let image;
     try {
-      image = await toB64(blob);
+      bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      image = await cropB64(bmp, 0, 0, bmp.width, bmp.height);
     } catch (_) {
+      if (bmp && bmp.close) bmp.close();
       return { fallback: true, reason: 'encode' };
     }
     let res;
     try {
-      const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 45000);
-      res = await fetch(cfg().API_BASE + '/read', {
-        method: 'POST',
-        signal: ac.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceKey: window.BillboxPush.deviceKey(), image, mediaType: 'image/jpeg' }),
-      });
-      clearTimeout(to);
+      res = await post({ image });
     } catch (_) {
+      if (bmp.close) bmp.close();
       return { fallback: true, reason: 'network' };
     }
-    if (res.status === 429) return { fallback: true, reason: 'limit' };
-    if (!res.ok) return { fallback: true, reason: 'server' };
+    if (res.status === 429) {
+      if (bmp.close) bmp.close();
+      return { fallback: true, reason: 'limit' };
+    }
+    if (!res.ok) {
+      if (bmp.close) bmp.close();
+      return { fallback: true, reason: 'server' };
+    }
     let j;
     try {
       j = await res.json();
     } catch (_) {
-      return { fallback: true, reason: 'server' };
+      j = null;
     }
-    const d = j && j.data;
+    let d = j && j.data;
+    // 금액·기한을 못 읽음 → 사진을 위/아래 두 조각(겹치게)으로 쪼개 2배 해상도로 상위 모델에 다시 묻는다
+    // (수도요금처럼 작은 색칸 숫자는 전체를 줄인 사진에선 뭉개지기 때문)
+    if (d && d.doc !== false && (d.amount == null || d.due == null)) {
+      try {
+        const H = bmp.height;
+        const tiles = [await cropB64(bmp, 0, 0, bmp.width, Math.round(H * 0.58)), await cropB64(bmp, 0, Math.round(H * 0.42), bmp.width, H - Math.round(H * 0.42))];
+        const res2 = await post({ images: tiles, detail: 1 }, 60000);
+        if (res2.ok) {
+          const j2 = await res2.json();
+          const d2 = j2 && j2.data;
+          if (d2 && d2.doc !== false) {
+            // 조각 읽기가 찾은 값으로 빈칸을 채움(조각이 더 많이 읽었으면 조각을 믿음)
+            const score = (x) => (x.amount != null ? 1 : 0) + (x.due != null ? 1 : 0) + (x.account ? 1 : 0);
+            d = score(d2) >= score(d) ? Object.assign({}, d, d2) : Object.assign({}, d2, d, { amount: d.amount != null ? d.amount : d2.amount, due: d.due || d2.due, account: d.account || d2.account, unit: d.unit || d2.unit });
+          }
+        }
+      } catch (_) {}
+    }
+    if (bmp.close) bmp.close();
     if (!d) return { fallback: true, reason: 'server' };
     if (d.doc === false) return { notBill: true };
 
@@ -104,6 +137,7 @@ window.BillboxAI = (function () {
       usage: d.usage && d.usage.value ? { value: d.usage.value, unit: d.usage.unit || '' } : null,
       amountLate: d.amountLate || null,
       autopay: d.autopay === true,
+      unit: d.unit || null,
     };
   }
 

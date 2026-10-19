@@ -407,6 +407,7 @@
           <div>
             <div class="item__name">${esc(it.name || k.label)} ${badges}</div>
             <div class="item__meta"><span class="item__amount">${amtTxt}</span> · ${fmtDate(it.due)}까지</div>
+            ${it.note ? `<div class="item__note">📝 ${esc(it.note)}</div>` : ''}
             ${it.estimated && !it.paidAt ? '<div class="item__est">고지서 오면 찍어서 금액 맞추기</div>' : ''}
             ${lf && lf.short ? `<div class="item__late">늦으면 ${esc(lf.short)}</div>` : ''}
           </div>
@@ -425,7 +426,7 @@
         const day = it.day || Number(it.due.slice(8, 10));
         return `<div class="frow" role="button" tabindex="0" data-item="${it.id}">
           <span class="frow__emoji">${k.emoji}</span>
-          <span class="frow__name">${esc(it.name || k.label)}</span>
+          <span class="frow__name">${esc(it.name || k.label)}${it.note ? ` <small class="frow__note">${esc(it.note)}</small>` : ''}</span>
           <span class="frow__meta">${esc(K.repeatById(it.repeat).label)} ${day}일쯤${it.auto ? ' · 🏦자동' : ''}</span>
           <span class="frow__amt">${it.amount != null ? `약 ${won(it.amount)}원` : '-'}</span>
         </div>`;
@@ -902,6 +903,7 @@
         usage: ex.usage || null,
         amountLate: ex.amountLate || null,
         autopay: !!ex.autopay,
+        unit: ex.unit || null,
       };
     },
     plainToEx(p) {
@@ -1321,7 +1323,7 @@
         $('flag-due').hidden = !data.due || data.sure.due;
         if (data.altAmounts.length) $('alt-amounts').innerHTML = `<span class="alts__label">혹시 이건가요?</span>` + data.altAmounts.map((a) => `<button type="button" class="chip" data-amt="${a}">${won(a)}원</button>`).join('');
         if (data.altDues.length) $('alt-dues').innerHTML = `<span class="alts__label">혹시 이건가요?</span>` + data.altDues.map((d) => `<button type="button" class="chip" data-due="${d}">${fmtDate(d)}</button>`).join('');
-        if (data.tag) $('f-note').value = data.tag + ' 고지서';
+        if (data.tag || data.unit) $('f-note').value = [data.unit, data.tag ? data.tag + ' 고지서' : ''].filter(Boolean).join(' · ');
         if (this.pendingPhoto && S.settings().photoKeep !== 'off') this.showThumb(this.pendingPhoto);
         if (this.pendingSource) document.querySelectorAll('[data-tap]').forEach((b) => (b.hidden = false));
         if (data.accounts && data.accounts.length) {
@@ -1347,10 +1349,11 @@
         } else if (data.kind) this.setRepeat(data.kind.repeat, data.kind.months || null);
         this.collapseKinds(!!data.kind);
         if (data.due) {
-          const sim = S.findSimilar(data.kind ? data.kind.id : null, data.due, data.tag || '');
+          const bestAcct = data.accounts && data.accounts.length ? data.accounts[0].number : '';
+          const sim = S.findSimilar(data.kind ? data.kind.id : null, data.due, data.tag || '', { account: bestAcct, unit: data.unit || '' });
           if (sim) {
             this.similar = sim;
-            $('similar-name').textContent = sim.name || K.byId(sim.kindId).label;
+            $('similar-name').textContent = (sim.name || K.byId(sim.kindId).label) + (sim.note ? ' · ' + sim.note : '');
             $('similar-due').textContent = fmtDate(sim.due) + (sim.estimated ? ' 예상' : '');
             $('edit-similar').hidden = false;
           }
