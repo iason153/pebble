@@ -140,8 +140,16 @@ window.BillboxStore = (function () {
     if (!it) return null;
     const hist = [{ due: it.due, amount: it.amount, paidAt: new Date().toISOString(), usage: it.usage || null, tag: it.tag || '', estimated: !!it.estimated }, ...(it.history || [])].slice(0, 24);
     const next = nextDue(it);
-    // 다음 차례는 "예상"으로 넘김. 금액은 지난번 금액을 그대로 둬서 "지난번 약 ○○원"으로 쓴다. 사용량·독촉 표시는 새 차례라 비움
-    if (next) return update(id, { history: hist, due: next, estimated: true, tag: '', usage: null, paidAt: null });
+    // 다음 차례는 "예상"으로 넘김. 금액은 보통 지난번 금액("지난번 약 ○○원")을 쓰되,
+    // 밀린 몇 달치를 한꺼번에 낸 경우(평소의 1.6배 넘음)는 평소 금액(기록의 중간값)으로 되돌려 잡는다
+    let nextAmt = it.amount;
+    const past = (it.history || []).filter((h) => h.amount != null && !h.tag).map((h) => h.amount);
+    if (it.amount != null && past.length) {
+      const sorted = [...past].sort((a, b) => a - b);
+      const med = sorted[Math.floor(sorted.length / 2)];
+      if (med > 0 && it.amount > med * 1.6) nextAmt = med;
+    }
+    if (next) return update(id, { history: hist, due: next, estimated: true, amount: nextAmt, tag: '', usage: null, paidAt: null });
     return update(id, { history: hist, paidAt: new Date().toISOString() });
   }
   /** 이번 차례만 건너뛰기: 기록 없이 다음 차례(예상)로 넘김. 반복이 아니면 지움 */
