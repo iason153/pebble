@@ -717,13 +717,36 @@
     /** 사진 여러 장을 정리함에. 담는 즉시 종이는 버려도 됨(사진은 폰 저장소에) */
     async stackAdd(files, from) {
       let n = 0;
+      let lastErr = '';
       for (const f of files) {
         if (!f || !f.size) continue;
-        const id = await window.BillboxDB.stackAdd(f, from);
+        // 원본(3~5MB)을 그대로 넣으면 저장 공간이 모자란 폰에서 실패 → 긴 변 2600px로 줄여 저장(읽기 품질은 충분)
+        let blob = f;
+        try {
+          if (f.size > 1500000) blob = await this.shrinkPhoto(f, 2600, 0.85);
+        } catch (_) {
+          blob = f;
+        }
+        let id = null;
+        try {
+          id = await window.BillboxDB.stackAdd(blob, from);
+        } catch (e) {
+          lastErr = (e && e.name) || '';
+        }
+        if (!id && blob !== f) {
+          // 줄인 것도 실패하면 더 작게 한 번 더
+          try {
+            id = await window.BillboxDB.stackAdd(await this.shrinkPhoto(f, 1600, 0.8), from);
+          } catch (e) {
+            lastErr = (e && e.name) || lastErr;
+          }
+        }
         if (id) n++;
       }
       if (!n) {
-        this.showToast('사진을 담지 못했어요. 다시 골라 주세요');
+        const full = /quota/i.test(lastErr);
+        this.showToast(full ? '폰 저장 공간이 모자라서 사진을 못 담았어요. 사진·앱을 조금 정리한 뒤 다시 해 주세요' : `사진을 담지 못했어요. 앱을 완전히 닫았다 다시 열어 보세요${lastErr ? ' (' + lastErr + ')' : ''}`, { duration: 5000 });
+        track('stack_add_fail', { err: lastErr || 'unknown' });
         return;
       }
       track('stack_add', { n, from });
@@ -910,15 +933,15 @@
       return Object.assign({}, p, { kind: p.kindId ? K.byId(p.kindId) : null, altAmounts: p.altAmounts || [], altDues: p.altDues || [], sure: p.sure || { amount: false, due: false }, accounts: p.accounts || [] });
     },
     /** 저장용 사진(1700px)으로 줄이기 */
-    async shrinkPhoto(blob) {
+    async shrinkPhoto(blob, max, q) {
       const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-      const sc = Math.min(1, 1700 / Math.max(bmp.width, bmp.height));
+      const sc = Math.min(1, (max || 1700) / Math.max(bmp.width, bmp.height));
       const c = document.createElement('canvas');
       c.width = Math.max(1, Math.round(bmp.width * sc));
       c.height = Math.max(1, Math.round(bmp.height * sc));
       c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
       if (bmp.close) bmp.close();
-      const out = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+      const out = await new Promise((res) => c.toBlob(res, 'image/jpeg', q || 0.82));
       c.width = c.height = 0;
       return out || blob;
     },

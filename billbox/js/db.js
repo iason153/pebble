@@ -25,7 +25,24 @@
         if (!db.objectStoreNames.contains('inbox')) db.createObjectStore('inbox');
         if (!db.objectStoreNames.contains('stack')) db.createObjectStore('stack'); // 정리함: 찍은 고지서가 확인 전까지 있는 곳
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // 다른 탭이 새 버전으로 올리려 하면 이 연결을 놓아줌(업그레이드가 영영 막히는 일 방지)
+        db.onversionchange = () => {
+          try {
+            db.close();
+          } catch (_) {}
+          dbp = null;
+        };
+        resolve(db);
+      };
+      req.onblocked = () => {
+        // 옛 탭이 붙들고 있음 → 8초 기다리다 안 되면 실패 처리(앱은 안내를 띄움)
+        setTimeout(() => {
+          dbp = null;
+          reject(new Error('blocked'));
+        }, 8000);
+      };
       req.onerror = () => {
         dbp = null;
         reject(req.error);
