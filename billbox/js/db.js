@@ -91,7 +91,8 @@
     // rec = { blob, addedAt, status:'new'|'read'|'fail', ex(읽은 결과), from, source:'ai'|'local' }
     stackAdd(blob, from) {
       const id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-      return tx('stack', 'readwrite', (s) => s.put({ blob, addedAt: Date.now(), status: 'new', ex: null, from: from || '' }, id)).then(() => id).catch(() => null);
+      // 주의: 실패 원인(QuotaExceededError 등)을 삼키지 않고 그대로 던진다 — 앱이 사용자에게 이유를 보여 줘야 함
+      return tx('stack', 'readwrite', (s) => s.put({ blob, addedAt: Date.now(), status: 'new', ex: null, from: from || '' }, id)).then(() => id);
     },
     stackGet: (id) => tx('stack', 'readonly', (s) => req2p(s.get(id))).catch(() => null),
     async stackAll() {

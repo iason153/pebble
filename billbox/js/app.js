@@ -720,32 +720,45 @@
       let lastErr = '';
       for (const f of files) {
         if (!f || !f.size) continue;
-        // 원본(3~5MB)을 그대로 넣으면 저장 공간이 모자란 폰에서 실패 → 긴 변 2600px로 줄여 저장(읽기 품질은 충분)
-        let blob = f;
-        try {
-          if (f.size > 1500000) blob = await this.shrinkPhoto(f, 2600, 0.85);
-        } catch (_) {
-          blob = f;
-        }
         let id = null;
         try {
-          id = await window.BillboxDB.stackAdd(blob, from);
-        } catch (e) {
-          lastErr = (e && e.name) || '';
-        }
-        if (!id && blob !== f) {
-          // 줄인 것도 실패하면 더 작게 한 번 더
+          // 1) 사진을 먼저 통째로 메모리에 읽어 고정 — 클라우드에만 있는 앨범 사진(원본이 폰에 없음)은 여기서 실패가 드러남
+          let blob;
           try {
-            id = await window.BillboxDB.stackAdd(await this.shrinkPhoto(f, 1600, 0.8), from);
+            blob = new Blob([await f.arrayBuffer()], { type: f.type || 'image/jpeg' });
           } catch (e) {
-            lastErr = (e && e.name) || lastErr;
+            throw Object.assign(new Error('read'), { name: (e && e.name) || 'ReadError' });
           }
+          // 2) 크면 긴 변 2600px로 줄여 저장(저장 공간 1/5, 읽기 품질 충분)
+          if (blob.size > 1500000) {
+            try {
+              blob = await this.shrinkPhoto(blob, 2600, 0.85);
+            } catch (_) {}
+          }
+          try {
+            id = await window.BillboxDB.stackAdd(blob, from);
+          } catch (e) {
+            // 공간 부족 등 → 더 작게 한 번 더
+            if (/quota/i.test((e && e.name) || '')) id = await window.BillboxDB.stackAdd(await this.shrinkPhoto(blob, 1400, 0.75), from);
+            else throw e;
+          }
+        } catch (e) {
+          lastErr = (e && e.name) || (e && e.message) || 'unknown';
         }
         if (id) n++;
       }
       if (!n) {
         const full = /quota/i.test(lastErr);
-        this.showToast(full ? '폰 저장 공간이 모자라서 사진을 못 담았어요. 사진·앱을 조금 정리한 뒤 다시 해 주세요' : `사진을 담지 못했어요. 앱을 완전히 닫았다 다시 열어 보세요${lastErr ? ' (' + lastErr + ')' : ''}`, { duration: 5000 });
+        const cloud = /read|notfound|notreadable/i.test(lastErr);
+        this.showToast(
+          full
+            ? '폰 저장 공간이 모자라서 사진을 못 담았어요. 사진·앱을 조금 정리한 뒤 다시 해 주세요'
+            : cloud
+              ? '이 사진은 원본이 폰에 없는 것 같아요(클라우드 백업). 앨범에서 사진을 한 번 열어 본 뒤 다시 골라 주세요'
+              : `사진을 담지 못했어요. 앱을 완전히 닫았다 다시 열어 보세요 (${lastErr || '원인 미상'})`,
+          { duration: 5500 }
+        );
+        this.logRead({ fail: 'intake', reason: lastErr || 'unknown' });
         track('stack_add_fail', { err: lastErr || 'unknown' });
         return;
       }
