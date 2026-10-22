@@ -39,6 +39,41 @@ window.BillboxAI = (function () {
     for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
     return btoa(bin);
   }
+  /** 비트맵을 시계방향 rot(90|180|270)도 돌린 새 비트맵 */
+  async function rotateBmp(bmp, rot) {
+    const c = document.createElement('canvas');
+    if (rot === 180) {
+      c.width = bmp.width;
+      c.height = bmp.height;
+      const x = c.getContext('2d');
+      x.translate(c.width, c.height);
+      x.rotate(Math.PI);
+      x.drawImage(bmp, 0, 0);
+    } else {
+      c.width = bmp.height;
+      c.height = bmp.width;
+      const x = c.getContext('2d');
+      if (rot === 90) {
+        x.translate(c.width, 0);
+        x.rotate(Math.PI / 2);
+      } else {
+        x.translate(0, c.height);
+        x.rotate(-Math.PI / 2);
+      }
+      x.drawImage(bmp, 0, 0);
+    }
+    const out = await createImageBitmap(c);
+    c.width = c.height = 0;
+    return out;
+  }
+  /** 두 읽기 결과 합치기: 나중(b) 것의 채워진 값을 우선 */
+  function mergeRead(a, b) {
+    const out = Object.assign({}, a);
+    for (const k of Object.keys(b)) if (b[k] != null && b[k] !== '') out[k] = b[k];
+    out.doc = true;
+    return out;
+  }
+
   async function post(body, timeout) {
     const ac = new AbortController();
     const to = setTimeout(() => ac.abort(), timeout || 45000);
@@ -92,6 +127,23 @@ window.BillboxAI = (function () {
       j = null;
     }
     let d = j && j.data;
+    let usedRot = 0;
+    // 사진이 옆으로 누워 있다고 하면: 바로 세워서 상위 모델로 전체를 다시 읽는다
+    // (돌아간 빽빽한 표는 정독이 어렵고, 콕 찍기 조각도 엉뚱하게 잘리기 때문)
+    if (d && d.doc !== false && (d.rot === 90 || d.rot === 180 || d.rot === 270)) {
+      try {
+        const rb = await rotateBmp(bmp, d.rot);
+        if (bmp.close) bmp.close();
+        bmp = rb;
+        usedRot = d.rot;
+        const img2 = await cropB64(bmp, 0, 0, bmp.width, bmp.height);
+        const res2 = await post({ image: img2, detail: 1 }, 60000);
+        if (res2.ok) {
+          const j2 = await res2.json();
+          if (j2 && j2.data && j2.data.doc !== false) d = mergeRead(d, j2.data);
+        }
+      } catch (_) {}
+    }
     // 금액·기한을 못 읽음 → 사진을 위/아래 두 조각(겹치게)으로 쪼개 2배 해상도로 상위 모델에 다시 묻는다
     // (수도요금처럼 작은 색칸 숫자는 전체를 줄인 사진에선 뭉개지기 때문)
     if (d && d.doc !== false && (d.amount == null || d.due == null)) {
@@ -138,6 +190,7 @@ window.BillboxAI = (function () {
       amountLate: d.amountLate || null,
       autopay: d.autopay === true,
       unit: d.unit || null,
+      rot: usedRot,
     };
   }
 

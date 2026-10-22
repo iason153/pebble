@@ -21,5 +21,5 @@ window.BILLBOX_CONFIG = Object.freeze({
     REV: '2',
   }),
   REMIND_HOUR_DEFAULT: 9,
-  VERSION: '2.2.2',
+  VERSION: '2.3.1',
 });

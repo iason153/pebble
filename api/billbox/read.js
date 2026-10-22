@@ -19,20 +19,25 @@ const { redis, json, readBody, kstNow } = require('./_lib');
 const KINDS = ['electric', 'gas', 'water', 'health', 'pension', 'cartax', 'proptax', 'maint', 'telecom', 'rent', 'insurance', 'academy', 'loan', 'subscribe', 'fine', 'transfer', 'etc'];
 
 const PROMPT = `한국의 고지서/청구서/납부 안내 사진이다. 아래 JSON 하나만 출력해라. 설명·코드펜스 금지.
-{"doc":true,"issuer":"발행기관(짧게)","kind":"electric|gas|water|health|pension|cartax|proptax|maint|telecom|rent|insurance|academy|loan|subscribe|fine|etc","name":"짧은 항목 이름(예: 전기요금, 수도요금, 건강보험)","amount":납기내_청구금액_숫자,"amountLate":납기후_금액_숫자_또는_null,"due":"납부기한 YYYY-MM-DD","account":"은행이름 계좌번호(가상계좌 포함, 없으면 null)","unit":"납부자 주소의 끝부분(동·호수·번지 끝자리 등 10자 이내, 없으면 null)","autopay":true_또는_false,"tag":"독촉|압류예고|(해당 없으면 빈 문자열)","usage":{"value":숫자,"unit":"kWh|m3"} 또는 null}
+{"doc":true,"issuer":"발행기관(짧게)","kind":"electric|gas|water|health|pension|cartax|proptax|maint|telecom|rent|insurance|academy|loan|subscribe|fine|etc","name":"짧은 항목 이름(예: 전기요금, 수도요금, 건강보험)","amount":납기내_청구금액_숫자,"amountLate":납기후_금액_숫자_또는_null,"due":"납부기한 YYYY-MM-DD","account":"은행이름 계좌번호(가상계좌 포함, 없으면 null)","unit":"납부자 주소의 끝부분(동·호수·번지 끝자리 등 10자 이내, 없으면 null)","autopay":true_또는_false,"tag":"독촉|압류예고|(해당 없으면 빈 문자열)","usage":{"value":숫자,"unit":"kWh|m3"} 또는 null,"rot":0}
 규칙:
 - amount는 "납기내" 금액이다. 납기후·연체 금액과 절대 바꾸지 마라. 쉼표 없이 정수.
+- 지로용지·세금 고지서(수도·재산세·자동차세 등)는 금액이 **한 자리씩 네모 칸에 나뉘어** 인쇄되기도 한다(예: 칸 [6][3][0][0][0] = 63000원). 칸을 이어서 하나의 금액으로 읽어라. 왼쪽의 빈 칸이나 ₩표시는 무시.
+- 전자납부번호·지로번호·고객번호·바코드 밑 숫자·용지 맨 아래의 긴 숫자 띠는 **금액이 아니다**(보통 10자리 이상 연속 코드). 생활 요금 금액은 거의 1,000~10,000,000원 범위다.
+- 같은 금액이 영수증(왼쪽)과 납부서(오른쪽)에 두 번 인쇄되어 있으면 서로 맞는지 비교해서 확신을 높여라.
 - due는 "납기내" 기한이다. 납기후 기한이 아니다. 연도가 안 보이면 사진 속 다른 날짜(고지년월 등)로 추정해라. 자동이체 고지서면 출금(인출) 예정일이 due다.
 - autopay: "자동이체", "자동납부", "출금예정", "인출예정" 표시가 있거나 자동이체로 출금된다는 안내가 있으면 true.
 - 독촉장·체납·압류예고면 tag에 적어라.
 - 고지서가 아니면 {"doc":false}만 출력해라.
 - 수도요금·지로용지는 분홍/하늘색 표 안의 작은 숫자가 핵심이다. "납기내" 칸의 금액과 기한을 표에서 찾아라.
+- **사진이 옆으로 누워 있을 수 있다.** 글자가 누워 있어도 돌려서 읽고, rot에 "사진을 시계방향으로 몇 도 돌려야 글이 바로 보이는지"(0|90|180|270)를 적어라.
+- 여러 달 치가 나뉘어 적혀 있으면(미납·체납 내역) 월별 금액이 아니라 **합계금액·총납부액**이 amount다.
 - unit은 같은 종류 고지서가 여러 집으로 오는 경우 구분용이다(예: "502호", "138-9").
 - 확실하지 않은 값은 null로 둬라. 지어내지 마라.`;
 
 const FIELD_PROMPT = {
-  amount: '한국 고지서의 일부분 사진이다. 이 조각에서 "납기내 청구금액"(원)을 찾아 {"value":숫자} JSON 하나만 출력해라. 납기후 금액 말고 납기내. 쉼표 없이 정수. 못 찾으면 {"value":null}.',
-  due: '한국 고지서의 일부분 사진이다. 이 조각에서 납부기한(또는 출금 예정일) 날짜를 찾아 {"value":"YYYY-MM-DD"} JSON 하나만 출력해라. 납기후 기한 말고 납기내. 연도가 없으면 조각 안 다른 표기로 추정. 못 찾으면 {"value":null}.',
+  amount: '한국 고지서의 일부분 사진이다. 이 조각에서 "납기내 청구금액"(원)을 찾아 {"value":숫자} JSON 하나만 출력해라. 납기후 금액 말고 납기내. 쉼표 없이 정수. 주의: 사진이 옆으로 누워 있으면 돌려서 읽어라. 지로·세금 용지는 금액이 한 자리씩 네모 칸에 나뉘어 있을 수 있다(칸 [6][3][0][0][0]=63000) — 칸을 이어 읽어라. 여러 달 치가 나뉘어 있으면 합계금액이 답이다. 전자납부번호·지로번호·고객번호 같은 10자리 이상 긴 코드는 금액이 아니다. 금액은 거의 1,000~10,000,000원 범위. 못 찾으면 {"value":null}.',
+  due: '한국 고지서의 일부분 사진이다. 이 조각에서 납부기한(또는 출금 예정일) 날짜를 찾아 {"value":"YYYY-MM-DD"} JSON 하나만 출력해라. 납기후 기한 말고 납기내("납기내 ~까지"가 흔한 표기). 사진이 옆으로 누워 있으면 돌려서 읽어라. 날짜도 한 자리씩 칸에 나뉘어 있을 수 있다. 연도가 없으면 조각 안 다른 표기로 추정. 못 찾으면 {"value":null}.',
   account: '한국 고지서의 일부분 사진이다. 이 조각에서 납부 계좌번호(가상계좌 포함)를 찾아 {"value":"은행이름 계좌번호"} JSON 하나만 출력해라. 못 찾으면 {"value":null}.',
 };
 
@@ -82,6 +87,7 @@ function cleanBill(data) {
     unit: typeof data.unit === 'string' && data.unit.trim() ? data.unit.trim().slice(0, 12) : null,
     autopay: data.autopay === true,
     tag: data.tag === '독촉' || data.tag === '압류예고' ? data.tag : '',
+    rot: [90, 180, 270].includes(Number(data.rot)) ? Number(data.rot) : 0,
     usage: data.usage && Number.isFinite(Number(data.usage.value)) ? { value: Number(data.usage.value), unit: String(data.usage.unit || '').slice(0, 6) } : null,
   };
 }

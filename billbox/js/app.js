@@ -869,8 +869,16 @@
             try {
               const r = await window.BillboxAI.read(rec.blob);
               if (r.notBill) plain = { notBill: true };
-              else if (!r.fallback) plain = this.exToPlain(r);
-              else track('ai_fallback', { reason: r.reason });
+              else if (!r.fallback) {
+                plain = this.exToPlain(r);
+                if (r.rot) {
+                  // 옆으로 누운 사진 → 바로 세워 저장(사진 보기·콕 찍기가 똑바로 동작)
+                  try {
+                    const nb = await this.rotateBlob(rec.blob, r.rot);
+                    if (nb) await window.BillboxDB.stackPatch(id, { blob: nb });
+                  } catch (_) {}
+                }
+              } else track('ai_fallback', { reason: r.reason });
             } catch (_) {}
           }
           if (!plain) {
@@ -932,6 +940,36 @@
     plainToEx(p) {
       return Object.assign({}, p, { kind: p.kindId ? K.byId(p.kindId) : null, altAmounts: p.altAmounts || [], altDues: p.altDues || [], sure: p.sure || { amount: false, due: false }, accounts: p.accounts || [] });
     },
+    /** 사진 blob을 시계방향 rot도 돌려 저장용으로 */
+    async rotateBlob(blob, rot) {
+      const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      const c = document.createElement('canvas');
+      if (rot === 180) {
+        c.width = bmp.width;
+        c.height = bmp.height;
+        const x = c.getContext('2d');
+        x.translate(c.width, c.height);
+        x.rotate(Math.PI);
+        x.drawImage(bmp, 0, 0);
+      } else {
+        c.width = bmp.height;
+        c.height = bmp.width;
+        const x = c.getContext('2d');
+        if (rot === 90) {
+          x.translate(c.width, 0);
+          x.rotate(Math.PI / 2);
+        } else {
+          x.translate(0, c.height);
+          x.rotate(-Math.PI / 2);
+        }
+        x.drawImage(bmp, 0, 0);
+      }
+      if (bmp.close) bmp.close();
+      const out = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.88));
+      c.width = c.height = 0;
+      return out;
+    },
+
     /** 저장용 사진(1700px)으로 줄이기 */
     async shrinkPhoto(blob, max, q) {
       const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
