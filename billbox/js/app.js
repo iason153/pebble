@@ -706,6 +706,7 @@
       $('scan-cam').hidden = true;
       $('scan-progress').hidden = true;
       $('scan-lost').hidden = true;
+      if ($('scan-cloud')) $('scan-cloud').hidden = true;
       $('scan-retry').hidden = true;
       this.openSheet($('scan-sheet'));
       track('scan_open');
@@ -756,16 +757,15 @@
       if (!n) {
         const full = /quota/i.test(lastErr);
         const cloud = /read|notfound|notreadable/i.test(lastErr);
-        this.showToast(
-          full
-            ? '폰 저장 공간이 모자라서 사진을 못 담았어요. 사진·앱을 조금 정리한 뒤 다시 해 주세요'
-            : cloud
-              ? '이 사진은 원본이 폰에 없어요(클라우드에만 백업됨). 포토 앱에서 사진을 크게 한 번 연 뒤 다시 고르거나, 포토 앱의 공유 → Billbox로 보내 주세요'
-              : `사진을 담지 못했어요. 앱을 완전히 닫았다 다시 열어 보세요 (${lastErr || '원인 미상'})`,
-          { duration: 5500 }
-        );
+        if (cloud) {
+          // 왜 안 되는지 모르면 쓸 수 없다 → 찍기 화면에 따라 하기 카드로
+          this.openScan();
+          $('scan-cloud').hidden = false;
+        } else {
+          this.showToast(full ? '폰 저장 공간이 모자라서 사진을 못 담았어요. 사진·앱을 조금 정리한 뒤 다시 해 주세요' : `사진을 담지 못했어요. 앱을 완전히 닫았다 다시 열어 보세요 (${lastErr || '원인 미상'})`, { duration: 5500 });
+        }
         this.logRead({ fail: 'intake', reason: lastErr || 'unknown' });
-        track('stack_add_fail', { err: lastErr || 'unknown' });
+        track('stack_add_fail', { err: lastErr || 'unknown', cloud: cloud ? 1 : 0 });
         return;
       }
       track('stack_add', { n, from });
