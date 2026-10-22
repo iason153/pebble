@@ -144,13 +144,18 @@ window.BillboxAI = (function () {
         }
       } catch (_) {}
     }
-    // 금액·기한을 못 읽음 → 사진을 위/아래 두 조각(겹치게)으로 쪼개 2배 해상도로 상위 모델에 다시 묻는다
-    // (수도요금처럼 작은 색칸 숫자는 전체를 줄인 사진에선 뭉개지기 때문)
+    // 금액·기한을 못 읽음 → 사진을 겹치는 4분할 조각으로 쪼개 실질 해상도를 올려 상위 모델에 다시 묻는다
+    // (전체 보관용으로 멀리 찍은 사진도 조각 안에서는 깨알 숫자가 크게 보임)
     if (d && d.doc !== false && (d.amount == null || d.due == null)) {
       try {
+        const W = bmp.width;
         const H = bmp.height;
-        const tiles = [await cropB64(bmp, 0, 0, bmp.width, Math.round(H * 0.58)), await cropB64(bmp, 0, Math.round(H * 0.42), bmp.width, H - Math.round(H * 0.42))];
-        const res2 = await post({ images: tiles, detail: 1 }, 60000);
+        const w6 = Math.round(W * 0.58);
+        const h6 = Math.round(H * 0.58);
+        const x4 = Math.round(W * 0.42);
+        const y4 = Math.round(H * 0.42);
+        const tiles = [await cropB64(bmp, 0, 0, w6, h6), await cropB64(bmp, x4, 0, W - x4, h6), await cropB64(bmp, 0, y4, w6, H - y4), await cropB64(bmp, x4, y4, W - x4, H - y4)];
+        const res2 = await post({ images: tiles, detail: 1 }, 75000);
         if (res2.ok) {
           const j2 = await res2.json();
           const d2 = j2 && j2.data;

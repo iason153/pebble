@@ -102,7 +102,7 @@ module.exports = async (req, res) => {
   if (!/^[0-9a-f]{32}$/.test(dev)) return json(res, 400, { error: 'deviceKey' });
   const mediaType = ['image/jpeg', 'image/png', 'image/webp'].includes(b.mediaType) ? b.mediaType : 'image/jpeg';
   // image 하나 또는 images 여러 장(최대 3 — 고해상도 조각들)
-  const images = (Array.isArray(b.images) ? b.images : [b.image]).filter((x) => typeof x === 'string' && x).slice(0, 3);
+  const images = (Array.isArray(b.images) ? b.images : [b.image]).filter((x) => typeof x === 'string' && x).slice(0, 5);
   if (!images.length) return json(res, 400, { error: 'image' });
   for (const im of images) if (im.length > 2800000 || !/^[A-Za-z0-9+/=]+$/.test(im.slice(0, 1000))) return json(res, 400, { error: 'image' });
   const detail = b.detail === 1 || b.detail === '1'; // 1차가 못 읽어 고해상도 조각으로 다시 묻는 중 → 상위 모델
@@ -141,7 +141,7 @@ module.exports = async (req, res) => {
 
   // ---- 고지서 전체 읽기 ----
   // detail(고해상도 조각) 요청은 처음부터 상위 모델로. 아니면 1차 모델, 혼잡 시 2차로 한 번
-  const prompt = images.length > 1 ? PROMPT + '\n- 사진 여러 장은 같은 고지서를 위·아래로 나눈 고해상도 조각이다. 모두 보고 하나의 JSON으로 합쳐라.' : PROMPT;
+  const prompt = images.length > 1 ? PROMPT + '\n- 사진 여러 장은 같은 고지서를 겹치게 나눈 고해상도 조각들이다. 모두 보고 하나의 JSON으로 합쳐라.' : PROMPT;
   let r1 = await callClaude(apiKey, detail ? model2 : model1, prompt, images, mediaType);
   if (r1.err && !r1.data) {
     r1 = await callClaude(apiKey, detail ? model1 : model2, prompt, images, mediaType);
