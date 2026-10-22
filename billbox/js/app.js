@@ -892,9 +892,11 @@
           if (plain && !plain.notBill && (plain.amount != null || plain.due || plain.kindId)) {
             await window.BillboxDB.stackPatch(id, { status: 'read', ex: plain, source: src });
             track('stack_read', { ok: 1, src });
+            this.logRead({ src, kind: plain.kindId, amount: plain.amount, due: plain.due, rot: plain.rot || 0, unit: plain.unit || '', auto: plain.autopay ? 1 : 0 });
           } else {
             await window.BillboxDB.stackPatch(id, { status: 'fail', ex: plain && !plain.notBill ? plain : null, note: plain && plain.notBill ? 'notbill' : '' });
             track('stack_read', { ok: 0, src });
+            this.logRead({ src, fail: plain && plain.notBill ? 'notbill' : 'empty' });
           }
           this.renderStack();
           this.renderStackBadge();
@@ -940,6 +942,16 @@
     plainToEx(p) {
       return Object.assign({}, p, { kind: p.kindId ? K.byId(p.kindId) : null, altAmounts: p.altAmounts || [], altDues: p.altDues || [], sure: p.sure || { amount: false, due: false }, accounts: p.accounts || [] });
     },
+    /** 읽기 진단 기록(폰에만, 최근 8건) — "왜 못 읽었나"를 추측 대신 데이터로 */
+    logRead(e) {
+      try {
+        const k = 'billbox:readlog';
+        const a = JSON.parse(localStorage.getItem(k) || '[]');
+        a.unshift(Object.assign({ t: new Date().toISOString().slice(5, 16).replace('T', ' ') }, e));
+        localStorage.setItem(k, JSON.stringify(a.slice(0, 8)));
+      } catch (_) {}
+    },
+
     /** 사진 blob을 시계방향 rot도 돌려 저장용으로 */
     async rotateBlob(blob, rot) {
       const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
@@ -1483,6 +1495,7 @@
           this.tapBusy = false;
           const v = r && r.value;
           track('tap_read', { field, ok: v != null ? 1 : 0 });
+          this.logRead({ tap: field, val: v == null ? null : String(v).slice(0, 24) });
           if (v == null) {
             window.BillboxViewer.setBusy('못 읽었어요. 숫자 한가운데를 다시 톡 눌러 보세요');
             window.BillboxViewer.hideMark();
@@ -1776,6 +1789,15 @@
           this.showToast('시험 알림을 보내지 못했어요');
         }
       });
+      $('btn-readlog-copy').addEventListener('click', async () => {
+        const raw = localStorage.getItem('billbox:readlog') || '[]';
+        try {
+          await navigator.clipboard.writeText('빌박스 읽기 진단 v' + ((window.BILLBOX_CONFIG || {}).VERSION || '') + '\n' + raw);
+          this.showToast('복사했어요 — 개발 채팅에 붙여넣어 주세요', { duration: 3500 });
+        } catch (_) {
+          this.showToast('복사가 안 되면 아래 기록을 길게 눌러 복사해 주세요', { duration: 4000 });
+        }
+      });
       $('s-ai').addEventListener('change', () => {
         const v = $('s-ai').value === 'off' ? 'off' : 'on';
         S.saveSettings({ aiRead: v });
@@ -1829,6 +1851,12 @@
 
     renderSettings() {
       const s = S.settings();
+      try {
+        const log = JSON.parse(localStorage.getItem('billbox:readlog') || '[]');
+        $('readlog-list').innerHTML = log.length
+          ? log.map((e) => `<div>· ${esc(e.t || '')} ${e.tap ? `콕찍기 ${esc(e.tap)} → ${e.val == null ? '<b>실패</b>' : esc(e.val)}` : e.fail ? `<b>실패(${esc(e.fail)})</b> ${esc(e.src || '')}` : `${esc(e.src || '')} ${esc(e.kind || '')} ${e.amount != null ? won(e.amount) + '원' : '금액?'} ${esc(e.due || '기한?')}${e.rot ? ' 회전' + e.rot : ''}${e.auto ? ' 자동이체' : ''}`}</div>`).join('')
+          : '<span class="muted">아직 기록이 없어요</span>';
+      } catch (_) {}
       $('s-ai').value = s.aiRead === 'off' ? 'off' : 'on';
       $('s-hour').value = String(s.remindHour);
       $('s-photo').value = s.photoKeep || 'paid30';
