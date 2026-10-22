@@ -9,7 +9,7 @@
 
 importScripts('js/db.js'); // 폰 저장소(알림 문구에 금액 붙이기, 공유로 받은 사진)
 
-const CACHE_NAME = 'billbox-shell-v20';
+const CACHE_NAME = 'billbox-shell-v21';
 const ENGINE_CACHE = 'billbox-engine-r2'; // 읽기 엔진·사전(약 12MB). 앱 버전이 바뀌어도 그대로 둠, REV 바뀔 때만 새로
 const SCOPE = self.registration.scope; // https://pebbleitgo.com/billbox/
 

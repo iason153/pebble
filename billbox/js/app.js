@@ -726,8 +726,14 @@
           let blob;
           try {
             blob = new Blob([await f.arrayBuffer()], { type: f.type || 'image/jpeg' });
-          } catch (e) {
-            throw Object.assign(new Error('read'), { name: (e && e.name) || 'ReadError' });
+          } catch (e1) {
+            // 클라우드 사진은 내려받기가 끝나면 읽히기도 함 → 1.5초 쉬고 한 번 더
+            await new Promise((r) => setTimeout(r, 1500));
+            try {
+              blob = new Blob([await f.arrayBuffer()], { type: f.type || 'image/jpeg' });
+            } catch (e) {
+              throw Object.assign(new Error('read'), { name: (e && e.name) || 'ReadError' });
+            }
           }
           // 2) 크면 긴 변 2600px로 줄여 저장(저장 공간 1/5, 읽기 품질 충분)
           if (blob.size > 1500000) {
@@ -754,7 +760,7 @@
           full
             ? '폰 저장 공간이 모자라서 사진을 못 담았어요. 사진·앱을 조금 정리한 뒤 다시 해 주세요'
             : cloud
-              ? '이 사진은 원본이 폰에 없는 것 같아요(클라우드 백업). 앨범에서 사진을 한 번 열어 본 뒤 다시 골라 주세요'
+              ? '이 사진은 원본이 폰에 없어요(클라우드에만 백업됨). 포토 앱에서 사진을 크게 한 번 연 뒤 다시 고르거나, 포토 앱의 공유 → Billbox로 보내 주세요'
               : `사진을 담지 못했어요. 앱을 완전히 닫았다 다시 열어 보세요 (${lastErr || '원인 미상'})`,
           { duration: 5500 }
         );
